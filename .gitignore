@@ -1,0 +1,16 @@
+# Ortam ve editör
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.claude/settings.local.json
+
+# QA çıktıları — betik repoda, çıktısı değil
+tasks/qa/*.json
+tasks/qa/*-out.txt
+tasks/qa/screenshots/
+docs/screenshots/
+
+# Buildless proje; node_modules yalnız ileride QA için
+node_modules/
+package-lock.json
