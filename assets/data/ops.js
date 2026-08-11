@@ -600,7 +600,7 @@ DB.tickets = [
     baslik:'Demo ortamına erişim talebi', kategori:'Bilgi talebi', oncelik:'Düşük', etki:'Düşük',
     sla:'2 gün', sorumlu:'EMP-013', acan:'YTK-009', acilis:'2026-08-02T21:00',
     ilkYanit:null, mudahaleSuresi:null, cozumSuresi:null, durum:'Yeni',
-    harcananSure:0, ucretli:false, bakimPaketi:'—', kalanDestek:0, memnuniyet:null,
+    harcananSure:0, ucretli:false, bakimPaketi:null, kalanDestek:0, memnuniyet:null,
     slaDurum:'Risk altında',
     kanal:'Müşteri portalı', aciklama:null,
     cozumAciklama:null, cozenPersonel:null, musteriOnay:null, kapanisTarihi:null, aktif:true },
@@ -608,7 +608,7 @@ DB.tickets = [
     baslik:'Fatura kopyası talebi', kategori:'Bilgi talebi', oncelik:'Düşük', etki:'Düşük',
     sla:'2 gün', sorumlu:'EMP-012', acan:'YTK-005', acilis:'2026-06-20T13:00',
     ilkYanit:'2026-06-20T14:10', mudahaleSuresi:70, cozumSuresi:130, durum:'Kapandı',
-    harcananSure:0.5, ucretli:false, bakimPaketi:'—', kalanDestek:0, memnuniyet:3,
+    harcananSure:0.5, ucretli:false, bakimPaketi:null, kalanDestek:0, memnuniyet:3,
     slaDurum:'Zamanında',
     kanal:'Müşteri portalı', aciklama:null,
     cozumAciklama:null, cozenPersonel:null, musteriOnay:null, kapanisTarihi:null, aktif:true }
@@ -625,12 +625,25 @@ DB.tickets = [
    BKP-004 projenin teslimden iki gün sonra başlıyor ama bunu bağ saymak
    uydurmaktır. Alan yine de HER kayıtta duruyor: şema kayıttan kayda
    değişmesin diye (VB-20 eki). Bağı proje kapanış akışı yazar. */
-DB.supportPackageTypes = ['Standart Bakım','Kurumsal Bakım'];
+/* ---- BAKIM PAKETİ SEVİYESİ — KANON KISA BİÇİMDİR (K-27) --------------
+   Ölçüldü ve düzeltildi: seviye üç ayrı biçimde yazılıydı.
+     sözlük              → 'Standart Bakım' · 'Kurumsal Bakım'  (uzun)
+     `supportPackages.ad`→ 'Standart Bakım' · 'Kurumsal Bakım'  (uzun)
+     `tickets.bakimPaketi`→ 'Standart' · 'Kurumsal'             (KISA)
+   Üç küme birbirini tutmuyordu ve `GV.destek.paketOf` seviye eşleşmesi bu
+   yüzden HİÇ tutmuyordu (bkz. domain.js).
+
+   Beyar kararı: **veride yalnız SEVİYE tutulur.** Cins adı (`Bakım`) zaten
+   `tip` alanındadır ve seviyeye yapıştırılmaz. Uzun adı gerektiğinde EKRAN
+   birleştirir (`seviye + ' ' + tip`), veri değil. Sözlük ile kayıt artık
+   aynı kısa değeri konuşur. */
+DB.supportPackageTypes = ['Standart','Kurumsal'];
 
 /* ---- Hizmet paketi TİPİ ve PERİYODU (REVİZE 17) -----------------------
    Dokümanın on paket tipi. `DB.supportPackageTypes` ile KARIŞTIRILMAZ: o,
-   paketin ADIDIR (`Standart Bakım` · `Kurumsal Bakım` — ekranda görünen hizmet
-   adı); bu ise paketin NE OLDUĞUdur. İkisini tek alana sıkıştırmak VB-20'nin
+   paketin SEVİYESİDİR (`Standart` · `Kurumsal` — K-27 sonrası kısa biçim);
+   bu ise paketin NE OLDUĞUdur. Ekranda görünen tam ad ikisinin
+   birleşimidir (`seviye + ' ' + tip` → 'Kurumsal Bakım') ve VERİDE DURMAZ. İkisini tek alana sıkıştırmak VB-20'nin
    düştüğü hatadır. Bugün 7 paketin 7'si `Bakım` tipindedir ve bu ölçülmüş bir
    gerçektir — dokümanın diğer dokuz tipine uydurma kayıt dağıtılmadı; sözlük
    yeni kayıtlar için hazır durur.
@@ -646,25 +659,25 @@ DB.servicePackageTypes = ['Bakım','Teknik Destek','SaaS','Hosting','AI Kullanı
 DB.servicePackagePeriods = ['Aylık','3 Aylık','6 Aylık','Yıllık'];
 
 DB.supportPackages = [
-  { kod:'BKP-001', proje:null, musteri:'MUS-2024-001', tip:'Bakım', periyot:'Yıllık', sorumlu:'EMP-002', ad:'Kurumsal Bakım', baslangic:'2026-01-01', bitis:'2026-12-31',
+  { kod:'BKP-001', proje:null, musteri:'MUS-2024-001', tip:'Bakım', periyot:'Yıllık', sorumlu:'EMP-002', seviye:'Kurumsal', baslangic:'2026-01-01', bitis:'2026-12-31',
     aylikSaat:8, kullanilan:34, kalan:62, tutar:180000, durum:'Aktif',
     sozlesme:'SZL-2026-022', yenileme:true, yenilemeTarihi:'2026-12-31', aktif:true },
-  { kod:'BKP-002', proje:null, musteri:'MUS-2024-002', tip:'Bakım', periyot:'Yıllık', sorumlu:'EMP-002', ad:'Kurumsal Bakım', baslangic:'2026-03-01', bitis:'2027-02-28',
+  { kod:'BKP-002', proje:null, musteri:'MUS-2024-002', tip:'Bakım', periyot:'Yıllık', sorumlu:'EMP-002', seviye:'Kurumsal', baslangic:'2026-03-01', bitis:'2027-02-28',
     aylikSaat:6, kullanilan:34, kalan:38, tutar:144000, durum:'Aktif',
     sozlesme:null, yenileme:false, yenilemeTarihi:null, aktif:true },
-  { kod:'BKP-003', proje:null, musteri:'MUS-2025-005', tip:'Bakım', periyot:null, sorumlu:'EMP-002', ad:'Kurumsal Bakım', baslangic:'2025-10-01', bitis:'2027-09-30',
+  { kod:'BKP-003', proje:null, musteri:'MUS-2025-005', tip:'Bakım', periyot:null, sorumlu:'EMP-002', seviye:'Kurumsal', baslangic:'2025-10-01', bitis:'2027-09-30',
     aylikSaat:10, kullanilan:196, kalan:44, tutar:420000, durum:'Aktif',
     sozlesme:null, yenileme:false, yenilemeTarihi:null, aktif:true },
-  { kod:'BKP-004', proje:null, musteri:'MUS-2026-009', tip:'Bakım', periyot:'6 Aylık', sorumlu:'EMP-002', ad:'Standart Bakım', baslangic:'2026-07-24', bitis:'2027-01-23',
+  { kod:'BKP-004', proje:null, musteri:'MUS-2026-009', tip:'Bakım', periyot:'6 Aylık', sorumlu:'EMP-002', seviye:'Standart', baslangic:'2026-07-24', bitis:'2027-01-23',
     aylikSaat:4, kullanilan:6, kalan:18, tutar:48000, durum:'Aktif',
     sozlesme:null, yenileme:false, yenilemeTarihi:null, aktif:true },
-  { kod:'BKP-005', proje:null, musteri:'MUS-2026-010', tip:'Bakım', periyot:'6 Aylık', sorumlu:'EMP-014', ad:'Standart Bakım', baslangic:'2026-06-26', bitis:'2026-12-25',
+  { kod:'BKP-005', proje:null, musteri:'MUS-2026-010', tip:'Bakım', periyot:'6 Aylık', sorumlu:'EMP-014', seviye:'Standart', baslangic:'2026-06-26', bitis:'2026-12-25',
     aylikSaat:4, kullanilan:12, kalan:12, tutar:42000, durum:'Aktif',
     sozlesme:null, yenileme:false, yenilemeTarihi:null, aktif:true },
-  { kod:'BKP-006', proje:null, musteri:'MUS-2026-011', tip:'Bakım', periyot:'Yıllık', sorumlu:'EMP-002', ad:'Kurumsal Bakım', baslangic:'2025-10-01', bitis:'2026-09-30',
+  { kod:'BKP-006', proje:null, musteri:'MUS-2026-011', tip:'Bakım', periyot:'Yıllık', sorumlu:'EMP-002', seviye:'Kurumsal', baslangic:'2025-10-01', bitis:'2026-09-30',
     aylikSaat:6, kullanilan:58, kalan:14, tutar:162000, durum:'Aktif',
     sozlesme:null, yenileme:true, yenilemeTarihi:'2026-09-30', aktif:true },
-  { kod:'BKP-007', proje:null, musteri:'MUS-2025-006', tip:'Bakım', periyot:'Yıllık', sorumlu:'EMP-014', ad:'Standart Bakım', baslangic:'2025-01-01', bitis:'2025-12-31',
+  { kod:'BKP-007', proje:null, musteri:'MUS-2025-006', tip:'Bakım', periyot:'Yıllık', sorumlu:'EMP-014', seviye:'Standart', baslangic:'2025-01-01', bitis:'2025-12-31',
     aylikSaat:4, kullanilan:48, kalan:0, tutar:96000, durum:'Sona erdi',
     sozlesme:null, yenileme:false, yenilemeTarihi:null, aktif:true }
 ];

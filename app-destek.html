@@ -364,7 +364,7 @@ document.addEventListener('gv:ready', function(){
                 : '<span class="u-faint">—</span>' + GV.cell.sub('bu kayıtta SLA durumu ölçülmemiş')],
               ['Bakım paketi', paket
                 ? '<span class="cell-code">' + esc(paket.kod) + '</span>' +
-                  GV.cell.sub(esc(paket.ad) + ' · kalan ' + F.num(paket.kalan) + ' saat')
+                  GV.cell.sub(esc(GV.destek.paketAdi(paket) || '—') + ' · kalan ' + F.num(paket.kalan) + ' saat')
                 : '<span class="u-faint">—</span>' +
                   GV.cell.sub('bu müşterinin defterde aktif paketi yok; kota düşümü yapılmaz')]
             ], { skipEmpty:true }) + '</div></section>' +

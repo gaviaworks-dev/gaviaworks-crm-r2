@@ -156,21 +156,23 @@ document.addEventListener('gv:ready', function(){
   var ETKILER    = benzersiz(TALEPLER.map(function(t){ return t.etki; }));
   var KANALLAR   = DB.ticketChannels || [];
 
-  /* ⚠️ PAKET TİPİ SÖZLÜĞÜ İLE KAYITLAR ÇELİŞİYOR — ölçüm, yorum değil.
-     `DB.supportPackageTypes` iki değer taşıyor: 'Standart Bakım' ·
-     'Kurumsal Bakım'. Mevcut 7 talebin `bakimPaketi` alanında ise KISA
-     biçim yazılı: 'Standart' (2) · 'Kurumsal' (3) · '—' (2, yani paket yok).
-     Seçenekler SÖZLÜKTEN üretilir (tek doğru kaynak L-40); kısa biçimler
-     seçenek olarak basılmaz çünkü sözlükte yoklar. Çelişki gizlenmez:
-     aşağıdaki alanın ipucunda ve "Sözlük kaynakları" kartında yazılıdır ve
-     ortak katman sahibine raporlandı. */
+  /* BAKIM PAKETİ SEVİYESİ — K-27 sonrası sözlük ile kayıt AYNI kısa biçimi
+     konuşuyor (`Standart` · `Kurumsal`). Bu ekran daha önce üç ayrı biçimin
+     çelişkisini raporluyordu; çelişki veri katmanında kapatıldı.
+
+     `PAKET_CELISKI` ÖLÇÜMÜ KALDI ve bilerek kaldı: sözlük dışı bir değer
+     yeniden doğarsa ekran onu yine söyler. Boş çıkması bir kanıttır, ölçümün
+     yokluğu değil. `null` çelişki DEĞİLDİR — "paket yok" demektir ve
+     sayımdan çıkarılır; aksi hâlde paketi olmayan iki talep sonsuza dek
+     sahte çelişki üretirdi. */
   var PAKET_TIPLERI  = DB.supportPackageTypes || [];
-  var PAKET_KAYITTA  = benzersiz(TALEPLER.map(function(t){ return t.bakimPaketi; }));
+  var PAKET_KAYITTA  = benzersiz(TALEPLER.map(function(t){ return t.bakimPaketi; }))
+                         .filter(function(v){ return v != null && v !== ''; });
   var PAKET_CELISKI  = PAKET_KAYITTA.filter(function(v){ return PAKET_TIPLERI.indexOf(v) === -1; });
 
   var HESAPLAR = (DB.accounts || []);
   var PROJELER = (DB.projects || []);
-  var PERSONEL = (DB.employees || []).filter(function(e){ return e.aktif !== false; });
+  var PERSONEL = GV.hr.atanabilirler();
   var KONTAKLAR = (DB.contacts || []).filter(function(c){ return c.aktif !== false; });
 
   /* ⚠️ DÜZENLEME KİPİNDE SESSİZ SİLME OLMAZ — ölçülerek yakalandı.
@@ -374,7 +376,7 @@ document.addEventListener('gv:ready', function(){
 
           { key:'proje', label:'İlgili proje', type:'select', cols:6,
             options:korunanSecenek(PROJELER.map(function(p){
-              return { value:p.kod, label:p.ad + ' · ' + (hesapAd(p.musteri) || p.musteri || '—') };
+              return { value:p.kod, label:GV.destek.paketAdi(p) + ' · ' + (hesapAd(p.musteri) || p.musteri || '—') };
             }), 'proje', 'kayıtta yazılı; proje defterinde bulunamadı'),
             hint:'Zorunlu değil. Seçilen proje talebin müşterisine ait olmalıdır; ' +
                  'defterdeki 14 projenin 14’ünde müşteri alanı yazılı.',
@@ -611,7 +613,7 @@ document.addEventListener('gv:ready', function(){
     }else{
       govde = GV.dl([
         ['Aktif paket', '<span class="cell-code">' + esc(paket.kod) + '</span>' +
-          '<span class="cell-sub">' + esc(paket.ad) + ' · ' + esc(paket.tip || '—') + '</span>' +
+          '<span class="cell-sub">' + esc(GV.destek.paketAdi(paket) || '—') + '</span>' +
           not('GV.destek.paketOf ile müşteri üzerinden bulundu')],
         ['Kalan saat', esc(F.num(paket.kalan)) + ' saat' +
           not('kullanılan ' + F.num(paket.kullanilan) + ' · aylık ' + F.num(paket.aylikSaat) + ' saat')],

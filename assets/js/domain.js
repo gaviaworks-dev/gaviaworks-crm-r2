@@ -2287,6 +2287,63 @@
      Hesabın iki girdisi `DB.company`'de yazılı sabittir.
      =================================================================== */
   var Hr = {
+    /* ===================================================================
+       PERSONEL YAŞAM DÖNGÜSÜ — TEK EKSEN (K-18, R1'den devreden borç)
+
+       Ölçüldü: `DB.employees[].durum` yedi değerlik gerçek bir yaşam
+       döngüsüdür (`org.js:462`) ve `DB.transitions.employee` yedi durumu
+       da tanımlar — ama HİÇBİR ekran onu okumuyordu. Yedi ekran bunun
+       yerine `e.aktif !== false` yazıyordu ve o alan **16/16 kayıtta
+       `true`** idi: yani hiçbir şey söylemiyordu. Somut sonuç —
+       `EMP-015` (Nihan Arslan) `Offboarding` durumunda, çıkış tarihi
+       2026-08-31 yazılı, ve yedi ekranın yedisinde de hâlâ "görev
+       atanabilir personel" listesinde görünüyordu.
+
+       Bu yüzden `aktif` alanı KALDIRILDI (tuzağa çevrildi, `hr.js`) ve
+       yerine iki TÜRETİLMİŞ yordam kondu. İki ayrı soru, iki ayrı cevap:
+         · `istihdamda` — şirketle ilişkisi var mı (bordro, özlük, rapor)
+         · `atanabilir` — YENİ İŞ verilebilir mi (atama listeleri)
+       İkisini tek "aktif" bayrağına sıkıştırmak, izinli bir çalışanı
+       bordrodan düşürmek ya da ayrılmakta olana yeni görev atamak
+       demekti; ikisi de bu depoda oluyordu.
+       =================================================================== */
+
+    /* Şirketle istihdam ilişkisi sürüyor mu. `Taslak` henüz işe girmemiş,
+       `Ayrıldı` ilişkisi bitmiş kayıttır; kalan beşi bordrodadır. */
+    istihdamda:function(e){
+      var d = Hr.durum(e);
+      return !!d && d !== 'Taslak' && d !== 'Ayrıldı';
+    },
+
+    /* YENİ iş atanabilir mi. `İzinli` ve `Pasif` ayrı sebeplerdir ama
+       ikisi de "şu an çalışmıyor" der (org.js:457-461); `Offboarding`
+       çıkış sürecidir ve yeni iş almaz. */
+    atanabilir:function(e){
+      return Hr.durum(e) === 'Aktif';
+    },
+
+    /* Kod da kayıt da kabul edilir — çağıran elindekini verir. */
+    kayit:function(e){
+      if(!e) return null;
+      if(typeof e !== 'string') return e;
+      if(!window.DB || !DB.employees) return null;
+      return DB.employees.filter(function(x){ return x.kod === e; })[0] || null;
+    },
+
+    durum:function(e){
+      var k = Hr.kayit(e);
+      return k ? k.durum : null;
+    },
+
+    /* Atama listeleri için hazır küme — yedi ekran aynı süzgeci ayrı ayrı
+       yazıyordu (L-40). Sıralama ada göre, çağıran yeniden sıralamaz. */
+    atanabilirler:function(){
+      return ((window.DB && DB.employees) || [])
+        .filter(Hr.atanabilir)
+        .slice()
+        .sort(function(a, b){ return String(a.ad).localeCompare(String(b.ad), 'tr'); });
+    },
+
     /* Şirkete saatlik iç maliyet — { saat, kaynak, formul } · yoksa null
        ─────────────────────────────────────────────────────────────────
        ⚠️ CLOUD TURU · ADR-07 — YORDAM ARTIK TARİH ALIR.
@@ -2415,25 +2472,26 @@
         var projeli = aday.filter(function(p){ return p.proje === k.proje; });
         if(projeli.length) aday = projeli;
       }
-      /* ⚠️ SEVİYE EŞLEŞMESİ `tip` ALANINDA DEĞİL. Ölçüldü:
-           `DB.supportPackages[].tip` → 7/7 **'Bakım'** — hizmetin CİNSİ
-           `DB.supportPackages[].ad`  → 'Kurumsal Bakım' · 'Standart Bakım' — SEVİYE
-           `DB.tickets[].bakimPaketi` → 'Kurumsal' · 'Standart' — seviye, KISA biçim
-         Eski kural `p.tip === k.bakimPaketi` karşılaştırıyordu ve iki küme
-         hiç kesişmediği için **hiçbir zaman tutmuyordu**: yordam sessizce
-         `aday[0]`a düşüyor, yani müşterinin birden çok paketi varsa yanlış
-         paketi döndürebiliyordu. Kusur görünmüyordu çünkü fonksiyon yine bir
-         paket döndürüyordu — yanlış olanı.
-
-         Seviye `ad`ın BAŞINDAN okunur; kısa biçim uzun adın önekidir. */
+      /* SEVİYE EŞLEŞMESİ — K-27 sonrası TAM EŞİTLİK.
+         Kanon kısa biçimdir ve üç yerde de aynıdır: `DB.supportPackageTypes`
+         sözlüğü, `DB.supportPackages[].seviye`, `DB.tickets[].bakimPaketi`.
+         Önceki iki yazım da yanlıştı: ilki `tip` ile karşılaştırıyordu
+         (7/7 'Bakım', yani seviye değil cins — hiç tutmuyordu), ikincisi
+         uzun `ad`ın önekini arıyordu (biçim farkını kodla kapatmak). Artık
+         biçim farkı YOK, karşılaştırma düz eşitlik. */
       if(k.bakimPaketi){
-        var ara = String(k.bakimPaketi).toLocaleLowerCase('tr').trim();
-        var seviyeli = aday.filter(function(p){
-          return String(p.ad || '').toLocaleLowerCase('tr').indexOf(ara) === 0;
-        });
+        var seviyeli = aday.filter(function(p){ return p.seviye === k.bakimPaketi; });
         if(seviyeli.length) return seviyeli[0];
       }
       return aday[0];
+    },
+
+    /* Paketin EKRANDA GÖRÜNEN tam adı — `seviye + tip` (K-27).
+       Uzun ad veride DURMAZ; birleştirmeyi ekran yapar demek, birleştirmeyi
+       HER ekranın ayrı yapması demek değildir. Tek yerde. */
+    paketAdi:function(p){
+      if(!p) return null;
+      return [p.seviye, p.tip].filter(Boolean).join(' ') || null;
     },
 
     /* Kotadan düşülecek süre — ücretli talep pakete yazılmaz ([9.5.5]) */
@@ -2620,7 +2678,126 @@
 
   GV.destek = Destek;
   GV.proje = Proje;
+  /* ===================================================================
+     VARLIK — ZİMMET TEK KAYNAK (K-18 eki)
+
+     `DB.assets[].zimmetli` ve `[].durum` TÜRETİLMİŞ görünümdür; otorite
+     zimmet defteridir (`DB.assignments`). Ekran bu iki alanı OKUR ama
+     YAZMAZ; yazan tek yer `tazeleHepsi` ve zimmet yordamlarıdır.
+     =================================================================== */
+  var Varlik = {
+    kayit:function(a){
+      if(!a) return null;
+      if(typeof a !== 'string') return a;
+      if(!window.DB || !DB.assets) return null;
+      return DB.assets.filter(function(x){ return x.kod === a; })[0] || null;
+    },
+
+    /* Bir demirbaşın YAŞAYAN zimmet kaydı — iade edilmemiş olan. */
+    zimmetOf:function(demirbasKod){
+      return ((window.DB && DB.assignments) || []).filter(function(z){
+        return z.demirbas === demirbasKod && z.durum !== 'İade edildi' && z.aktif !== false;
+      })[0] || null;
+    },
+
+    /* Kabul edildi mi — envanteri "Zimmetli" yapan TEK koşul. */
+    kabulEdildi:function(z){ return !!z && z.personelOnay === 'Onaylandı'; },
+
+    /* Tek demirbaşın türetilmiş görünümü. Hurda ve Aktif (sarf/ortak
+       kullanım) durumları zimmetten BAĞIMSIZDIR ve ezilmez. */
+    tazele:function(a){
+      a = Varlik.kayit(a);
+      if(!a) return null;
+      if(a.durum === 'Hurda') return { demirbas:a, zimmet:null, degisti:false };
+      var z = Varlik.zimmetOf(a.kod);
+      var eskiK = a.zimmetli, eskiD = a.durum;
+      if(!z){
+        a.zimmetli = null;
+        if(a.durum !== 'Aktif') a.durum = 'Depoda';
+      }else if(Varlik.kabulEdildi(z)){
+        a.zimmetli = z.personel;
+        a.durum = 'Zimmetli';
+      }else{
+        /* Tutanak yazıldı ama personel kabul etmedi. Cihaz ne depodadır
+           ne de teslim edilmiştir — ara durum söylenir, yutulmaz. */
+        a.zimmetli = null;
+        a.durum = 'Zimmet bekliyor';
+      }
+      return { demirbas:a, zimmet:z,
+               degisti:(eskiK !== a.zimmetli || eskiD !== a.durum),
+               eskiZimmetli:eskiK, eskiDurum:eskiD };
+    },
+
+    /* Yükleme anında hepsi yeniden türetilir; elle yazılmış değer yaşamaz. */
+    tazeleHepsi:function(){
+      if(!window.DB || !DB.assets) return { olculen:0, degisen:[] };
+      var degisen = [];
+      DB.assets.forEach(function(a){
+        var r = Varlik.tazele(a);
+        if(r && r.degisti) degisen.push({ kod:a.kod, eskiDurum:r.eskiDurum, yeniDurum:a.durum,
+                                          eskiZimmetli:r.eskiZimmetli, yeniZimmetli:a.zimmetli });
+      });
+      return { olculen:DB.assets.length, degisen:degisen };
+    },
+
+    /* Personelin üzerindeki demirbaşlar — çıkış akışı bunu sorar. */
+    zimmetliler:function(personelKod){
+      return ((window.DB && DB.assignments) || []).filter(function(z){
+        return z.personel === personelKod && z.durum !== 'İade edildi' && z.aktif !== false;
+      });
+    },
+
+    /* KABUL — envanteri değiştiren olay budur, tutanağın yazılması değil. */
+    kabulEt:function(zimmetKod){
+      if(!window.DB) return { ok:false, why:'veri yok' };
+      var z = (DB.assignments || []).filter(function(x){ return x.kod === zimmetKod; })[0];
+      if(!z) return { ok:false, why:'zimmet kaydı yok' };
+      if(z.personelOnay === 'Onaylandı') return { ok:false, why:'zaten onaylanmış' };
+      var me = (GV.session && GV.session.emp) || null;
+      /* Kabul, zimmeti ÜSTLENEN kişinin işidir; İK ve yönetim de onaylayabilir
+         (personel sistemde değilse tutanak elle işlenir). Geri alma kümesi
+         AYNI — bkz. `kabulGeriAl`. */
+      if(!(me === z.personel || can('personel') || can('duzenle')))
+        return { ok:false, why:'yetki', roller:['zimmetli personel','ik','sahip','genelmudur'] };
+      z.personelOnay = 'Onaylandı';
+      z.onayTarihi = DB.today;
+      var r = Varlik.tazele(z.demirbas);
+      log(z.kod, 'Zimmet kabul edildi — envanter durumu türetildi (' +
+          (r && r.demirbas ? r.demirbas.durum : '?') + ')', 'Bekliyor', 'Onaylandı', 'ok', 'i-check-circle');
+      return { ok:true, zimmet:z, demirbas:r && r.demirbas };
+    },
+
+    /* KABUL GERİ ALMA — kapı KABULLE AYNI ağırlıkta. Bir kaydı onaylayan
+       kullanıcı onu geri de alabilmelidir; geri almayı daha dar bir role
+       bağlamak yanlış tarafa kapı koymaktır. Gerekçe yetki değil kayıt
+       koşuludur. */
+    kabulGeriAl:function(zimmetKod, gerekce){
+      if(!window.DB) return { ok:false, why:'veri yok' };
+      var z = (DB.assignments || []).filter(function(x){ return x.kod === zimmetKod; })[0];
+      if(!z) return { ok:false, why:'zimmet kaydı yok' };
+      if(z.personelOnay !== 'Onaylandı') return { ok:false, why:'zaten onaylanmamış' };
+      var me = (GV.session && GV.session.emp) || null;
+      if(!(me === z.personel || can('personel') || can('duzenle')))
+        return { ok:false, why:'yetki', roller:['zimmetli personel','ik','sahip','genelmudur'] };
+      if(!String(gerekce || '').trim())
+        return { ok:false, why:'gerekce', mesaj:'Gerekçe zorunludur — kabul geri alma envanter durumunu değiştirir.' };
+      z.personelOnay = 'Bekliyor';
+      z.onayTarihi = null;
+      var r = Varlik.tazele(z.demirbas);
+      log(z.kod, 'Zimmet kabulü geri alındı — ' + String(gerekce).trim(),
+          'Onaylandı', 'Bekliyor', 'warn', 'i-refresh');
+      return { ok:true, zimmet:z, demirbas:r && r.demirbas };
+    }
+  };
+
+  GV.varlik = Varlik;
   GV.hr = Hr;
+
+  /* Yükleme anında envanter zimmet defterinden yeniden türetilir — elle
+     yazılmış `zimmetli`/`durum` hayatta kalmaz (`Fin.tazeleHepsi` ile aynı
+     desen, domain.js:2429). Sonuç saklanır: ekran "kaç kayıt düzeltildi"
+     diye sorabilsin ve çelişki sessizce kapanmasın. */
+  if(window.DB && DB.assets) Varlik.sonTazeleme = Varlik.tazeleHepsi();
   GV.yenileme = Yenileme;
 
   /* ===================================================================
@@ -3418,8 +3595,16 @@
                  proje:prj.kod, taksit:adet,
                  uretilen:[
                    { tur:'Müşteri',      kod:mus.kod, yeni:mr.yeni, href:'app-musteri-detay.html?id=' + mus.kod },
-                   { tur:'Sözleşme',     kod:szl.kod, yeni:true,    href:'app-sozlesme-detay.html?id=' + szl.kod },
-                   { tur:'Ödeme planı',  kod:szl.kod, yeni:true,    href:'app-odemeplani-detay.html?id=' + szl.kod },
+                   /* K-28 — sözleşme ve ödeme planı AYRI EKRAN DEĞİLDİR
+                      (rota 5.x GÖMÜLÜYOR): müşteri detayının Finans
+                      sekmesinde yaşarlar. `app-sozlesme-detay.html` ve
+                      `app-odemeplani-detay.html` hiç doğmadı ve doğmayacak;
+                      üretilen kaydı oraya göndermek, kullanıcıyı kabuğun
+                      kilitlediği bir bağlantıya yollamaktı. */
+                   { tur:'Sözleşme',     kod:szl.kod, yeni:true,
+                     href:'app-musteri-detay.html?id=' + mus.kod + '#finans' },
+                   { tur:'Ödeme planı',  kod:szl.kod, yeni:true,
+                     href:'app-musteri-detay.html?id=' + mus.kod + '#finans' },
                    { tur:'Proje',        kod:prj.kod, yeni:true,    href:'app-proje-detay.html?id=' + prj.kod }
                  ] };
       } catch(e){
@@ -3502,8 +3687,12 @@
         oneriler.push({ tur:'Teklif', kod:null, yeni:true, label:'Teklif oluştur',
           href:'app-teklif-form.html?firsat=' + o.kod });
       }
-      oneriler.push({ tur:'Sözleşme', kod:null, yeni:true, label:'Sözleşme oluştur',
-        href:'app-sozlesme-form.html?hesap=' + h.kod });
+      /* K-28 — sözleşme OLUŞTURMA yüzeyi de ayrı ekran değildir; müşteri
+         detayının Finans sekmesine gider. Etiket "oluştur" değil "aç":
+         yapılamayan bir işi düğme olarak vaat etmemek için, sekme sözleşme
+         oluşturma yüzeyini taşıyana kadar bağlantı kaydı AÇAR. */
+      oneriler.push({ tur:'Sözleşme', kod:null, yeni:false, label:'Finans sekmesini aç — sözleşme',
+        href:'app-musteri-detay.html?id=' + h.kod + '#finans' });
       oneriler.push({ tur:'Proje', kod:null, yeni:true, label:'Proje oluştur',
         href:'app-proje-form.html?hesap=' + h.kod });
 

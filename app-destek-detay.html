@@ -321,7 +321,7 @@ document.addEventListener('gv:ready', function(){
           ['Talepteki paket tipi', tipYazili
             ? esc(t.bakimPaketi) + '<span class="cell-sub">bir TİP adıdır, paket kodu değil — kayıt müşteri üzerinden bulunur</span>'
             : bos('talepte paket tipi yazılı değil')],
-          ['Paket kaydı',   esc(paket.kod + ' · ' + paket.ad) +
+          ['Paket kaydı',   esc(paket.kod + ' · ' + GV.destek.paketAdi(paket)) +
                             '<span class="cell-sub">GV.destek.paketOf ile bulundu</span>'],
           ['Paket türü',    esc(paket.tip) + (paket.periyot ? ' · ' + esc(paket.periyot)
                             : ' ' + not('periyot sözlükte karşılığı olmayan bir dönem uzunluğu; boş bırakıldı'))],
