@@ -24,11 +24,17 @@
      `null` olan tipin durum geçişi yoktur (onay kendi motorunda, tahsilat
      `GV.fin`de yürür). */
   var TIPLER = {
-    gorev:    { ad:'Görev',            ikon:'i-tasks',   flowTur:'task',   kaynak:'DB.tasks' },
-    destek:   { ad:'Destek talebi',    ikon:'i-support', flowTur:'ticket', kaynak:'DB.tickets' },
-    onay:     { ad:'Bekleyen onay',    ikon:'i-stamp',   flowTur:null,     kaynak:'DB.approvals' },
-    takip:    { ad:'Müşteri aksiyonu', ikon:'i-funnel',  flowTur:null,     kaynak:'DB.opportunities' },
-    tahsilat: { ad:'Geciken tahsilat', ikon:'i-wallet',  flowTur:null,     kaynak:'DB.payments' }
+    gorev:    { ad:'Görev',            ikon:'i-tasks',       flowTur:'task',    kaynak:'DB.tasks' },
+    destek:   { ad:'Destek talebi',    ikon:'i-support',     flowTur:'ticket',  kaynak:'DB.tickets' },
+    onay:     { ad:'Bekleyen onay',    ikon:'i-stamp',       flowTur:null,      kaynak:'DB.approvals' },
+    takip:    { ad:'Müşteri aksiyonu', ikon:'i-funnel',      flowTur:null,      kaynak:'DB.opportunities' },
+    tahsilat: { ad:'Geciken tahsilat', ikon:'i-wallet',      flowTur:null,      kaynak:'DB.payments' },
+    /* ⚠️ ALTINCI TİP — ŞARTNAMEDEN BİLİNÇLİ SAPMA (karar K-10 · ADR-R2-14).
+       §6.2 BEŞ tip sayıyor ve departman talebini saymıyor. Bu tip Beyar'ın
+       kararıyla eklendi; gerekçe "eylem bekleyen iş tek kuyrukta toplanır"
+       ilkesidir. Sapma SESSİZ DEĞİLDİR: burada, ADR'de ve ekranın altındaki
+       dipnotta yazılıdır. */
+    istalebi: { ad:'Departman talebi', ikon:'i-arrow-right', flowTur:'request', kaynak:'DB.deptRequests' }
   };
 
   function bugun(){ return (window.DB && DB.today) || '2026-08-03'; }
@@ -135,6 +141,26 @@
     });
   }
 
+  /* Departman talebi — açık olanlar. `GV.flow`ta `request` varlığı olarak
+     zaten tanımlı; kuyruk onu çağırır, ikinci bir durum ekseni doğmaz. */
+  function departmanTalepleri(){
+    var t = bugun();
+    var kapali = ['Tamamlandı','İptal edildi','Reddedildi','Göreve Dönüştürüldü'];
+    return (DB.deptRequests || []).filter(function(d){
+      return kapali.indexOf(d.durum) === -1;
+    }).map(function(d){
+      var gec = d.termin && d.termin < t;
+      return satir({
+        tip:'istalebi', kod:d.kod, baslik:d.baslik || d.konu || d.kod,
+        iliski:d.hedefDep || d.dep || null,
+        durum:d.durum, sorumlu:d.sorumlu || d.atanan || null,
+        sonTarih:d.termin || null,
+        tam:'app-istalebi-detay.html?id=' + d.kod,
+        tone:gec ? 'danger' : null, gecikti:!!gec
+      });
+    });
+  }
+
   /* Geciken tahsilat — vadesi geçmiş ve tahsil edilmemiş.
      ⚠️ İKİNCİ BİR BAKİYE KAYNAĞI YARATILMAZ. Açık tutar `GV.fin.balance`
      üzerinden okunur; burada yalnız hangi kaydın kuyruğa düşeceği seçilir. */
@@ -158,7 +184,7 @@
 
   function hepsi(){
     if(!window.DB) return [];
-    return gorevler().concat(destekler(), onaylar(), takipler(), tahsilatlar());
+    return gorevler().concat(destekler(), onaylar(), takipler(), tahsilatlar(), departmanTalepleri());
   }
 
   /* Rol kapsamı — §10 "Operasyon kuyruğu · Rolün eriştiği kayıtlar".
@@ -218,6 +244,7 @@
     if(r.tip === 'onay')     return (DB.approvals || []).filter(function(x){ return x.kod === r.kod; })[0] || null;
     if(r.tip === 'takip')    return (DB.opportunities || []).filter(function(x){ return x.kod === r.kod; })[0] || null;
     if(r.tip === 'tahsilat') return (DB.payments || []).filter(function(x){ return x.kod === r.kod; })[0] || null;
+    if(r.tip === 'istalebi') return (DB.deptRequests || []).filter(function(x){ return x.kod === r.kod; })[0] || null;
     return null;
   }
 

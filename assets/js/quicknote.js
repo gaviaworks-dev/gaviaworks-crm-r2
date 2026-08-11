@@ -115,10 +115,18 @@
      Kayıt SİLİNMEZ — arama ile bulunabilir. */
   var GIZLEME_SAAT = 24;
 
-  /* 5 saniyelik geri alma penceresi (§4.2). ADR-14'ün 7 günlük ÇÖP KUTUSU
-     geri almasıyla karıştırılmamalı: o silme içindir, bu tamamlama içindir.
-     İkisi ayrı eksendir ve ikisi de yaşar. */
+  /* ⚠️ İKİ GERİ ALMA, İKİ AYRI DİL — karar K-12 · ADR-R2-15.
+
+     Sistemde geri alınabilen iki şey var ve süreleri farklı:
+       · TAMAMLAMA → 5 saniye → arayüzdeki adı **"Geri al"** (tost şeridi)
+       · SİLME     → 7 gün    → arayüzdeki adı **"Çöp kutusu"** (ADR-14)
+
+     Karar: ikisi de yaşar ama AYNI KELİME İKİ YERDE KULLANILMAZ. "Geri al"
+     yalnız beş saniyelik tamamlama şeridinin adıdır; silinen not "çöp
+     kutusundadır" ve oradan "geri yüklenir". Kullanıcı iki farklı süreyi
+     iki farklı kelimeyle öğrenir, tek kelimenin iki anlamıyla değil. */
   var GERI_ALMA_MS = 5000;
+  var COP_KUTUSU_GUN = (window.DB && DB.noteTrashDays) || 7;
 
   function esc(s){ return GV.esc ? GV.esc(s) : String(s == null ? '' : s); }
   function ico(n, c){ return GV.ico ? GV.ico(n, c) : ''; }
@@ -362,6 +370,15 @@
     gorunenler:gorunenler,
     basligiCikar:basligiCikar,
     backendNotu:BACKEND_NOTU,
+    /* K-12 — arayüz dili tek yerde tanımlı; ekranlar kendi kelimesini
+       uydurmaz. Silme yüzeyi yazıldığında bu sözlükten okuyacak. */
+    dil:{
+      tamamlamaGeriAl:'Geri al',
+      tamamlamaSure:GERI_ALMA_MS / 1000,
+      silmeYuzey:'Çöp kutusu',
+      silmeGeriYukle:'Geri yükle',
+      silmeSureGun:COP_KUTUSU_GUN
+    },
     /* Tembel yükleme yüzeyi — karar K-11 */
     yukle:yukle,
     hazir:hazir,
