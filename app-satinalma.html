@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Satın Alma — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="finans" data-screen="satinalma">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/data/firsat.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   SATIN ALMA TALEPLERİ — şartname §10.1 · ekran brief §4 · §7 · §8
+
+   Kaynak: `DB.purchases` (7 kayıt, ops.js:335). Tablo, kart, sayfalama,
+   filtre, kolon yönetimi, çıktı, arşiv toggle ve URL senkronu `GV.list`in
+   işidir; bu ekran YALNIZ yapılandırma + iki çekmece yazar.
+
+   ROTA HARİTASI satır 113: R1'in ayrı "Onay Bekleyenler" MENÜ GİRDİSİ
+   (`?t=onay`) kayıtlı görünüme indi — ayrı ekran açılmadı, "Onay sürecinde"
+   SEKMESİ oldu. Eski bağlantı biçimi korunur: `app-satinalma.html?t=onay`
+   `GV.list`in kendi URL senkronu üzerinden doğrudan o sekmeyi açar.
+
+   ÜÇ MUTASYON KURALI — bu ekranda istisnası yok:
+     · durum      → `GV.flow.gec('purchase', …)`      · `p.durum = …` YASAK
+     · onay       → `GV.approval.karar(onayKod, …)`   · elle durum yazımı YASAK
+     · onay adımı → `GV.approval.adim(tür, kod)`      · `p.onayAdim` sayacı
+       yükleme anında zincirden tazelenir (`domain.js` tazeleSayaclar) ama
+       OTORİTE DEĞİLDİR; ekran her yerde yordamı çağırır. Yordam `null`
+       dönerse "zincir tanımlı değil" yazılır — `0/0` bir ölçüm değildir.
+
+   Durum kümeleri (sekmeler) ELLE YAZILMAZ; `DB.transitions.purchase`
+   (12 durum, org.js:579) üzerinden türetilir. Tablo değişirse ekran
+   kendiliğinden doğru kalır (L-40).
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F = GV.fmt;
+  var TUR = 'Satın alma talebi';
+  var canFinans = GV.perm.can('finans');
+  var canOnay   = GV.perm.can('onay');
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  /* Geçiş tablosu, sipariş tablosu ve onay tipi — üçü de TEK kaynak. */
+  var TP = (DB.transitions || {}).purchase || {};
+  var TO = (DB.transitions || {}).order    || {};
+  var AT = (DB.approvalTypes || {})[TUR]   || {};
+
+  var durumlar   = Object.keys(TP);
+  var kararHedef = [AT.onay, AT.ret, AT.iade].filter(Boolean);
+
+  function terminal(d){ return !!(TP[d] || {}).terminal; }
+  function bos(v){ return v == null || v === '' || v === '—' ? null : v; }
+
+  /* ---- DURUM KÜMELERİ — hepsi tablodan ÖLÇÜLÜR ----------------------
+     Başlangıç durumu: durum sözlüğünün (`DB.purchaseStatuses`) geçiş
+     tablosunda karşılığı olan İLK kaydı. Sabit 'Taslak' dizesi yazmak,
+     sözlük değişince bu ekranı sessizce boş sekmeye düşürürdü.
+     Onay evresi   : karar hedeflerinden (onay/ret/iade) birine geçebilen
+                     durumlar + ret ve iade durumlarının kendisi (ikisi de
+                     zincirin çıktısıdır ve talebi taslağa geri gönderir).
+     Teslim evresi : satın alma ve SİPARİŞ sözlüğünün ORTAK durumları —
+                     org.js:400 bu paylaşımı açıkça yazıyor.
+     Onaylanan     : geriye kalan, terminal olmayan durumlar. */
+  var TASLAK = (DB.purchaseStatuses || []).filter(function(d){ return TP[d]; })[0] || null;
+  var K_KAPANAN = durumlar.filter(terminal);
+  var K_ONAY = durumlar.filter(function(d){
+    if(terminal(d) || d === TASLAK) return false;
+    if(d === AT.ret || d === AT.iade) return true;
+    return ((TP[d] || {}).next || []).some(function(h){ return kararHedef.indexOf(h) !== -1; });
+  });
+  var K_TESLIM = durumlar.filter(function(d){
+    return !!TO[d] && !terminal(d) && d !== TASLAK && K_ONAY.indexOf(d) === -1;
+  });
+  var K_ONAYLANAN = durumlar.filter(function(d){
+    return !terminal(d) && d !== TASLAK && K_ONAY.indexOf(d) === -1 && K_TESLIM.indexOf(d) === -1;
+  });
+  /* Hiçbir kümeye düşmeyen durum SESSİZ kalmaz: sekmelerde görünmeyen bir
+     durum, "Tümü" ile sekme toplamı arasında açıklanamayan fark üretir. */
+  var K_DISARIDA = durumlar.filter(function(d){
+    return d !== TASLAK && K_ONAY.indexOf(d) === -1 && K_TESLIM.indexOf(d) === -1 &&
+           K_ONAYLANAN.indexOf(d) === -1 && K_KAPANAN.indexOf(d) === -1;
+  });
+
+  function icinde(kume, d){ return kume.indexOf(d) !== -1; }
+
+  /* ---- Onay zinciri okuma yüzeyleri --------------------------------- */
+  function adimBilgi(p){ return GV.approval.adim(TUR, p.kod); }
+  function zincirSatirlari(p){ return GV.approval.zincir(TUR, p.kod) || []; }
+  /* Karar verilebilecek TEK kayıt: onay kuyruğundaki bekleyen satır. */
+  function bekleyenKuyruk(p){
+    return (DB.approvals || []).filter(function(a){
+      return a.tur === TUR && a.kayit === p.kod && a.durum === 'Bekliyor';
+    })[0] || null;
+  }
+  function depAd(kod){
+    var d = (DB.departments || []).filter(function(x){ return x.kod === kod; })[0];
+    return d ? d.ad : null;
+  }
+  function projeKaydi(kod){
+    return (DB.projects || []).filter(function(x){ return x.kod === kod; })[0] || null;
+  }
+  function siparisi(p){
+    return (DB.orders || []).filter(function(o){ return o.talep === p.kod; })[0] || null;
+  }
+
+  var tumu = DB.purchases || [];
+
+  /* ⚠️ SIRA — `GV.pageHead` `GV.list`ten ÖNCE: liste satır sayısını
+     `[data-listcount]` düğümüne yazar, o düğümü pageHead doğurur. */
+  GV.pageHead({
+    eyebrow:'Finans',
+    title:'Satın Alma',
+    sub:tumu.length + ' talep · onay zinciri, sipariş ve teslim tek listede',
+    actions:[
+      { label:'Yeni Talep', icon:'i-plus', cls:'btn-acc', href:'app-satinalma-form.html' }
+    ]
+  });
+
+  mount.innerHTML =
+    '<div id="satUyari" class="u-mb-8"></div>' +
+    '<div id="satListe"></div>' +
+    '<div id="satBackend"></div>';
+
+  /* ---- Ölçüm şeridi — GÖRÜNEN kümeden sayılır ------------------------
+     Kapsam, sekme, arama ve filtre süzgeçlerini `GV.list` uyguluyor; şerit
+     onun `onRender` kancasından beslenir, ikinci bir süzgeç yazılmaz (L-40).
+     Sayı üretilemiyorsa "0" değil, ölçümün kendisi söylenir (L-13). */
+  function uyariCiz(gorunen){
+    var el = document.getElementById('satUyari');
+    if(!el) return;
+    if(!durumlar.length){
+      el.innerHTML = GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Satın alma geçiş tablosu yüklenemedi',
+        text:'Sekmelerdeki "onay sürecinde", "sipariş/teslim" ve "kapanan" tanımları ' +
+             'DB.transitions.purchase üzerinden ölçülür; tablo olmadan bu kümeler türetilemedi.' });
+      return;
+    }
+    var zincirli = gorunen.filter(function(p){ return !!adimBilgi(p); });
+    var adimSayisi = zincirli.reduce(function(s, p){ return s + zincirSatirlari(p).length; }, 0);
+    var kuyrukta = gorunen.filter(function(p){ return !!bekleyenKuyruk(p); });
+    var zincirsiz = gorunen.length - zincirli.length;
+
+    var parcalar = [];
+    parcalar.push('Görünen ' + gorunen.length + ' talebin ' + zincirli.length +
+                  '’inde onay zinciri kaydı var (toplam ' + adimSayisi + ' adım).');
+    if(zincirsiz) parcalar.push(zincirsiz + ' talepte zincir tanımlı değil; o taleplerde adım sayacı "—" basılır.');
+    parcalar.push(kuyrukta.length
+      ? kuyrukta.length + ' talep onay kuyruğunda bekliyor (' +
+        kuyrukta.map(function(p){ return p.kod; }).join(', ') + '); karar YALNIZ bu taleplerde verilebilir.'
+      : 'Bu görünümde onay kuyruğunda bekleyen talep yok — karar düğmesi hiçbir satırda basılmaz.');
+
+    el.innerHTML = GV.notice({
+      tone:kuyrukta.length ? 'warn' : 'ok',
+      icon:kuyrukta.length ? 'i-hourglass' : 'i-check-circle',
+      title:kuyrukta.length ? kuyrukta.length + ' talep karar bekliyor' : 'Karar bekleyen talep yok',
+      text:parcalar.join(' ') +
+           (K_DISARIDA.length ? ' Geçiş tablosunda sekmeye düşmeyen durum: ' + K_DISARIDA.join(', ') + '.' : '') });
+  }
+
+  /* ================================================================
+     ÇEKMECE 1 — TALEP DETAYI (satır detayı ayrı ekran açmaz)
+     ================================================================ */
+  function detayHtml(p){
+    var d = adimBilgi(p);
+    var pr = p.proje ? projeKaydi(p.proje) : null;
+    var sip = siparisi(p);
+
+    var satirlar = [
+      ['Ürün / hizmet', GV.esc(p.urun)],
+      ['Kategori', bos(p.kategori) ? GV.esc(p.kategori) : null],
+      ['Özellik', bos(p.ozellik) ? GV.esc(p.ozellik) : null],
+      ['Miktar', p.miktar == null ? null : GV.cell.num(p.miktar)],
+      ['Tahmini maliyet (NET)', canFinans ? GV.cell.mny(p.tahminiMaliyet)
+        : '<span class="cell-mask">••••••</span>'],
+      ['Bütçe kodu', bos(p.butceKodu) ? '<span class="cell-code">' + GV.esc(p.butceKodu) + '</span>' : null],
+      ['Öncelik', bos(p.oncelik) ? GV.esc(p.oncelik) : null],
+      ['İhtiyaç tarihi', p.ihtiyacTarihi ? GV.dateCell(p.ihtiyacTarihi, { done:terminal(p.durum) }) : null],
+      ['Talep tarihi', p.olusturma ? '<span class="cell-date">' + F.date(p.olusturma) + '</span>' : null],
+      ['Talep eden', p.talepEden ? GV.user(p.talepEden, { sm:true }) : null],
+      ['Departman', depAd(p.dep) ? GV.esc(depAd(p.dep)) + GV.cell.sub(GV.esc(p.dep)) : null],
+      ['Proje', p.proje
+        ? '<a class="cell-main" href="app-proje-detay.html?id=' + GV.esc(p.proje) + '">' +
+          GV.esc(pr ? pr.ad : p.proje) + '</a>' + GV.cell.sub(GV.esc(p.proje))
+        : '<span class="u-faint">—</span>' + GV.cell.sub('projeye bağlı değil, genel gider talebi')],
+      ['Durum', GV.badge(p.durum)],
+      ['Onay adımı', d
+        ? '<b>' + d.adim + ' / ' + d.toplam + '</b>' +
+          GV.cell.sub(d.sonuclandi ? 'zincir tamamlandı'
+            : d.reddedildi ? 'zincirde ret var'
+            : d.siradaki ? 'sırada: ' + GV.esc(d.siradaki.rol) : 'bekleyen adım yok')
+        : '<span class="u-faint">—</span>' + GV.cell.sub('zincir tanımlı değil')],
+      ['Gerekçe', bos(p.gerekce) ? GV.esc(p.gerekce) : null],
+      ['Açıklama', bos(p.aciklama) ? GV.esc(p.aciklama) : null]
+    ];
+
+    if(sip){
+      satirlar.push(['Doğan sipariş',
+        '<span class="cell-code">' + GV.esc(sip.kod) + '</span>' +
+        GV.cell.sub(GV.esc(sip.durum) + ' · ' + (canFinans ? F.money(sip.toplam) + ' brüt' : 'tutar gizli'))]);
+    }
+
+    return '<section class="gv-card"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-cart') + GV.esc(p.kod) + '</h3>' +
+        '<span class="gc-meta">' + GV.esc(p.urun) + '</span></div>' +
+        '<div class="gc-body">' + GV.dl(satirlar, { skipEmpty:true }) + '</div>' +
+      '</section>' +
+
+      '<section class="gv-card u-mt-8"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-refresh') + 'Durumu ilerlet</h3>' +
+        '<span class="u-faint u-sm">' + GV.esc(p.durum) + '</span></div>' +
+        '<div class="gc-body">' + flowHtml(p) + '</div>' +
+      '</section>' +
+
+      '<section class="gv-card u-mt-8"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-stamp') + 'Onay zinciri</h3></div>' +
+        '<div class="gc-body">' +
+          (d ? '<p class="u-sm u-muted">Bu talep ' + d.adim + ' / ' + d.toplam +
+                 ' onay adımında. Zinciri, karar geçmişini ve izinli kararları ayrı panelde açın.</p>'
+             : GV.notice({ tone:'neutral', icon:'i-info', title:'Zincir tanımlı değil',
+                 text:'Bu talep için DB.purchaseApprovals içinde adım kaydı yok; ' +
+                      'adım sayacı türetilemiyor ve "0/0" yazmak ölçülmemişi ölçülmüş göstermek olurdu.' })) +
+          '<div class="lh-acts u-mt-4">' +
+            '<button type="button" class="btn btn-line btn-sm" data-zincir="' + GV.esc(p.kod) + '">' +
+              GV.ico('i-stamp','ic-sm') + ' Onay zincirini gör</button>' +
+          '</div>' +
+        '</div>' +
+      '</section>';
+  }
+
+  /* Durum ilerletme düğmeleri — ekran KENDİ durum listesini yazmaz,
+     `GV.flow.adimlar` ne veriyorsa onu basar (brief §7.1). */
+  function flowHtml(p){
+    var adimlar = GV.flow.adimlar('purchase', p.kod) || [];
+    if(!adimlar.length){
+      return GV.notice({ tone:'neutral', icon:'i-info',
+        title:'İlerletilebilecek adım yok',
+        text:terminal(p.durum)
+          ? '"' + p.durum + '" geçiş tablosunda terminal bir durumdur; kaydın yaşam döngüsü kapanmıştır.'
+          : '"' + p.durum + '" durumundan bu oturuma açık bir hedef bulunmuyor.' });
+    }
+    return '<div class="lh-acts">' + adimlar.map(function(a){
+      var engel = !a.izin ? 'Bu geçiş için yetkiniz yok'
+                : (a.eksik && a.eksik.length ? 'Eksik alan: ' + a.eksik.join(', ') : '');
+      return '<button type="button" class="btn ' + (a.birincil ? 'btn-acc' : (a.tone || 'btn-line')) +
+        ' btn-sm" data-hedef="' + GV.esc(a.hedef) + '" data-kod="' + GV.esc(p.kod) + '"' +
+        (engel ? ' disabled aria-disabled="true" title="' + GV.esc(engel) + '"' : '') + '>' +
+        GV.esc(a.etiket || a.hedef) + '</button>';
+    }).join('') + '</div>';
+  }
+
+  function ilerlet(p, hedef){
+    /* Gerekçe gerekiyor mu — KURALA bakılır, tahmin edilmez (brief §7.2).
+       `gerekce` bu durumdan ÇIKMAK, `girisGerekce` o duruma GİRMEK içindir. */
+    var cikis  = TP[p.durum] || {};
+    var giris  = TP[hedef]   || {};
+    var gerekceli = !!(cikis.gerekce || giris.girisGerekce);
+
+    if(!gerekceli){
+      var r = GV.flow.gec('purchase', p.kod, hedef);
+      if(r.ok === false){ GV.toast(GV.flowHata(r), 'danger'); return; }
+      GV.toast(p.kod + ' → ' + hedef, 'ok');
+      GV.refresh();
+      return;
+    }
+    GV.action({
+      eylem:hedef === AT.ret ? 'Reddet' : hedef === AT.iade ? 'İade Et'
+          : /İptal/i.test(hedef) ? 'İptal Et' : 'Onayla',
+      tone:hedef === AT.ret || /İptal/i.test(hedef) ? 'danger' : hedef === AT.iade ? 'warn' : 'ok',
+      kayit:{ kod:p.kod, baslik:p.urun },
+      sonuc:'Bu talep "' + hedef + '" durumuna geçecek.',
+      gerekce:true,
+      nedenTuru:hedef === AT.ret ? 'ret' : hedef === AT.iade ? 'iade'
+              : /İptal/i.test(hedef) ? 'iptal' : 'revizyon',
+      run:function(v){
+        var r = GV.flow.gec('purchase', p.kod, hedef, null, { neden:v.neden, not:v.not });
+        if(r.ok === false) return { ok:false, mesaj:GV.flowHata(r) };
+        GV.refresh();
+        return { mesaj:p.kod + ' → ' + hedef, auditKod:r.kayit ? r.kayit.kod : null };
+      }
+    });
+  }
+
+  /* ================================================================
+     ÇEKMECE 2 — ONAY ZİNCİRİ VE KARAR
+     ================================================================ */
+  function zincirHtml(p){
+    var d = adimBilgi(p);
+    if(!d){
+      /* `null` → "zincir tanımlı değil". 0/0 YAZILMAZ: sıfır bir ölçümdür,
+         burada ölçüm YOK (L-13). */
+      return GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Onay zinciri tanımlı değil',
+        text:'DB.purchaseApprovals içinde ' + p.kod + ' için adım kaydı yok. ' +
+             'Adım sayacı türetilemediği için "—" basılıyor; "0/0" yazmak ölçülmemiş ' +
+             'bir zinciri ölçülmüş göstermek olurdu.' });
+    }
+
+    var z = zincirSatirlari(p);
+    var kuyruk = bekleyenKuyruk(p);
+
+    var ozet = GV.dl([
+      ['Talep', '<span class="cell-code">' + GV.esc(p.kod) + '</span>'],
+      ['Durum', GV.badge(p.durum)],
+      ['Adım', '<b>' + d.adim + ' / ' + d.toplam + '</b>' +
+        GV.cell.sub(d.sonuclandi ? 'zincir tamamlandı'
+          : d.reddedildi ? 'zincirde ret kararı var' : 'zincir sürüyor')],
+      ['Sıradaki makam', d.siradaki
+        ? GV.esc(d.siradaki.rol) + GV.cell.sub(d.siradaki.kisi
+            ? GV.esc(DB.empName(d.siradaki.kisi))
+            : 'kişi atanmadı — kaynak veride yok')
+        : null],
+      ['Onay kuyruğu kaydı', kuyruk
+        ? '<span class="cell-code">' + GV.esc(kuyruk.kod) + '</span>' +
+          GV.cell.sub('onaylayan: ' + GV.esc(DB.empName(kuyruk.onaylayan)))
+        : null]
+    ], { skipEmpty:true });
+
+    /* Zincir adımları — rol, kişi, durum, tarih, not. `GV.chain` çizer. */
+    var chain = GV.chain(z.map(function(s){
+      return { rol:s.rol, kisi:s.kisi ? DB.empName(s.kisi) : null,
+               durum:s.durum, tarih:s.tarih, not:s.not };
+    }));
+
+    /* Adım kaydında kişi yoksa bu SÖYLENİR — boş avatar sessiz bir eksiktir. */
+    var kisisiz = z.filter(function(s){ return !s.kisi; }).length;
+    var turetilmis = z.filter(function(s){ return s.turetilmis === true; }).length;
+
+    var notlar = '';
+    if(kisisiz || turetilmis){
+      notlar = GV.notice({ tone:'neutral', icon:'i-info',
+        title:'Zincir kaydının ölçülen sınırları',
+        text:[
+          kisisiz ? kisisiz + ' adımda onaycı kişi kaynak veride yok; "Atanmadı" basılır, isim uydurulmaz.' : '',
+          turetilmis ? turetilmis + ' adım kayıttaki adım sayısı ve yayındaki akış tanımından türetildi (ops.js).' : ''
+        ].filter(Boolean).join(' ') });
+    }
+
+    var karar = '';
+    if(!kuyruk){
+      karar = GV.notice({ tone:'neutral', icon:'i-info',
+        title:'Bu talepte karar verilemez',
+        text:d.sonuclandi
+          ? 'Zincir tamamlanmış; onay kuyruğunda bekleyen kayıt yok.'
+          : 'Onay zincirinde bekleyen adım var ama DB.approvals içinde bu talep için ' +
+            '"Bekliyor" durumunda bir kuyruk kaydı yok. Karar yordamı (GV.approval.karar) ' +
+            'kuyruk kaydı üzerinden çalışır; kayıt olmadan onay/ret/iade uygulanamaz.' });
+    } else if(!canOnay){
+      karar = GV.notice({ tone:'warn', icon:'i-lock',
+        title:'Onay yetkiniz yok',
+        text:'Bu talep ' + kuyruk.kod + ' kaydıyla onay kuyruğunda bekliyor; kararı ' +
+             DB.empName(kuyruk.onaylayan) + ' verecek.' });
+    } else {
+      karar =
+        '<p class="u-sm u-muted">Karar zinciri ilerletir. Zincir bitmediyse talebin ' +
+        '<b>durumu değişmez</b>; kuyruk kaydı bekler ve sıradaki makama geçer.</p>' +
+        '<div class="lh-acts u-mt-4">' +
+          '<button type="button" class="btn btn-ok btn-sm" data-karar="Onaylandı" data-onay="' + GV.esc(kuyruk.kod) + '" data-kod="' + GV.esc(p.kod) + '">' +
+            GV.ico('i-check-circle','ic-sm') + ' Onayla</button>' +
+          '<button type="button" class="btn btn-danger-line btn-sm" data-karar="Reddedildi" data-onay="' + GV.esc(kuyruk.kod) + '" data-kod="' + GV.esc(p.kod) + '">' +
+            GV.ico('i-x-circle','ic-sm') + ' Reddet</button>' +
+          (AT.iade
+            ? '<button type="button" class="btn btn-line btn-sm" data-karar="İade" data-onay="' + GV.esc(kuyruk.kod) + '" data-kod="' + GV.esc(p.kod) + '">' +
+              GV.ico('i-refresh','ic-sm') + ' İade Et</button>'
+            : '') +
+        '</div>';
+    }
+
+    return '<section class="gv-card"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-stamp') + 'Zincir özeti</h3></div>' +
+        '<div class="gc-body">' + ozet + '</div></section>' +
+
+      '<section class="gv-card u-mt-8"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-users') + 'Adımlar</h3>' +
+        '<span class="u-faint u-sm">' + z.length + ' adım</span></div>' +
+        '<div class="gc-body">' + chain + notlar + '</div></section>' +
+
+      '<section class="gv-card u-mt-8"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-clipboard-check') + 'Karar</h3></div>' +
+        '<div class="gc-body">' + karar + '</div></section>';
+  }
+
+  /* Kararın TEK yordamı: `GV.approval.karar`. Kuyruk kaydını, zincir adımını
+     ve (zincir bittiğinde) kaynak kaydın geçişini o tek işlemde yürütür. */
+  function kararVer(p, onayKod, kararAdi){
+    var eylem = kararAdi === 'Onaylandı' ? 'Onayla' : kararAdi === 'Reddedildi' ? 'Reddet' : 'İade Et';
+    GV.action({
+      eylem:eylem,
+      tone:kararAdi === 'Onaylandı' ? 'ok' : kararAdi === 'Reddedildi' ? 'danger' : 'warn',
+      kayit:{ kod:p.kod, baslik:p.urun },
+      sonuc:kararAdi === 'Onaylandı'
+        ? 'Zincirdeki bekleyen adım onaylanacak. Zincir bu adımla bitiyorsa talep "' +
+          AT.onay + '" durumuna geçer; bitmiyorsa talebin durumu DEĞİŞMEZ ve kuyruk kaydı bekler.'
+        : 'Karar zinciri sonlandırır; talep "' +
+          (kararAdi === 'Reddedildi' ? AT.ret : AT.iade) + '" durumuna geçirilecek.',
+      gerekce:kararAdi !== 'Onaylandı',
+      nedenTuru:kararAdi === 'Reddedildi' ? 'ret' : kararAdi === 'İade' ? 'iade' : null,
+      run:function(v){
+        var r = GV.approval.karar(onayKod, kararAdi, { neden:v.neden, not:v.not });
+        /* `why:'kaynak'` → kaynak kaydın GEÇİŞİ reddetti; motor onay kaydını
+           geri aldı. Mesaj aynen basılır, üstüne kendi cümlemiz yazılmaz. */
+        if(r.ok === false) return { ok:false, mesaj:r.mesaj || r.why };
+
+        /* ⚠️ `zincirBitti` ve `adim` KULLANICIYA SÖYLENİR. Onaylandı deyip
+           talebin durumunun neden değişmediğini söylememek, UID-27'nin
+           ürettiği yanlış güvenin ta kendisidir. */
+        var d = r.adim;
+        var yeni = (r.akis && r.akis.yeni) ||
+                   (kararAdi === 'Onaylandı' ? AT.onay : kararAdi === 'Reddedildi' ? AT.ret : AT.iade);
+        var mesaj;
+        if(r.zincirBitti){
+          /* Ret ve iade zinciri ONAYLAYARAK bitirmez, KESER: onaylanan adım
+             sayısı olduğu yerde kalır. "3/3 adım" ile "0/2 adım" aynı cümleyle
+             anlatılırsa ikincisi çelişkili görünür — oysa doğrudur. */
+          mesaj = kararAdi === 'Onaylandı'
+            ? p.kod + ' · zincir sonuçlandı' + (d ? ' (' + d.adim + '/' + d.toplam + ' adım onaylandı)' : '') +
+              ' · talep "' + yeni + '" durumuna geçti'
+            : p.kod + ' · ' + kararAdi + ' kararıyla zincir kesildi' +
+              (d ? ' (o ana kadar onaylanan adım: ' + d.adim + '/' + d.toplam + ')' : '') +
+              ' · talep "' + yeni + '" durumuna geçti';
+        } else {
+          mesaj = p.kod + ' · adım tamamlandı' + (d ? ' (' + d.adim + '/' + d.toplam + ')' : '') +
+                  ' · ZİNCİR BİTMEDİ: talebin durumu değişmedi, kuyruk kaydı bekliyor' +
+                  (d && d.siradaki ? ' · sıradaki makam: ' + d.siradaki.rol : '');
+        }
+        if(r.sod) GV.toast(r.sod, 'warn');
+        if(r.not) GV.toast(r.not, 'info');
+        GV.refresh();
+        return { mesaj:mesaj };
+      }
+    });
+  }
+
+  /* Çekmece açıcıları — markup `document.body`ye basılır (L-18), ekran
+     kendi overlay'ini kurmaz. Dinleyiciler çekmece gövdesine bağlanır ve
+     çekmece kapanınca onlarla birlikte ölür. */
+  function bagla(govde){
+    govde.addEventListener('click', function(ev){
+      var z = ev.target.closest('[data-zincir]');
+      if(z){ var pz = kayit(z.dataset.zincir); if(pz) zincirAc(pz); return; }
+
+      var f = ev.target.closest('[data-hedef]');
+      if(f && !f.disabled){ var pf = kayit(f.dataset.kod); if(pf) ilerlet(pf, f.dataset.hedef); return; }
+
+      var k = ev.target.closest('[data-karar]');
+      if(k && !k.disabled){
+        var pk = kayit(k.dataset.kod);
+        if(pk) kararVer(pk, k.dataset.onay, k.dataset.karar);
+      }
+    });
+  }
+  function kayit(kod){
+    return (DB.purchases || []).filter(function(x){ return x.kod === kod; })[0] || null;
+  }
+  /* Açık çekmece tek tutulur: detaydan zincire geçerken ikinci panel
+     birincisinin üstüne binmesin. */
+  var acikCekmece = null;
+  function cekmeceAc(baslik, html){
+    if(acikCekmece && acikCekmece.close) acikCekmece.close();
+    acikCekmece = GV.drawer({ title:baslik, body:'',
+      onMount:function(govde){ govde.innerHTML = html; bagla(govde); } });
+  }
+  function detayAc(p){ cekmeceAc('Talep ' + p.kod, detayHtml(p)); }
+  function zincirAc(p){ cekmeceAc('Onay zinciri — ' + p.kod, zincirHtml(p)); }
+
+  /* ================================================================
+     LİSTE
+     ================================================================ */
+  var filtreler = [
+    { key:'durum', label:'Durum', type:'multi',
+      /* Seçenekler geçiş tablosundan — ekran kendi durum listesini yazmaz. */
+      options:durumlar.map(function(d){ return { value:d, label:d }; }) },
+    { key:'talepEden', label:'Talep eden', type:'select',
+      /* Yalnız TALEBİ OLAN personel: 16 kişilik kadroyu listelemek hiçbir
+         kaydı süzmeyen 12 seçenek üretirdi. */
+      options:tumu.reduce(function(acc, p){
+        if(p.talepEden && acc.map(function(o){ return o.value; }).indexOf(p.talepEden) === -1)
+          acc.push({ value:p.talepEden, label:DB.empName(p.talepEden) });
+        return acc;
+      }, []) },
+    { key:'dep', label:'Departman', type:'select',
+      options:tumu.reduce(function(acc, p){
+        if(p.dep && acc.map(function(o){ return o.value; }).indexOf(p.dep) === -1)
+          acc.push({ value:p.dep, label:depAd(p.dep) || p.dep });
+        return acc;
+      }, []) },
+    { key:'olusturma', label:'Talep tarihi', type:'daterange' }
+  ];
+  /* Maliyet aralığı YALNIZ finans yetkisinde sorulur: tutarı göremeyen bir
+     rolün tutara göre süzmesi, maskelenen değeri deneme yanılmayla okumaktır
+     (UID-11 maskeleme kuralının aynı gerekçesi). */
+  if(canFinans){
+    filtreler.push(
+      { key:'maliyetMin', label:'Tahmini maliyet — en az (₺, NET)', type:'text',
+        test:function(p, v){ return p.tahminiMaliyet != null && p.tahminiMaliyet >= Number(v); } },
+      { key:'maliyetMax', label:'Tahmini maliyet — en çok (₺, NET)', type:'text',
+        test:function(p, v){ return p.tahminiMaliyet != null && p.tahminiMaliyet <= Number(v); } });
+  }
+
+  GV.list({
+    mount:'#satListe', id:'satinalma', key:'kod',
+    source:function(){ return DB.purchases; },
+    exportName:'satinalma-talepleri', exportTitle:'Satın Alma Talepleri',
+    pageSize:10, views:['table','card'],
+    defaultSort:'olusturma', defaultDir:'desc',
+
+    search:{ placeholder:'Talep no, ürün, kategori veya bütçe kodu ara',
+             fields:['kod','urun','kategori','butceKodu','aciklama','ozellik'],
+             /* Kayıtta KOD tutulup ekranda AD gösterilen alanlar ancak böyle aranır. */
+             extra:function(p){
+               return [p.talepEden ? DB.empName(p.talepEden) : '', depAd(p.dep) || '',
+                       p.proje || '', p.durum].filter(Boolean).join(' ');
+             } },
+
+    /* Satır kapsamı — alan adları `DB.purchases` şemasından ÖLÇÜLDÜ:
+       `talepEden` (EMP-*) ve `dep` (DEP-*) kayıtta yazılı.
+       `musteri` kapsamı BİLDİRİLMEZ: satın alma talebinde müşteri alanı YOK
+       ve proje üzerinden kurulacak bağ 7 kaydın 6'sında boş kalırdı — var
+       olmayan bir eşlemeyi bildirmek, süzgeci sessizce yanlış kurmaktır.
+       `proje` kapsamı da bildirilmez: oturumda proje listesi yoktur
+       (ui.js:869) ve bileşen bunu kapsam şeridinde kendisi söyler. */
+    scopeField:{ kendi:'talepEden', departman:'dep' },
+
+    kpis:[
+      { label:'Toplam talep', icon:'i-cart',
+        calc:function(base){ return base.length; } },
+
+      /* "Onay bekleyen" = onay KUYRUĞUNDA bekleyen kaydı olan talep.
+         Durum kümesinden değil kuyruktan sayılır: karar ancak kuyruk kaydı
+         varken verilebilir, sayının karşılığı olan eylem budur. */
+      { label:'Onay bekleyen', icon:'i-hourglass', tone:'warn',
+        meta:function(base){
+          var zincirde = base.filter(function(p){ return icinde(K_ONAY, p.durum); }).length;
+          return zincirde + ' talep onay evresi durumunda (' + K_ONAY.join(' · ') + ')';
+        },
+        metaTone:'warn',
+        calc:function(base){ return base.filter(function(p){ return !!bekleyenKuyruk(p); }).length; } },
+
+      /* "Onaylanan" = onay ZİNCİRİ tamamlanan talep. Durumu "Onaylandı"
+         olan talep sayısı ayrı bir şeydir ve meta'da ayrıca söylenir. */
+      { label:'Onaylanan', icon:'i-check-circle', tone:'ok',
+        meta:function(base){
+          var durumda = base.filter(function(p){ return p.durum === AT.onay; }).length;
+          var zincirsiz = base.filter(function(p){ return !adimBilgi(p); }).length;
+          return 'zinciri tamamlanan talep · ' + durumda + ' tanesi şu an "' + AT.onay + '" durumunda' +
+                 (zincirsiz ? ' · ' + zincirsiz + ' talepte zincir yok, sayıya girmedi' : '');
+        },
+        calc:function(base){
+          return base.filter(function(p){ var d = adimBilgi(p); return !!(d && d.sonuclandi); }).length;
+        } },
+
+      { label:'Toplam tahmini maliyet', icon:'i-wallet', format:F.moneyK, perm:'finans',
+        meta:function(){ return 'NET · KDV hariç (ops.js:310 para ekseni)'; },
+        calc:function(base){
+          return base.reduce(function(s, p){ return s + (p.tahminiMaliyet || 0); }, 0);
+        } }
+    ],
+
+    /* Sekmeler bir DURUM LİSTESİ DEĞİL, geçiş tablosundan türetilen kurallardır. */
+    tabs:[
+      { key:'tumu', label:'Tümü', icon:'i-list', filter:null },
+      { key:'taslak', label:'Taslak', icon:'i-edit',
+        filter:function(p){ return p.durum === TASLAK; } },
+      /* R1'in ayrı "Onay Bekleyenler" ekranı buraya indi (rota haritası 113). */
+      { key:'onay', label:'Onay sürecinde', icon:'i-stamp',
+        filter:function(p){ return icinde(K_ONAY, p.durum); } },
+      { key:'onaylanan', label:'Onaylanan', icon:'i-check-circle',
+        filter:function(p){ return icinde(K_ONAYLANAN, p.durum); } },
+      { key:'teslim', label:'Sipariş/Teslim', icon:'i-truck',
+        filter:function(p){ return icinde(K_TESLIM, p.durum); } },
+      { key:'kapanan', label:'Kapanan', icon:'i-archive',
+        filter:function(p){ return icinde(K_KAPANAN, p.durum); } }
+    ],
+
+    columns:[
+      GV.cols.kod('kod', 'Talep', { width:'15%', locked:true,
+        /* Detay ayrı ekran değil, çekmecedir — satır aksiyonundan açılır.
+           Alt satır ürün adını taşır, kod tek başına kaydı anlatmıyor. */
+        sub:function(p){ return GV.esc(p.urun); } }),
+
+      { key:'urun', label:'Ürün / hizmet', cellClass:'cell-wrap', visible:false,
+        exportValue:function(p){ return p.urun || ''; },
+        render:function(p){
+          return '<span class="cell-main">' + GV.esc(p.urun) + '</span>' +
+                 GV.cell.sub(GV.esc([p.kategori, p.miktar ? p.miktar + ' adet' : null,
+                                     bos(p.ozellik)].filter(Boolean).join(' · '))); } },
+
+      GV.cols.kisi('talepEden', 'Talep eden'),
+
+      { key:'dep', label:'Departman', cellClass:'cell-wrap',
+        sortValue:function(p){ return depAd(p.dep) || p.dep || ''; },
+        exportValue:function(p){ return depAd(p.dep) || p.dep || ''; },
+        render:function(p){
+          var ad = depAd(p.dep);
+          if(!ad) return GV.cell.faint('—') + GV.cell.sub(p.dep ? GV.esc(p.dep) + ' · departman kaydı yok' : 'departman yazılmamış');
+          return '<span class="cell-main">' + GV.esc(ad) + '</span>' + GV.cell.sub(GV.esc(p.dep)); } },
+
+      { key:'proje', label:'Proje', cellClass:'cell-wrap',
+        sortValue:function(p){ return p.proje || null; },
+        exportValue:function(p){ return p.proje || ''; },
+        render:function(p){
+          if(!p.proje) return GV.cell.faint('—') + GV.cell.sub('projeye bağlı değil');
+          var pr = projeKaydi(p.proje);
+          /* Hedef ekran henüz yayında değil; normal `href` yazılır, kabuk
+             `markWip` ile kilitler (brief §2.7). Sahte `#` bağlantı yok. */
+          return GV.cell.link('app-proje-detay.html?id=' + p.proje, pr ? pr.ad : p.proje,
+                              GV.cell.sub(GV.esc(p.proje))); } },
+
+      GV.cols.money('tahminiMaliyet', 'Tahmini maliyet', { perm:'finans', width:'12%',
+        sub:function(){ return 'NET'; } }),
+
+      GV.cols.durum('durum', 'Durum'),
+
+      /* ONAY ADIMI — TÜRETİLİR. `p.onayAdim` / `p.onayToplam` alanları
+         yükleme anında zincirden tazeleniyor ama otoriter değil; yordam
+         çağrılır. `null` → "zincir tanımlı değil", asla 0/0. */
+      { key:'onayZincir', label:'Onay adımı', cellClass:'center',
+        sortValue:function(p){ var d = adimBilgi(p); return d ? d.adim / d.toplam : null; },
+        exportValue:function(p){
+          var d = adimBilgi(p);
+          return d ? d.adim + '/' + d.toplam : 'zincir tanımlı değil'; },
+        render:function(p){
+          var d = adimBilgi(p);
+          if(!d) return GV.cell.faint('—') + GV.cell.sub('zincir tanımlı değil');
+          var ton = d.reddedildi ? 'danger' : d.sonuclandi ? 'ok' : 'warn';
+          var alt = d.reddedildi ? 'zincirde ret var'
+                  : d.sonuclandi ? 'tamamlandı'
+                  : d.siradaki ? 'sırada: ' + d.siradaki.rol
+                  : 'bekleyen adım yok';
+          return '<span class="u-num u-' + ton + '">' + d.adim + ' / ' + d.toplam + '</span>' +
+                 GV.cell.sub(GV.esc(alt)); } },
+
+      GV.cols.date('olusturma', 'Talep tarihi', { plain:true }),
+      GV.cols.date('ihtiyacTarihi', 'İhtiyaç tarihi', {
+        /* Kapanmış talebin ihtiyaç tarihinin geçmiş olması gecikme değildir. */
+        done:function(p){ return terminal(p.durum) || icinde(K_TESLIM, p.durum); } }),
+
+      /* Öncelik rozet DEĞİL düz metindir: `GV.badge` tonu ad eşleşmesinden
+         türetir ve sözlükte "Yüksek/Orta/Düşük" yok — üçü de nötr rozet
+         basardı, yani rozet hiçbir şey söylemezdi. */
+      { key:'oncelik', label:'Öncelik', cellClass:'center', visible:false,
+        exportValue:function(p){ return p.oncelik || ''; },
+        render:function(p){ return p.oncelik
+          ? '<span class="u-sm">' + GV.esc(p.oncelik) + '</span>' : GV.cell.faint('—'); } },
+      { key:'butceKodu', label:'Bütçe kodu', visible:false,
+        exportValue:function(p){ return p.butceKodu || ''; },
+        render:function(p){ return p.butceKodu
+          ? '<span class="cell-code">' + GV.esc(p.butceKodu) + '</span>' : GV.cell.faint('—'); } }
+    ],
+
+    filters:filtreler,
+
+    /* Reddedilen/iade edilen talep uyarı şeridi alır; kapanan talep SOLUK
+       basılmaz — tamamlanmış bir tedarik geçmiş değil, sonuçtur. */
+    rowClass:function(p){
+      if(p.durum === AT.ret || p.durum === AT.iade) return 'is-late';
+      if(p.aktif === false || p.arsiv === true) return 'is-passive';
+      return '';
+    },
+
+    card:function(p){
+      var d = adimBilgi(p);
+      return '<div class="gv-rcard-top"><div>' +
+        '<span class="cell-main">' + GV.esc(p.kod) + '</span>' +
+        '<div class="cell-code">' + GV.esc(p.urun) + '</div></div>' +
+        GV.badge(p.durum) + '</div>' +
+        '<div class="gv-rcard-meta">' +
+          '<span>' + GV.esc(depAd(p.dep) || p.dep || 'departman yok') + '</span>' +
+          '<span>' + (d ? 'Onay ' + d.adim + '/' + d.toplam : 'zincir yok') + '</span>' +
+          (p.proje ? '<span>' + GV.esc(p.proje) + '</span>' : '') +
+        '</div>' +
+        '<div class="gv-rcard-foot">' +
+          (canFinans ? GV.cell.mny(p.tahminiMaliyet) : '<span class="cell-mask">••••••</span>') +
+          GV.dateCell(p.ihtiyacTarihi, { done:terminal(p.durum) || icinde(K_TESLIM, p.durum) }) +
+        '</div>';
+    },
+
+    /* 980px altında tablo yerine bu markup basılır (ui.js:1116-1133);
+       `GV.cell.mrow` ızgarayı kendi kurar — 390px'te yatay taşma yok. */
+    mobile:function(p){
+      var d = adimBilgi(p);
+      return GV.cell.mrow(
+        '<span class="cell-main">' + GV.esc(p.kod) + '</span>' + GV.badge(p.durum),
+        GV.esc(p.urun),
+        [ GV.ico('i-building','ic-sm') + GV.esc(depAd(p.dep) || p.dep || '—'),
+          GV.ico('i-stamp','ic-sm') + (d ? d.adim + '/' + d.toplam : 'zincir yok'),
+          GV.ico('i-calendar','ic-sm') + (p.ihtiyacTarihi ? F.dateShort(p.ihtiyacTarihi) : '—') ],
+        (canFinans ? GV.cell.mny(p.tahminiMaliyet) : '<span class="cell-mask">••••••</span>') +
+          (p.talepEden ? GV.user(p.talepEden, { sm:true }) : '')
+      );
+    },
+
+    rowActions:[
+      { key:'detay', icon:'i-eye', label:'Talep detayını aç',
+        run:function(p){ detayAc(p); } },
+      { key:'zincir', icon:'i-stamp', label:'Onay zincirini gör',
+        run:function(p){ zincirAc(p); } }
+    ],
+
+    bulk:[
+      { key:'disa', label:'Dışa aktar', icon:'i-download', export:true }
+    ],
+
+    emptyState:{ icon:'i-cart', title:'Bu görünümde satın alma talebi yok',
+      desc:'Filtreleri ya da sekmeyi değiştirebilirsiniz. Pasif kayıtlar varsayılan ' +
+           'görünümde gizlidir; "Arşivlenenleri Göster" ile açılır.' },
+
+    onRender:function(gorunen){ uyariCiz(gorunen); }
+  });
+
+  /* ---- Backend payı — brief §10.2 (b) biçimi ------------------------- */
+  document.getElementById('satBackend').innerHTML =
+    '<section class="gv-card u-mt-8"><div class="gc-head">' +
+      '<h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+      '<span class="u-faint u-sm">2 madde</span></div>' +
+      '<div class="gc-body">' +
+        '<ul class="odl-gap">' +
+          '<li><span class="odl-gap-kod">BE-F3</span>' +
+            '<span>Tedarikçi entegrasyonu ve sipariş gönderimi yok; sipariş kaydı yalnız iç defterdir</span>' +
+            '<span class="odl-gap-bolum">§10 satın alma</span></li>' +
+          '<li><span class="odl-gap-kod">BE-S5</span>' +
+            '<span>Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır</span>' +
+            '<span class="odl-gap-bolum">§9 audit_event</span></li>' +
+        '</ul>' +
+        '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+          '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+        '<p class="u-faint u-sm">Onay kararı da istemcide doğrulanır: gerçek sistemde ' +
+          'her karar sunucuda rol, zincir sürümü ve kaydın o anki durumuyla yeniden ' +
+          'doğrulanır; arayüzde düğmeyi gizlemek tek başına yetki kontrolü sayılmaz.</p>' +
+      '</div>' +
+    '</section>';
+});
+</script>
+</body>
+</html>
