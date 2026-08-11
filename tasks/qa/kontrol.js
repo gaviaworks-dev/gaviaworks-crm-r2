@@ -83,7 +83,17 @@ for (const h of htmls) {
   const src = fs.readFileSync(path.join(ROOT, h), 'utf8');
   const yuklu = new Set([...src.matchAll(/src="(assets\/[^"]+)"/g)].map(m => m[1]));  /* ham HTML'den */
   const inline = [...src.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map(b => b[1]).join('\n');
-  const okunan = new Set([...inline.matchAll(/\bDB\.([A-Za-z_$][\w$]*)/g)].map(m => m[1]));
+  /* ⚠️ YORUM KODU DEĞİLDİR. Eksen ham metni tarıyordu ve ekranın "bu ekran
+     `DB.timelogs` OKUMAZ" diye yazdığı yorumu bir OKUMA sanıp kusur
+     basıyordu. İki ekranda birden yanlış ✗ üretti — üstelik ikisi de doğru
+     davranmış, koleksiyonu bilerek yüklememişti. Yorum ve dize ayıklanır;
+     ayıklamadan yapılan ölçüm, dürüst bir ekranı kusurlu ilan eder. */
+  const kodu = inline
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')          /* blok yorum */
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')      /* satır yorumu (http:// korunur) */
+    .replace(/'(?:\\.|[^'\\])*'/g, "''")         /* tek tırnaklı dize */
+    .replace(/"(?:\\.|[^"\\])*"/g, '""');        /* çift tırnaklı dize */
+  const okunan = new Set([...kodu.matchAll(/\bDB\.([A-Za-z_$][\w$]*)/g)].map(m => m[1]));
   for (const k of okunan) {
     const kaynak = tanim[k];
     if (!kaynak) { uy(`${h} → DB.${k} hiçbir veri dosyasında tanımlı değil (yordam olabilir)`); continue; }
