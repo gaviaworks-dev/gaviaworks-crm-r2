@@ -154,7 +154,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
 | 30 | `app-proje.html` | **KARŞILIĞI VAR** | §3.1 menü girdisi |
-| 31 | `app-proje-detay.html` | **KARŞILIĞI VAR** | §3.3: milestone/sprint/test/hata/değişiklik/teslim **sekmeleri** buraya gelir. R1'de 111 KB'lık ekran daha da büyür → tembel sekme yüklemesi gerekir (risk R-04). |
+| 31 | `app-proje-detay.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Dokuz sekme, tembel çizim. `#<sekme>` derin bağlantısı çalışıyor ve SÖZLEŞMEDİR — kuyruk ve `GV.proje.kapanisKontrol` buraya bağlandı. |
 | 32 | `app-proje-form.html` | **KARŞILIĞI VAR** | — |
 
 ### 4.2 Proje alt kayıtları — §3.3 birebir hüküm
@@ -164,20 +164,20 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | R1 ekranı | Karar | Hedef |
 |---|---|---|---|
-| 33 | `app-proje-milestone.html` | **GÖMÜLÜYOR** | proje detayı › Milestone sekmesi + `/operasyon?tip=milestone` |
-| 34 | `app-proje-sprint.html` | **GÖMÜLÜYOR** | proje detayı › Sprint sekmesi |
+| 33 | `app-proje-milestone.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — proje detayı › Milestone sekmesi. `DB.projectMilestones` (12) · `DB.milestones` ödeme taksitidir, sekmede ayrıca uyarılıyor |
+| 34 | `app-proje-sprint.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — proje detayı › Sprint sekmesi · `DB.sprints` (6) |
 | 35 | `app-proje-sprint-form.html` | **GÖMÜLÜYOR** | drawer |
-| 36 | `app-proje-test.html` | **GÖMÜLÜYOR** | proje detayı › Kalite sekmesi |
-| 37 | `app-proje-test-detay.html` | **GÖMÜLÜYOR** | aynı sekmede kayıt görünümü |
+| 36 | `app-proje-test.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — proje detayı › Kalite sekmesi · `DB.testCases` (5, hepsi PRJ-2026-001) |
+| 37 | `app-proje-test-detay.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — aynı sekmede kayıt görünümü |
 | 38 | `app-proje-test-form.html` | **GÖMÜLÜYOR** | drawer |
-| 39 | `app-proje-hata.html` | **GÖMÜLÜYOR** | proje detayı › Hatalar + `/operasyon?tip=hata` |
-| 40 | `app-proje-hata-detay.html` | **GÖMÜLÜYOR** | aynı sekme |
+| 39 | `app-proje-hata.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — proje detayı › Hatalar sekmesi · `DB.bugs` (6) |
+| 40 | `app-proje-hata-detay.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — aynı sekme |
 | 41 | `app-proje-hata-form.html` | **GÖMÜLÜYOR** | drawer |
-| 42 | `app-proje-degisiklik.html` | **GÖMÜLÜYOR** | proje detayı › Değişiklik sekmesi |
-| 43 | `app-proje-degisiklik-detay.html` | **GÖMÜLÜYOR** | aynı sekme |
+| 42 | `app-proje-degisiklik.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — proje detayı › Değişiklik sekmesi · `DB.changeRequests` (5). Kuyruğun onay satırı `#degisiklik` çapasına bağlandı |
+| 43 | `app-proje-degisiklik-detay.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — aynı sekme |
 | 44 | `app-proje-degisiklik-form.html` | **GÖMÜLÜYOR** | drawer |
-| 45 | `app-proje-teslim.html` | **GÖMÜLÜYOR** | proje detayı › Teslim sekmesi |
-| 46 | `app-proje-teslim-detay.html` | **GÖMÜLÜYOR** | aynı sekme |
+| 45 | `app-proje-teslim.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — proje detayı › Teslim sekmesi · `DB.deliveries` (5) |
+| 46 | `app-proje-teslim-detay.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — aynı sekme |
 | 47 | `app-proje-teslim-form.html` | **GÖMÜLÜYOR** | drawer |
 
 ### 4.3 Görev — 9 menü girdisi 1'e indi
@@ -187,8 +187,8 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | R1 ekranı | Karar | Hedef |
 |---|---|---|---|
-| 48 | `app-gorev.html` | **KARŞILIĞI VAR** | Tek liste. R2 menüsünde **tek girdi**: "Görevler". 9 sekme kayıtlı görünüme indi. |
-| 49 | `app-gorev-detay.html` | **KARŞILIĞI VAR** | — |
+| 48 | `app-gorev.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Tek liste, 8 sekme kayıtlı görünüm. 26 görev · `urlSync` açık, eski `?t=` bağlantı biçimi çalışıyor |
+| 49 | `app-gorev-detay.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Operasyon kuyruğunun **23 satırı** bu ekrana bağlandı ve açılıyor |
 | 50 | `app-gorev-form.html` | **KARŞILIĞI VAR** | — |
 
 ### 4.4 Departman talepleri
@@ -204,7 +204,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
 | 54 | `app-destek.html` | **KARŞILIĞI VAR** | §3.1'de kendi menü girdisi var |
-| 55 | `app-destek-detay.html` | **KARŞILIĞI VAR** | — |
+| 55 | `app-destek-detay.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Kuyruğun **4 satırı** bu ekrana bağlandı. SLA bir SÜRE taahhüdüdür, tarihe çevrilmedi |
 | 56 | `app-destek-form.html` | **KARŞILIĞI VAR** | — |
 | 57 | `app-destek-sla.html` | **GÖMÜLÜYOR** | destek kayıtlı görünümü + "Hizmet ve Destek" raporu (§7.1: SLA o şablonun ölçütü) |
 | 58 | `app-destek-paket.html` | **GÖMÜLÜYOR** ✅ | → müşteri detayı › Destek sekmesi — **çalışıyor** (ADR-R2-13) |
