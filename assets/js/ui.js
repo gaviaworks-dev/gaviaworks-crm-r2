@@ -2474,6 +2474,28 @@
         }));
       }catch(e){ /* depolama kapalıysa şerit basılmaz, yönlendirme yine olur */ }
     }
+    /* ⚠️ YUMUŞAK GEÇİŞ — `location.href` bellekteki kaydı SİLER.
+       Ölçülen kusur (teklif sürümleme turunda): revizyon açılıyor, yeni kayıt
+       `DB.quotes`e giriyor, sonra bu yordam tam sayfa yüklemesi yapıyor ve
+       veri dosyaları yeniden koşuyor — yani az önce üretilen kayıt yok oluyor.
+       Kullanıcı hedefte yeşil "TKL-… oluşturuldu" şeridiyle BİRLİKTE
+       "kayıt bulunamadı" hatasını görüyordu. L-15 `location.reload()`u tam bu
+       gerekçeyle yasaklamıştı; `location.href` aynı dosyaya giderken aynı şey.
+
+       Hedef AYNI DOSYA ise (yalnız `?id=` değişiyorsa) sayfa hiç yeniden
+       yüklenmez: adres `replaceState` ile güncellenir ve `GV.refresh()`
+       ekranı taze veriyle yeniden çizer. Farklı dosyaya giden yönlendirme
+       eskisi gibi kalır — orada kaybın kaynağı prototipin kendisidir ve
+       ekranlar bunu backend payında beyan eder. */
+    var suanki = location.pathname.split('/').pop();
+    var hedefDosya = hedef.split('?')[0].split('#')[0];
+    if(hedefDosya === suanki && GV.refresh){
+      setTimeout(function(){
+        history.replaceState({}, '', hedef);
+        GV.refresh();
+      }, cfg.gecikme != null ? cfg.gecikme : 400);
+      return karar + '-yumusak';
+    }
     setTimeout(function(){ location.href = hedef; }, cfg.gecikme != null ? cfg.gecikme : 700);
     return karar;
   };
@@ -2955,6 +2977,12 @@
     num:function(v, o){
       o = o || {};
       if(v == null) return GV.cell.faint('—');
+      /* `signed` — `GV.cell.mny`de vardı, burada YOKTU ve fark hücresi kuran
+         ekran `+/−` biçimini elde yazmak zorunda kalıyordu. İki kardeş
+         yardımcının sözleşmesi ayrışmamalı. */
+      if(o.signed) return v < 0
+        ? '<span class="u-num u-danger">−' + Fmt.num(Math.abs(v), o.basamak) + '</span>'
+        : '<span class="u-num u-ok">+' + Fmt.num(v, o.basamak) + '</span>';
       return '<span class="u-num' + (o.tone ? ' u-' + o.tone : '') + '">' + Fmt.num(v, o.basamak) + '</span>';
     },
     gun:function(v, tone){

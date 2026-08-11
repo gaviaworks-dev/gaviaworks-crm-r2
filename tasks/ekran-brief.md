@@ -391,7 +391,7 @@ Geçişli alanlar fabrikadan geçer (`ui.js:2929`):
 GV.cell.faint('—')                       // <span class="u-faint">
 GV.cell.sub(html)                        // <span class="cell-sub"> — HTML alır, escape ETMEZ
 GV.cell.mny(1500, { signed:true })       // para; null ise '—'
-GV.cell.num(12, { basamak:1, tone:'ok' })
+GV.cell.num(12, { basamak:1, tone:'ok', signed:true })   // signed → +/− ve renk
 GV.cell.gun(5, 'warn')
 GV.cell.oran(72, 50)                     // eşiğe göre renkli %
 GV.cell.link('app-x.html?id=1','KOD', altHtml)
@@ -577,6 +577,14 @@ GV.afterSave({
 
 Karar yordamda: hedef detay ekranı **yayında değilse** ya da kullanıcının
 dosyaya yetkisi yoksa listeye döner (`GV.shell.ekranAcilabilir` ile ölçer).
+
+⚠️ **Hedef AYNI DOSYA ise sayfa yeniden YÜKLENMEZ.** Yalnız `?id=` değişiyorsa
+adres `history.replaceState` ile güncellenir ve `GV.refresh()` ekranı taze
+veriyle çizer; dönüş değeri `'detay-yumusak'` olur. Gerekçesi ölçüldü: tam
+sayfa yüklemesi veri dosyalarını yeniden koşturur ve **az önce üretilen kaydı
+siler** — kullanıcı yeşil "oluşturuldu" şeridiyle birlikte "kayıt bulunamadı"
+görüyordu. Farklı dosyaya giden yönlendirmede kayıp sürüyor; orada sebep
+prototipin kendisidir ve ekran bunu backend payında beyan eder.
 Mesaj `sessionStorage`'a yazılır ve hedef sayfada `#gvFlash` şeridine **bir kez**
 basılır (`ui.js:2421-2446`). Ekran hedefte ayrıca "az önce ne oldu" bloğu yazmaz.
 
