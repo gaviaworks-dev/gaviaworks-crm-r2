@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Destek Talebi Detayı — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="operasyon" data-screen="destek">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   DESTEK TALEBİ DETAYI — brief §6 (detay deseni) · §7 (GV.flow) · §18.6
+
+   TEK KAYIT, TEK EKRAN. Kaynak `DB.tickets` (7 kayıt, ops.js:558).
+   Adres sözleşmesi: `app-destek-detay.html?id=DST-…` — operasyon kuyruğu
+   (`kuyruk.js:101`) ve `DB.notifications` (misc.js:464) buraya bağlanıyor.
+
+   ⚠️ BU EKRANIN EN KOLAY YANLIŞ YAPILACAK YERİ: SLA.
+   Destek talebinde TERMİN ALANI YOKTUR. `sla` bir SÜRE taahhüdüdür
+   ('4 saat' · '2 gün' · '3 gün'), bir TARİH DEĞİLDİR; `acilis + sla`
+   aritmetiğiyle bir termin üretmek uydurmadır. Gecikme bilgisi `slaDurum`
+   alanındadır (Zamanında · Risk altında · İhlal edildi) ve kaynak veride
+   YAZILI SABİTTİR — bu ekran onu canlı hesaplamaz, hesaplıyormuş gibi de
+   göstermez. Beyan `BE-D1` olarak ekranın altında duruyor.
+
+   DURUM: `t.durum = …` YAZILMAZ. Düğmeler `GV.flow.adimlar('ticket', kod)`
+   çıktısından doğar, geçiş `GV.flow.gec('ticket', …)` ile uygulanır, hata
+   metni `GV.flowHata(r)`'dan gelir. Kota düşümü de ekranın işi değildir:
+   `Kapandı` geçişinin yan etkisi olarak motorda yapılır (domain.js:557).
+
+   MÜŞTERİ EVRESİ OKUNMAZ (K-21). Hesap kaydı yalnız UNVAN için açılır;
+   talebin ekseni destek durumudur, müşterinin yaşam evresi değil.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F     = GV.fmt;
+  var esc   = GV.esc;
+  var ico   = GV.ico;
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  /* Destek liste ekranı (`app-destek.html`) henüz yayında değil; talebin
+     geldiği yer operasyon kuyruğudur ve o kuyruğun destek süzgeci gerçek
+     bir adrestir (brief §18.7 "küresel çapraz liste"). Kilitlenecek bir
+     bağlantı yerine çalışan bağlantı verilir. */
+  var KUYRUK = 'app-operasyon.html?tip=destek';
+  var kod    = new URLSearchParams(location.search).get('id');
+  var t      = (DB.tickets || []).filter(function(x){ return x.kod === kod; })[0] || null;
+
+  /* ---- 1. KAYIT YOK (brief §6 adım 1) -------------------------------- */
+  if(!t){
+    GV.pageHead({
+      eyebrow:'Operasyon · Destek',
+      title:'Kayıt bulunamadı',
+      sub:kod || '—',
+      actions:[{ label:'Destek kuyruğuna dön', icon:'i-arrow-left', href:KUYRUK }]
+    });
+    mount.innerHTML = '<div class="gv-card">' + GV.errorState({
+      title:'Destek talebi bulunamadı',
+      desc:'Aradığınız talep silinmiş ya da adres hatalı olabilir. Doğru kaydı operasyon ' +
+           'kuyruğunun destek süzgecinden seçebilirsiniz. Az önce üretilmiş bir kaydı ' +
+           'arıyorsanız sebebi başkadır: prototipte kayıtlar bellekte tutulur, sayfa ' +
+           'yenilendiğinde ya da yeni sekmede sıfırlanır (BE-S5).',
+      action:'<a class="btn btn-acc" href="' + KUYRUK + '">Destek kuyruğuna dön</a>'
+    }) + '</div>';
+    return;
+  }
+
+  /* ---- 2. KAYIT SAHİPLİĞİ KAPISI (brief §6 adım 2) -------------------
+     Talep `musteri` alanı taşıyor (7/7 dolu), yani müşteri oturumu kendi
+     firmasının dışındaki bir talebi adresi yazarak açamaz. */
+  if(!GV.guardRecord({ mount:'#rec', musteri:t.musteri, kod:t.kod,
+                       eyebrow:'Operasyon · Destek', title:t.kod,
+                       geriHref:KUYRUK, geriLabel:'Destek kuyruğuna dön' })) return;
+
+  /* ===================================================================
+     3. TÜRETİLEN BAĞLAR — hepsi yazılı alandan, tarih yakınlığı bağ değil
+     =================================================================== */
+  var canFinans = GV.perm.can('finans');
+  var TT        = (DB.transitions || {}).ticket || {};
+  var BOS       = '<span class="u-faint">—</span>';
+
+  /* Müşteri hesabı YALNIZ unvan için okunur. `evre` okunmaz (K-21). */
+  var hesap = GV.lifecycle.hesap(t.musteri);
+  var proje = t.proje ? (DB.projects || []).filter(function(p){ return p.kod === t.proje; })[0] : null;
+  /* Açan bir müşteri yetkilisidir (`YTK-*`), personel değil — `DB.emp`
+     onu çözemez, ad `DB.contacts`ten okunur. */
+  var kontak = (DB.contacts || []).filter(function(c){ return c.kod === t.acan; })[0] || null;
+
+  /* SLA politikası: kategori × öncelik matrisi. Kategori bazlı politikalar
+     `oncelik:'Tümü'` taşır; eşleşme kuralı budur, sıralama değil. */
+  var politika = (DB.slaPolicies || []).filter(function(p){
+    return p.aktif !== false && p.kategori === t.kategori &&
+           (p.oncelik === t.oncelik || p.oncelik === 'Tümü');
+  })[0] || null;
+
+  var paket  = GV.destek.paketOf(t);
+  var dusum  = GV.destek.kotaDusum(t);
+  var cozumT = GV.destek.cozumTarihi(t);
+  var acikMi = GV.destek.acik(t);
+
+  /* Dönüşümler tek yönlüdür: bağ DOĞAN kaydın üstünde durur, talepte ayna
+     alan yoktur (ops.js:504). Etiket eşleştirmek bağ yerine GEÇMEZ. */
+  var gorevler = (DB.tasks || []).filter(function(g){ return g.destek === t.kod; });
+  var hatalar  = (DB.bugs || []).filter(function(h){ return h.destek === t.kod; });
+  var degisim  = (DB.changeRequests || []).filter(function(d){ return d.destek === t.kod; });
+
+  /* Geçişle birlikte yazılabilecek alanlar — çözüm çekmecesinin topladıkları.
+     Motorun bildirdiği `eksik` listesi bunların içinde kalıyorsa düğme
+     kilitlenmez, çekmeceyi açar. */
+  var FORM_ALANLARI = ['cozumAciklama', 'cozenPersonel'];
+
+  var BACKEND = [
+    { kod:'BE-D1', madde:'SLA sayacı gerçek zamanlı çalışmaz; `slaDurum` kaynak veride yazılı sabit değerdir', bolum:'§9' },
+    { kod:'BE-S4', madde:'Belge yükleme gerçek depoya yazmaz; dosya adı ve boyutu bellekte tutulur', bolum:'§9' },
+    { kod:'BE-S5', madde:'Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır', bolum:'§9 audit_event' }
+  ];
+
+  /* ===================================================================
+     4. ÇİZİM YARDIMCILARI — ekran içi; ortak katmana dokunulmadı
+     =================================================================== */
+  function kartBasi(ikon, baslik, sag){
+    return '<div class="gc-head"><h3 class="gc-title">' + ico(ikon) + esc(baslik) + '</h3>' +
+      (sag ? '<div class="gc-head-acts">' + sag + '</div>' : '') + '</div>';
+  }
+  /* Boş ≠ sıfır (brief §10.1). Boş bırakılan her alan SEBEBİNİ taşır. */
+  function bos(sebep){
+    return BOS + (sebep ? ' <span class="u-faint u-xs">' + esc(sebep) + '</span>' : '');
+  }
+  function not(metin){ return '<span class="u-faint u-xs">' + esc(metin) + '</span>'; }
+  function saat(h){
+    if(h == null) return null;
+    return F.num(h, h % 1 ? 1 : 0) + ' saat';
+  }
+  /* Dakika alanları ham tutulur; saat karşılığı yalnız okunurluk içindir —
+     yeni bir SLA aritmetiği DEĞİLDİR, aynı sayının ikinci yazımıdır. */
+  function dakika(n){
+    if(n == null) return null;
+    return F.num(n) + ' dk' + (n >= 60 ? ' · ' + F.num(Math.round(n / 6) / 10, 1) + ' saat' : '');
+  }
+  function tarih(iso, sebep){ return iso ? esc(F.dt(iso)) : bos(sebep); }
+  function baglanti(href, metin, alt){
+    return '<a href="' + href + '">' + esc(metin) + '</a>' +
+           (alt ? '<span class="cell-sub">' + esc(alt) + '</span>' : '');
+  }
+
+  /* ===================================================================
+     5. KÜNYE
+     =================================================================== */
+  function cizKunye(){
+    var beklemeIsareti = t.beklemeNedeni
+      ? ' <span class="badge is-warn">' + ico('i-pause','ic-sm') + ' ' + esc(t.beklemeNedeni) + ' bekleniyor</span>'
+      : '';
+
+    var musteriHtml = hesap
+      ? baglanti('app-musteri-detay.html?id=' + encodeURIComponent(t.musteri), hesap.unvan, t.musteri)
+      : esc(t.musteriAd || t.musteri) + '<span class="cell-sub">' + esc(t.musteri) + '</span>';
+
+    /* DST-2026-117 hiçbir projeye bağlı değil — 6/7 talep bağlı, bu biri
+       değil ve bu bir eksiklik değil ölçümdür (brief §18.1). */
+    var projeHtml = t.proje
+      ? (proje
+          ? baglanti('app-proje-detay.html?id=' + encodeURIComponent(t.proje), proje.ad, t.proje)
+          : esc(t.proje) + '<span class="cell-sub">proje kaydı defterde bulunamadı</span>')
+      : bos('bu talep hiçbir projeye bağlı değil; kaynak veride proje alanı boş');
+
+    var acanHtml = kontak
+      ? GV.user(t.acan, { ad:kontak.ad, sm:true }) +
+        '<span class="cell-sub">' + esc(kontak.pozisyon || 'pozisyon kaydı yok') + ' · ' + esc(t.acan) + '</span>'
+      : bos('açan yetkili kaydı DB.contacts içinde bulunamadı');
+
+    return '<section class="gv-card">' +
+      kartBasi('i-support', 'Talep künyesi',
+        GV.badge(t.durum) + beklemeIsareti + ' ' +
+        '<span class="badge ' + (acikMi ? 'is-info' : 'is-neutral') + '">' +
+          (acikMi ? 'Açık' : 'Kapalı') + '</span>') +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Başlık',        esc(t.baslik)],
+          ['Talep kodu',    '<span class="cell-code">' + esc(t.kod) + '</span>'],
+          ['Müşteri',       musteriHtml],
+          ['Proje',         projeHtml],
+          ['Kategori',      esc(t.kategori)],
+          ['Öncelik',       GV.badge(t.oncelik)],
+          ['Etki',          GV.badge(t.etki)],
+          ['Kanal',         esc(t.kanal)],
+          ['Açan',          acanHtml],
+          ['Sorumlu',       t.sorumlu ? GV.user(t.sorumlu, { sm:true }) : bos('talebe sorumlu atanmadı')],
+          ['Açılış',        tarih(t.acilis)],
+          ['Harcanan süre', saat(t.harcananSure) || bos('süre kaydı yok')],
+          ['Ücretlendirme', t.ucretli
+            ? '<span class="badge is-warn">Ücretli</span> ' + not('bakım kotasından düşmez')
+            : '<span class="badge is-ok">Bakım kapsamında</span>'],
+          ['Açıklama',      t.aciklama ? esc(t.aciklama)
+            : bos('talepte serbest açıklama yok; 7 kaydın yalnız 2\'sinde bu alan dolu')],
+          ['Son karar gerekçesi', t.sonNedenKodu
+            ? esc(t.sonNedenKodu) + (t.sonNedenAciklama ? ' — ' + esc(t.sonNedenAciklama) : '') +
+              '<span class="cell-sub">bu oturumda uygulanan geçişle yazıldı</span>'
+            : bos('bu kayıtta gerekçeli bir geçiş uygulanmadı')]
+        ]) +
+      '</div>' +
+      '<div class="gc-body u-faint u-sm">Kanal sözlüğünde ' +
+        esc(String((DB.ticketChannels || []).length)) + ' değer var; yedi talebin yedisi de ' +
+        '<b>Müşteri portalı</b> taşıyor. Bu uydurma bir tekdüzelik değil, ölçüm: talebi açan ' +
+        'alan 7/7 kayıtta bir müşteri yetkilisi kodudur, başka bir kanalı hiçbir alan ' +
+        'göstermiyor (ops.js:543).</div>' +
+    '</section>';
+  }
+
+  /* ===================================================================
+     6. SLA — süre taahhüdü, termin DEĞİL
+     =================================================================== */
+  function cizSla(){
+    var uyum = politika
+      ? (politika.etiket === t.sla
+          ? '<span class="badge is-ok">Politikayla uyumlu</span>'
+          : '<span class="badge is-danger">Politikayla çelişiyor</span>')
+      : '';
+
+    var polSatirlari = politika
+      ? [
+          ['Politika',            '<span class="cell-code">' + esc(politika.kod) + '</span> ' +
+                                  not(politika.kategori + ' × ' + politika.oncelik)],
+          ['Hedef ilk yanıt',     esc(dakika(politika.ilkYanit))],
+          ['Hedef çözüm',         esc(dakika(politika.cozum))],
+          ['Çalışma saati',       esc(politika.calismaSaati)],
+          ['Eskalasyon',          esc(politika.eskalasyon)]
+        ]
+      : [
+          ['Politika', bos('bu kategori ve önceliğe karşılık gelen bir SLA politikası ' +
+                           'DB.slaPolicies içinde tanımlı değil')]
+        ];
+
+    return '<section class="gv-card">' +
+      kartBasi('i-timer', 'SLA', GV.badge(t.slaDurum) + ' ' + uyum) +
+      '<div class="gc-body">' +
+        GV.notice({ tone:'warn', icon:'i-hourglass',
+          title:'Bu talepte termin tarihi yoktur',
+          text:'SLA bir süre taahhüdüdür (“' + t.sla + '”), bir tarih değildir. Açılış saatine ' +
+               'eklenip termine çevrilmez — o sayı ölçüm gibi görünen bir kurgu olurdu. ' +
+               'Gecikme bilgisi slaDurum alanındadır ve kaynak veride yazılı sabittir; ' +
+               'bu ekran onu canlı hesaplamaz (BE-D1).' }) +
+      '</div>' +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['SLA taahhüdü',   '<b>' + esc(t.sla) + '</b> ' + not('süre taahhüdü — termin tarihi değil')],
+          ['SLA durumu',     GV.badge(t.slaDurum) + ' ' + not('kaynak veride yazılı, canlı hesaplanmadı')]
+        ].concat(polSatirlari).concat([
+          ['İlk yanıt',      tarih(t.ilkYanit, 'bu talebe henüz ilk yanıt verilmedi')],
+          ['Müdahale süresi', t.mudahaleSuresi != null ? esc(dakika(t.mudahaleSuresi))
+            : bos('ilk yanıt kaydı olmadığı için müdahale süresi de yok')],
+          ['Çözüm süresi',   t.cozumSuresi != null ? esc(dakika(t.cozumSuresi))
+            : bos('talep henüz çözülmedi; 7 kaydın yalnız 3\'ünde bu alan dolu')],
+          ['Çözüm zamanı',   cozumT
+            ? esc(F.dt(cozumT)) + '<span class="cell-sub">türetildi: açılış + çözüm süresi (GV.destek.cozumTarihi)</span>'
+            : bos('çözüm süresi boş olduğu için türetilemedi')]
+        ])) +
+      '</div>' +
+      '<div class="gc-body u-faint u-sm">Hedef ve gerçekleşen süreler burada yan yana ' +
+        '<b>gösterilir</b>, birbirine <b>bölünmez</b>: SLA tüketimini bu ekranda yeniden ' +
+        'hesaplamak, kaynak verideki slaDurum ile er geç çelişecek ikinci bir defter ' +
+        'açmak olurdu.</div>' +
+    '</section>';
+  }
+
+  /* ===================================================================
+     7. BAKIM PAKETİ — `bakimPaketi` bir TİP adıdır, paket kodu değil
+     =================================================================== */
+  function cizPaket(){
+    var tipYazili = t.bakimPaketi && t.bakimPaketi !== '—';
+
+    if(!paket){
+      return '<section class="gv-card">' +
+        kartBasi('i-package', 'Bakım paketi', '<span class="badge is-neutral">Paket yok</span>') +
+        '<div class="gc-body">' +
+          GV.empty({ icon:'i-package',
+            title:'Bu talep bir bakım paketine bağlanamadı',
+            desc:(tipYazili
+                    ? 'Talepte paket tipi “' + t.bakimPaketi + '” yazılı, '
+                    : 'Talepte paket tipi yazılı değil ve ') +
+                 'bu müşterinin defterde aktif bir hizmet paketi yok. Yedi talebin ikisi ' +
+                 'bu durumdadır. Olmayan bir paketten saat düşmek ölçüm gibi görünen bir ' +
+                 'kurgu olurdu; kota düşümü yapılmaz.' }) +
+        '</div>' +
+        '<div class="gc-body">' +
+          GV.dl([
+            ['Talepteki kalan destek', t.kalanDestek === 0
+              ? '0 saat <span class="cell-sub">pakete bağlı olmadığı için sıfır yazılı — ölçülmüş bir bakiye değil</span>'
+              : saat(t.kalanDestek)]
+          ]) +
+        '</div>' +
+      '</section>';
+    }
+
+    var uyum = t.kalanDestek === paket.kalan
+      ? '<span class="badge is-ok">Paket defteriyle aynı</span>'
+      : '<span class="badge is-warn">Paket defterinden farklı</span>';
+
+    return '<section class="gv-card">' +
+      kartBasi('i-package', 'Bakım paketi', '<span class="cell-code">' + esc(paket.kod) + '</span>') +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Talepteki paket tipi', tipYazili
+            ? esc(t.bakimPaketi) + '<span class="cell-sub">bir TİP adıdır, paket kodu değil — kayıt müşteri üzerinden bulunur</span>'
+            : bos('talepte paket tipi yazılı değil')],
+          ['Paket kaydı',   esc(paket.kod + ' · ' + paket.ad) +
+                            '<span class="cell-sub">GV.destek.paketOf ile bulundu</span>'],
+          ['Paket türü',    esc(paket.tip) + (paket.periyot ? ' · ' + esc(paket.periyot)
+                            : ' ' + not('periyot sözlükte karşılığı olmayan bir dönem uzunluğu; boş bırakıldı'))],
+          ['Dönem',         esc(F.date(paket.baslangic) + ' – ' + F.date(paket.bitis))],
+          ['Paket durumu',  GV.badge(paket.durum)],
+          ['Aylık saat',    saat(paket.aylikSaat)],
+          ['Kullanılan',    saat(paket.kullanilan)],
+          ['Kalan (paket defteri)', saat(paket.kalan)],
+          ['Kalan (talepteki alan)', saat(t.kalanDestek) +
+                            '<span class="cell-sub">talebin kendi kalanDestek alanı</span> ' + uyum],
+          ['Bu talepten düşecek', t.ucretli
+            ? '0 saat <span class="cell-sub">talep ücretli; ücretli iş bakım kotasına yazılmaz</span>'
+            : (saat(dusum) + '<span class="cell-sub">GV.destek.kotaDusum</span>')],
+          ['Kotadan düşülen', t.kotadanDusuldu != null
+            ? saat(t.kotadanDusuldu) + '<span class="cell-sub">kapanış geçişinin yan etkisi olarak yazıldı</span>'
+            : bos('talep henüz kapanmadı; düşüm kapanışta yapılır')],
+          ['Paket tutarı',  canFinans ? GV.cell.mny(paket.tutar)
+                            : '<span class="cell-mask">••••••</span>'],
+          ['Paketin projesi', paket.proje ? esc(paket.proje)
+            : bos('7 paketin 7\'sinde proje alanı boş; bağ türetilemez, kullanıcı kurar')]
+        ]) +
+      '</div>' +
+      '<div class="gc-body u-faint u-sm">Kota düşümü bu ekranda yapılmaz: talep ' +
+        '<b>Kapandı</b> durumuna geçtiğinde geçiş motorunun yan etkisi olarak işlenir. ' +
+        'Aşım varsa kapanış <b>reddedilir</b> — uyarılmaz, engellenir.</div>' +
+    '</section>';
+  }
+
+  /* ===================================================================
+     8. ÇÖZÜM
+     =================================================================== */
+  function cizCozum(){
+    var doluMu = !!(t.cozumAciklama || t.cozenPersonel || t.kapanisTarihi || t.musteriOnay);
+
+    if(!doluMu){
+      return '<section class="gv-card">' +
+        kartBasi('i-check-circle', 'Çözüm') +
+        '<div class="gc-body">' +
+          GV.empty({ icon:'i-check-circle',
+            title:'Çözüm kaydı yok',
+            desc:'Bu talebin çözüm açıklaması, çözen personeli, kapanış tarihi ve müşteri ' +
+                 'onayı kaynak veride boş. Talep şu an “' + t.durum + '” durumunda; yedi ' +
+                 'talebin yalnız birinde çözüm bloğu dolu. Boş alanlara “—” yazılır, ' +
+                 'metin uydurulmaz.' }) +
+        '</div>' +
+      '</section>';
+    }
+
+    return '<section class="gv-card">' +
+      kartBasi('i-check-circle', 'Çözüm',
+        t.musteriOnay ? GV.badge(t.musteriOnay) : '<span class="u-faint u-sm">müşteri onayı yok</span>') +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Çözüm açıklaması', t.cozumAciklama ? esc(t.cozumAciklama)
+            : bos('çözüm açıklaması kaydedilmedi')],
+          ['Çözen personel',   t.cozenPersonel ? GV.user(t.cozenPersonel, { sm:true })
+            : bos('çözen personel kaydedilmedi')],
+          ['Kapanış tarihi',   tarih(t.kapanisTarihi, 'kapanış tarihi kaydedilmedi')],
+          ['Müşteri onayı',    t.musteriOnay ? GV.badge(t.musteriOnay)
+            : bos('müşteri onayı kaydedilmedi')]
+        ]) +
+      '</div>' +
+    '</section>';
+  }
+
+  /* ===================================================================
+     9. DÖNÜŞÜMLER — bağ doğan kaydın üstünde, tek yönlü
+     =================================================================== */
+  function cizDonusum(){
+    var satirlar = [];
+
+    gorevler.forEach(function(g){
+      satirlar.push('<li><span>' + ico('i-tasks','ic-sm') + ' ' +
+        '<a href="app-gorev-detay.html?id=' + encodeURIComponent(g.kod) + '"><b>' + esc(g.kod) + '</b></a> — ' +
+        esc(g.baslik) + '</span><span class="cell-sub">Görev · ' + esc(g.durum) + '</span></li>');
+    });
+    hatalar.forEach(function(h){
+      /* Hata kaydının kendi detay ekranı yok; hatalar proje detayının
+         Hatalar sekmesinde yaşıyor (brief §18.7). */
+      satirlar.push('<li><span>' + ico('i-bug','ic-sm') + ' ' +
+        (h.proje
+          ? '<a href="app-proje-detay.html?id=' + encodeURIComponent(h.proje) + '#hata"><b>' + esc(h.kod) + '</b></a>'
+          : '<b>' + esc(h.kod) + '</b>') +
+        ' — ' + esc(h.baslik) + '</span><span class="cell-sub">Hata · ' + esc(h.siddet) + ' · ' + esc(h.durum) + '</span></li>');
+    });
+    degisim.forEach(function(d){
+      satirlar.push('<li><span>' + ico('i-git','ic-sm') + ' ' +
+        (d.proje
+          ? '<a href="app-proje-detay.html?id=' + encodeURIComponent(d.proje) + '#degisiklik"><b>' + esc(d.kod) + '</b></a>'
+          : '<b>' + esc(d.kod) + '</b>') +
+        ' — ' + esc(d.baslik) + '</span><span class="cell-sub">Değişiklik · ' + esc(d.durum) + '</span></li>');
+    });
+
+    return '<section class="gv-card">' +
+      kartBasi('i-git', 'Bu talepten doğan kayıtlar',
+        '<span class="u-faint u-sm">' + satirlar.length + ' kayıt</span>') +
+      (satirlar.length
+        ? '<ul class="gv-checklist">' + satirlar.join('') + '</ul>'
+        : '<div class="gc-body">' + GV.empty({ icon:'i-inbox',
+            title:'Bu talepten kayıt doğmadı',
+            desc:'Görev, hata ve değişiklik talebi defterlerinde bu talebi kaynak gösteren ' +
+                 'bir kayıt yok. Yedi talebin ikisinde dönüşüm yazılıdır; kalanlar kullanım ' +
+                 'sorusu, bilgi talebi ya da henüz müşteri onayı bekleyen ek teklif ' +
+                 'kalemleridir. Etiket benzerliği bağ yerine geçmez.' }) + '</div>') +
+      '<div class="gc-body u-faint u-sm">Bağ tek yönlüdür: talepte ayna alan yoktur, ' +
+        'kaynak bilgisi doğan kaydın <b>destek</b> alanında durur.</div>' +
+    '</section>';
+  }
+
+  /* ===================================================================
+     10. AKTİVİTE
+     =================================================================== */
+  function cizAktivite(){
+    var gecmis = GV.audit.oku(t.kod, 30);
+    return '<section class="gv-card">' +
+      kartBasi('i-activity', 'Aktivite',
+        '<span class="u-faint u-sm">' + gecmis.length + ' hareket</span>') +
+      '<div class="gc-body">' + GV.activity(gecmis) + '</div>' +
+    '</section>';
+  }
+
+  /* ===================================================================
+     11. DURUM GEÇİŞLERİ — düğmeler motordan doğar
+     =================================================================== */
+  function formlaCozulur(a){
+    return !!(a.eksik && a.eksik.length && a.eksik.every(function(x){
+      return FORM_ALANLARI.indexOf(x) !== -1;
+    }));
+  }
+
+  function cizGecis(){
+    var adimlar = GV.flow.adimlar('ticket', t.kod) || [];
+    var kural   = TT[t.durum] || {};
+
+    var govde;
+    if(!adimlar.length){
+      govde = '<div class="gc-body u-faint u-sm">' +
+        (kural.terminal
+          ? '“' + esc(t.durum) + '” terminal bir durumdur; geçiş tablosunda tanımlı çıkış yok.'
+          : '“' + esc(t.durum) + '” durumundan tanımlı bir geçiş yok.') + '</div>';
+    }else{
+      govde = '<div class="gc-body"><div class="u-row u-wrap">' +
+        adimlar.map(function(a){
+          var cls = a.birincil ? (a.tone || 'btn-acc')
+                  : (a.tone === 'btn-danger-line' ? 'btn-danger-line' : 'btn-line');
+          var formlu = formlaCozulur(a);
+          var kilit  = '';
+          if(!a.izin){
+            kilit = ' disabled title="Bu geçiş için yetkiniz yok"';
+          }else if(a.eksik && a.eksik.length && a.gerekce){
+            /* Hem gerekçe hem eksik alan isteyen bir hedef: karar penceresinin
+               alan yuvası YOK (v2-borc V2-01). Uydurma bir çözüm yerine düğme
+               kilitlenir ve sebebi yazılır. */
+            kilit = ' disabled title="Bu geçiş hem gerekçe hem eksik alan istiyor; ' +
+                    'karar penceresinin alan yuvası bu sürümde yok"';
+          }else if(a.eksik && a.eksik.length && !formlu){
+            kilit = ' disabled title="Eksik alan: ' + esc(a.eksik.join(', ')) + '"';
+          }
+          return '<button type="button" class="btn ' + cls + ' btn-sm" ' +
+            'data-hedef="' + esc(a.hedef) + '"' + kilit + '>' + esc(a.etiket) +
+            (formlu && !kilit ? '…' : '') + '</button>';
+        }).join('') + '</div></div>';
+    }
+
+    var eksik = (adimlar[0] && adimlar[0].eksik) || [];
+    var eksikNotu = eksik.length
+      ? '<div class="gc-body">' + GV.notice({ tone:'warn', icon:'i-alert',
+          title:'Geçiş için eksik alan var',
+          text:eksik.join(' · ') + ' — bu alanlar dolmadan geçiş reddedilir. Liste geçiş ' +
+               'motorundan gelir; ekran kendi zorunluluk sözlüğünü tutmaz. Çözüm alanları ' +
+               'geçişle birlikte çekmecede toplanır.' }) + '</div>'
+      : '';
+
+    var yetkisiz = adimlar.length && !adimlar[0].izin
+      ? '<div class="gc-body">' + GV.notice({ tone:'neutral', icon:'i-lock',
+          title:'Bu durumdan çıkış sizin rolünüze kapalı',
+          text:'Geçiş tablosu bu durum için şu anahtarları istiyor: ' +
+               (kural.yetki || []).join(' · ') + '. “sorumlu” bir rol değil bir ilişkidir ' +
+               '— kaydın sorumlusu olmak gerekir.' }) + '</div>'
+      : '';
+
+    var gerekceliler = adimlar.filter(function(a){ return a.gerekce; })
+                              .map(function(a){ return a.hedef; });
+    var gerekceNotu = gerekceliler.length
+      ? '<div class="gc-body u-faint u-sm">Gerekçe isteyen hedefler: <b>' +
+        esc(gerekceliler.join(' · ')) + '</b>. Bu hedeflerde neden kodu ve açıklama ' +
+        'zorunludur; karar penceresi ikisini de sorar ve denetim izine yazar.</div>'
+      : '';
+
+    var kapiNotu = adimlar.filter(function(a){ return a.kapi; }).length
+      ? '<div class="gc-body u-faint u-sm">Bu durumdan çıkışta bir <b>kapı</b> çalışır: ' +
+        'bakım kotası yetmiyorsa kapanış <b>reddedilir</b>.</div>'
+      : '';
+
+    return '<section class="gv-card">' +
+      kartBasi('i-refresh', 'Durum', GV.badge(t.durum)) +
+      '<div class="gc-body u-sm u-muted">Şu an: <b class="u-ink">' + esc(t.durum) + '</b>. ' +
+        'Sözlükte ' + esc(String((DB.ticketStatuses || []).length)) + ' durum var; ekran ' +
+        'kendi listesini yazmaz, yapılabilir geçişleri motordan alır.</div>' +
+      govde + eksikNotu + yetkisiz + gerekceNotu + kapiNotu +
+    '</section>';
+  }
+
+  /* ===================================================================
+     12. MEMNUNİYET VE BEKLEME
+     =================================================================== */
+  function cizIsaretler(){
+    return '<section class="gv-card">' +
+      kartBasi('i-star', 'Memnuniyet ve bekleme') +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Memnuniyet puanı', t.memnuniyet != null
+            ? '<b>' + esc(F.num(t.memnuniyet, t.memnuniyet % 1 ? 1 : 0)) + '</b>' +
+              '<span class="cell-sub">talebe yazılı puan</span>'
+            : bos('bu talep için memnuniyet puanı kaydedilmedi; 7 kaydın 3\'ünde dolu')],
+          ['Bekleme nedeni', t.beklemeNedeni
+            ? '<span class="badge is-warn">' + esc(t.beklemeNedeni) + '</span>' +
+              '<span class="cell-sub">durumun yerine değil, yanında duran ikinci eksen</span>'
+            : bos('talep bir şey beklemiyor; 7 kaydın 1\'inde bekleme işareti var')]
+        ]) +
+      '</div>' +
+      '<div class="gc-body u-faint u-sm">Bekleme nedeni bir <b>durum değildir</b>. Talep ' +
+        '“' + esc(t.durum) + '” olmayı sürdürür, yalnız neyi beklediğini söyler. Sözlükte ' +
+        esc(String((DB.ticketWaitReasons || []).length)) + ' neden tanımlı.</div>' +
+    '</section>';
+  }
+
+  /* ===================================================================
+     13. BACKEND PAYI — §10.2 (b) biçimi
+     =================================================================== */
+  function cizBackend(){
+    return '<section class="gv-card">' +
+      kartBasi('i-shield', 'Backend payı',
+        '<span class="u-faint u-sm">' + BACKEND.length + ' madde</span>') +
+      '<ul class="gv-checklist">' + BACKEND.map(function(g){
+        return '<li><span><b>' + esc(g.kod) + '</b> — ' + esc(g.madde) + '</span>' +
+          '<span class="cell-sub">' + esc(g.bolum) + '</span></li>';
+      }).join('') + '</ul>' +
+      '<div class="gc-body u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+        '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</div>' +
+    '</section>';
+  }
+
+  /* ===================================================================
+     14. ÇİZİM — idempotent; `gv:ready` her atıldığında aynı sonucu verir
+     =================================================================== */
+  function ciz(){
+    GV.pageHead({
+      eyebrow:'Operasyon · Destek',
+      title:t.kod,
+      sub:t.baslik + ' · ' + (hesap ? hesap.unvan : t.musteriAd) + ' · ' + t.durum +
+          ' · SLA ' + t.sla + ' (' + t.slaDurum + ')',
+      actions:[{ label:'Destek kuyruğuna dön', icon:'i-arrow-left', href:KUYRUK }]
+    });
+
+    mount.innerHTML =
+      '<div class="gv-grid gv-grid-main">' +
+        '<div>' + cizKunye() + cizSla() + cizPaket() + cizCozum() +
+                  cizDonusum() + cizAktivite() + '</div>' +
+        '<aside>' + cizGecis() + cizIsaretler() + cizBackend() + '</aside>' +
+      '</div>';
+  }
+
+  /* ===================================================================
+     15. EYLEMLER — tek mutasyon noktası GV.flow.gec
+     =================================================================== */
+  function damga(){
+    /* "Bugün" DB.today'dir; `new Date()` ile gün alınmaz (brief §13.2). */
+    return DB.today + 'T' + new Date().toTimeString().slice(0,5);
+  }
+
+  function eylemAdi(hedef){
+    if(hedef === 'Yeniden Açıldı') return 'Yeniden Aç';
+    if(hedef === 'Kapandı')        return 'Kapat';
+    return hedef;
+  }
+
+  function gecisDene(hedef){
+    var a = (GV.flow.adimlar('ticket', t.kod) || []).filter(function(x){
+      return x.hedef === hedef; })[0];
+    if(!a) return;
+
+    if(a.gerekce){ gerekceliGec(hedef, a); return; }
+    if(formlaCozulur(a)){ cozumCekmecesi(hedef); return; }
+
+    /* Kapanış tarihi bir olay damgasıdır: kapanış geçişinin kendisiyle
+       yazılır ve geçişle birlikte motora verilir — ekran alana doğrudan
+       dokunmaz. Müşteri onayı yazılmaz: o müşterinin cevabıdır, türetilemez. */
+    var ek = (hedef === 'Kapandı' && !t.kapanisTarihi) ? { kapanisTarihi:damga() } : null;
+
+    var r = GV.flow.gec('ticket', t.kod, hedef, ek);
+    if(r.ok === false){ GV.toast(GV.flowHata(r), 'danger'); return; }
+    GV.toast(t.kod + ' → ' + hedef, 'ok');
+    GV.refresh();
+  }
+
+  function gerekceliGec(hedef, adim){
+    var etkilenen = []
+      .concat(gorevler.map(function(g){ return g.kod + ' görevi'; }))
+      .concat(hatalar.map(function(h){ return h.kod + ' hata kaydı'; }))
+      .concat(degisim.map(function(d){ return d.kod + ' değişiklik talebi'; }));
+
+    GV.action({
+      eylem:eylemAdi(hedef),
+      kayit:{ kod:t.kod, baslik:t.baslik },
+      sonuc:'Bu talep “' + hedef + '” durumuna geçecek' +
+            (hedef === 'Yeniden Açıldı' ? ' ve triage kuyruğuna döner.' : '.'),
+      gerekce:true,
+      nedenTuru:'geri',
+      ek:true,
+      tone:'warn',
+      etkilenen:etkilenen,
+      run:function(v){
+        var r = GV.flow.gec('ticket', t.kod, hedef, null, { neden:v.neden, not:v.not });
+        if(r.ok === false) return { ok:false, mesaj:GV.flowHata(r) };
+        GV.refresh();
+        return { mesaj:t.kod + ' → ' + hedef, auditKod:r.kayit.kod };
+      }
+    });
+    /* `adim` yalnız çağıranın okuduğu bağlam; karar penceresi kuralı
+       motordan bir kez daha doğrular. */
+    void adim;
+  }
+
+  /* Çözüm çekmecesi — “Devam ediyor” çıkışının zorunlu alanı `cozumAciklama`.
+     Alan doğrudan kayda yazılmaz: `GV.flow.gec`'in `ek` argümanıyla geçişin
+     parçası olarak yazılır, böylece tek mutasyon noktası korunur. */
+  function cozumCekmecesi(hedef){
+    var form = null;
+    GV.drawer({
+      title:'Çözüm kaydı — ' + t.kod,
+      body:'<div id="dstCozum"></div>',
+      onMount:function(govde){
+        form = GV.form({
+          mount:govde.querySelector('#dstCozum'), id:'dstCozumForm',
+          record:{ cozenPersonel:t.cozenPersonel || t.sorumlu || '' },
+          sections:[{
+            title:'Çözüm', icon:'i-check-circle',
+            desc:'Bu alanlar “' + hedef + '” geçişiyle birlikte kayda yazılır. Geçiş ' +
+                 'tablosu bu çıkış için çözüm açıklamasını zorunlu tutuyor.',
+            fields:[
+              { key:'cozumAciklama', label:'Çözüm açıklaması', type:'textarea', rows:4,
+                cols:12, required:true,
+                hint:'Ne yapıldığı yazılır; denetim izine bu metinle birlikte geçilir.' },
+              { key:'cozenPersonel', label:'Çözen personel', type:'select', cols:12,
+                options:(DB.employees || []).map(function(e){
+                  return { value:e.kod, label:e.ad }; }),
+                hint:'Varsayılan: talebin sorumlusu.' }
+            ]
+          }]
+        });
+      },
+      actions:[
+        { label:'Vazgeç', cls:'btn-line' },
+        { label:'Kaydet ve geçir', cls:'btn-acc', close:false, onClick:function(close){
+            if(!form) return false;
+            var v = form.submit();
+            if(!v) return false;
+            var r = GV.flow.gec('ticket', t.kod, hedef, {
+              cozumAciklama:v.cozumAciklama,
+              cozenPersonel:v.cozenPersonel || null
+            });
+            if(r.ok === false){ GV.toast(GV.flowHata(r), 'danger'); return false; }
+            close();
+            GV.toast(t.kod + ' → ' + hedef, 'ok');
+            GV.refresh();
+          } }
+      ]
+    });
+  }
+
+  /* Mount `#rec` her tazelemede taze kopyayla değişir; dinleyici yine de
+     tekil anahtarla bağlanır (L-16). */
+  GV.on(mount, 'click', function(ev){
+    var b = ev.target.closest('[data-hedef]');
+    if(b && !b.disabled) gecisDene(b.getAttribute('data-hedef'));
+  }, 'destekDetay-click');
+
+  ciz();
+});
+</script>
+</body>
+</html>
