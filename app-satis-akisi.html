@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Satış Akışı — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="satis" data-screen="satisakisi">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/data/firsat.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   SATIŞ AKIŞI — rota haritası satır 129
+
+   "Ekseni lead'den FIRSATA döner: kart artık `DB.opportunities` kaydıdır."
+   R1'de bu ekran `DB.leads` üzerinde duruyordu ve aşama alanı ekranda
+   serbestçe yazılabiliyordu. R2'de kayıt `DB.opportunities` (12 kayıt),
+   aşama alanı `asama` ve TEK mutasyon noktası `GV.flow` / `GV.sales`.
+
+   PANO KOLONU = AŞAMA DEĞİL GRUP (REVİZE 14)
+   15 aşamanın hiçbiri silinmedi — `DB.pipelineStages` olduğu gibi duruyor
+   ve kartta gerçek aşama rozeti görünüyor. Pano yalnız `grup` alanından
+   üretilen ALTI kolona iner (`DB.pipelineGroups`); eşleme `GV.list`in
+   `kanban.groupOf` kancasıyla kurulur, ekran kendi pano markup'ını yazmaz.
+
+   ÖLÇÜM (2026-08-03 verisiyle, `DB.pipelineGroupOf` üzerinden sayıldı):
+     Yeni / Kalifikasyon 3 · Analiz 3 · Teklif 1 · Pazarlık 1 ·
+     Sözleşme 0 · Sonuç 4   → toplam 12
+   Sözleşme kolonu BOŞ ve bu normaldir: kaynak veride sıra 12 aşamasında
+   fırsat yok. Kolon gizlenmez — boş kolon "burada iş yok" der, kolonun
+   yokluğu "böyle bir aşama yok" derdi (L-13).
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F = GV.fmt;
+  var canFinans = GV.perm.can('finans');
+  var TUR = 'opportunity';                       /* GV.flow varlık adı — firsat.js:113 */
+  var BU_AY = String(DB.today).slice(0, 7);      /* DB.today sabittir; new Date() YOK */
+
+  var ASAMALAR = (DB.pipelineStages || []).slice().sort(function(a, b){ return a.sira - b.sira; });
+  function asamaOf(key){ return DB.pipelineStage(key); }
+
+  /* --- Sonuç aşamalarının kimliği VERİDEN türetilir -------------------
+     "Kazanıldı" / "Kaybedildi" / "Beklemeye alındı" adlarını ekranda üç
+     ayrı yere sabit yazmak, sözlük değişince üçünü birden sessizce
+     yanlışa düşürürdü (L-40). Sonuç grubunda olasılık 100 kazanmadır,
+     0 kayıptır, kalanı beklemedir — bu üç sayı `crm.js:55-57`'de yazılı. */
+  var SONUC_GRUP = (DB.pipelineGroups || [])[(DB.pipelineGroups || []).length - 1];
+  function sonucAsamasi(olasilik){
+    var s = ASAMALAR.filter(function(x){ return x.grup === SONUC_GRUP && x.olasilik === olasilik; })[0];
+    return s ? s.key : null;
+  }
+  var KAZANILDI  = sonucAsamasi(100);
+  var KAYBEDILDI = sonucAsamasi(0);
+  var SONUC_LISTE = ASAMALAR.filter(function(s){ return s.grup === SONUC_GRUP; });
+
+  /* Açık fırsat = sonuç grubunun DIŞINDA kalan her aşama. */
+  function acikMi(o){
+    var s = asamaOf(o.asama);
+    return !!s && s.grup !== SONUC_GRUP;
+  }
+
+  /* --- Bağlar ------------------------------------------------------
+     Fırsatın hesabı `GV.lifecycle.hesap` ile çözülür; ekran `DB.accounts`
+     üzerinde ikinci bir arama yordamı kurmaz (domain.js:2853 ile aynı kapı).
+     Lead kaynaklı fırsatta `o.hesap` bir `LEAD-*` kodudur ve o kod
+     `lifecycle.js:197` gereği hesap kodudur — uydurma bağ kurulmaz. */
+  function hesapOf(o){ return o && o.hesap ? GV.lifecycle.hesap(o.hesap) : null; }
+  function hesapAdi(o){
+    var h = hesapOf(o);
+    return h ? (h.kisa || h.unvan) : (o && o.hesap ? o.hesap : '—');
+  }
+
+  /* Ağırlıklı tutar TÜRETİLMİŞTİR: bütçe × aşama olasılığı. Bütçesi ya da
+     olasılığı olmayan fırsat toplama girmez — 0 yazmak "değer sıfır" demek
+     olurdu, oysa değer ÖLÇÜLEMEDİ (L-13). */
+  function agirlikli(o){
+    var s = asamaOf(o.asama);
+    if(!o || o.butce == null || !s || s.olasilik == null) return null;
+    return Math.round(o.butce * s.olasilik / 100);
+  }
+  function toplam(list, oku){
+    var t = null;
+    (list || []).forEach(function(o){ var v = oku(o); if(v != null) t = (t || 0) + v; });
+    return t;                                    /* hiç ölçülebilir değer yoksa null → '—' */
+  }
+
+  /* Para maskesi — UID-11: yetkisiz rolde 0 değil `••••••` basılır ve
+     maskelenen hücre çıktıya da girmez (kolonlarda `perm:'finans'`). */
+  function maske(){ return '<span class="cell-mask">' + GV.esc(GV.perm.mask(null, 'finans')) + '</span>'; }
+  function butceHtml(o, kisa){
+    if(!canFinans) return maske();
+    if(o.butce == null) return GV.cell.faint('—');
+    return kisa ? '<span class="cell-money">' + F.moneyK(o.butce) + '</span>' : GV.cell.mny(o.butce);
+  }
+
+  /* Sekme ikonu ortak ton sözlüğünden türetilir — ikinci bir renk/ikon
+     kararı verilmez (`GV.tone`, ui.js:275). */
+  var TON_IKON = { ok:'i-check-circle', danger:'i-x-circle', warn:'i-hourglass', neutral:'i-pause' };
+
+  /* =====================================================================
+     AŞAMA İLERLETME — kapı REDDEDER, ekran karar vermez
+     Aşama alanına ekrandan ATAMA YAPILMAZ. Hedef listesi `GV.flow.adimlar`tan gelir,
+     geçiş `GV.flow.gec` ile uygulanır, hata metni `GV.flowHata` ile
+     çevrilir. Kazanma yalnız `GV.sales.firsatKazan` zinciriyle olur.
+     ===================================================================== */
+  function adimlar(o){ return GV.flow.adimlar(TUR, o.kod) || []; }
+  function ilerletilebilir(o){ return adimlar(o).length > 0; }
+
+  /* Kart ve pano üstündeki ilerletme düğmesi. `rowActions` yalnız tablo ve
+     mobil satırda basılır (ui.js:1078 · ui.js:1130); pano ve kart görünümü
+     kendi düğmesini taşır, tıklaması `onRender` içinde bağlanır. */
+  function ilerletDugmesi(o){
+    if(!ilerletilebilir(o)) return '';
+    return '<button type="button" class="btn btn-line btn-sm btn-block" data-ilerlet="' + GV.esc(o.kod) + '">' +
+      GV.ico('i-trend-up', 'ic-sm') + ' Aşamayı ilerlet</button>';
+  }
+
+  function asamaPenceresi(o){
+    if(!o) return;
+    var list = adimlar(o);
+    var s = asamaOf(o.asama);
+    if(!list.length){
+      GV.toast('Bu fırsat "' + o.asama + '" aşamasında ve tanımlı bir sonraki aşaması yok.', 'info');
+      return;
+    }
+
+    var govde =
+      '<p class="u-sm u-muted u-mb-4">Şu anki aşama: ' + GV.badge(o.asama) +
+        (s ? ' <span class="u-xs u-faint">' + GV.esc(s.grup) + ' · beklenen çıktı: ' +
+             GV.esc(s.beklenen) + '</span>' : '') + '</p>' +
+      '<div class="u-col">' +
+        list.map(function(a){
+          /* Sözleşme (ui.js şeması · brief §7.1): `izin:false` ya da eksik
+             zorunlu alan varsa düğme DEVRE DIŞI basılır ve sebebi `title`da
+             yazar. Gizlenmez — yapılamayan işin neden yapılamadığı söylenir. */
+          var engel = !a.izin ? 'Bu geçiş için yetkiniz yok'
+                    : (a.eksik && a.eksik.length) ? 'Eksik alan: ' + a.eksik.join(', ')
+                    : '';
+          var hs = asamaOf(a.hedef);
+          return '<button type="button" class="btn ' + (a.birincil ? 'btn-acc' : a.tone || 'btn-line') + '" ' +
+            'data-hedef="' + GV.esc(a.hedef) + '"' +
+            (engel ? ' disabled title="' + GV.esc(engel) + '"' : '') + '>' +
+            GV.esc(a.etiket) +
+            (hs ? ' <span class="u-xs u-faint">%' + hs.olasilik + '</span>' : '') +
+            '</button>';
+        }).join('') +
+      '</div>' +
+      '<p class="u-xs u-faint u-mt-4">Aşama atlanamaz; hedef listesi geçiş sözleşmesinden ' +
+        '(<span class="cell-code">DB.transitions.opportunity</span>) türetilir. ' +
+        'Gerekçe isteyen kararlarda neden kodu ve açıklama zorunludur.</p>';
+
+    var m = GV.modal({
+      title:'Aşama ilerlet — ' + o.kod,
+      text:o.baslik || hesapAdi(o),
+      icon:'i-funnel', size:'sm', body:govde,
+      actions:[{ label:'Kapat', cls:'btn-line' }]
+    });
+
+    Array.prototype.forEach.call(m.el.querySelectorAll('[data-hedef]'), function(b){
+      b.addEventListener('click', function(){
+        var hedef = b.dataset.hedef;
+        m.close();
+        uygula(o, hedef);
+      });
+    });
+  }
+
+  function uygula(o, hedef){
+    if(hedef === KAZANILDI) return kazan(o);
+
+    /* `gerekce` = BU DURUMDAN ÇIKMAK gerekçe ister,
+       `girisGerekce` = BU DURUMA GİRMEK gerekçe ister. İki ayrı şeydir
+       (domain.js:369-377). `GV.flow.adimlar` yalnız birincisini bildiriyor,
+       bu yüzden kural tablodan okunur — brief §7.2'deki desen. */
+    var kural = (DB.transitions[TUR] || {})[o.asama] || {};
+    var hk    = (DB.transitions[TUR] || {})[hedef] || {};
+    if(kural.gerekce || hk.girisGerekce) return gerekceliGecis(o, hedef);
+
+    var r = GV.flow.gec(TUR, o.kod, hedef);
+    if(r.ok === false){ GV.toast(GV.flowHata(r), 'danger'); return; }
+    GV.toast(o.kod + ' → ' + hedef, 'ok');
+    GV.refresh();
+  }
+
+  /* Gerekçe isteyen kararlar — ortak eylem penceresi (§6.2). Pencere geçişi
+     kendi yürütmez; `run` içinde motor çağrılır. */
+  function gerekceliGecis(o, hedef){
+    var kayipMi = hedef === KAYBEDILDI;
+    var kayipSecici = null;
+
+    var m = GV.action({
+      /* `eylem` adı ton ve İKONU belirler (ui.js:479-487). Sözlükte olmayan
+         bir ad `i-help`e düşüyor ve o sembol sprite'ta YOK — bu yüzden
+         sözlükteki adlar kullanılıyor, hedef aşama `sonuc` metninde yazılıyor. */
+      eylem:kayipMi ? 'Reddet' : 'İptal Et',
+      tone:kayipMi ? 'danger' : 'warn',
+      kayit:{ kod:o.kod, baslik:(o.baslik || '') + ' · ' + hesapAdi(o) },
+      sonuc:'Bu fırsat "' + hedef + '" aşamasına geçecek.' +
+            (kayipMi ? ' Kayıp fırsat yeniden açılmaz.'
+                     : ' Beklemeye alınan fırsat yeniden aktifleştirildiğinde ilk aşamadan başlar.'),
+      gerekce:true,
+      nedenTuru:kayipMi ? 'ret' : 'iptal',
+      geriDonusYok:kayipMi,
+      run:function(v){
+        var ek = null;
+        if(kayipMi){
+          var kn = kayipSecici ? kayipSecici.value : '';
+          if(!kn) return { ok:false, mesaj:'Kayıp nedeni zorunludur.' };
+          ek = { kayipNedeni:kn };            /* geçişle BİRLİKTE yazılır, ayrı atama yok */
+        }
+        var r = GV.flow.gec(TUR, o.kod, hedef, ek, { neden:v.neden, not:v.not });
+        if(r.ok === false) return { ok:false, mesaj:GV.flowHata(r) };
+        GV.refresh();
+        return { mesaj:o.kod + ' → ' + hedef, auditKod:r.kayit ? r.kayit.kod : null };
+      }
+    });
+
+    /* KAYIP NEDENİ — `DB.lostReasons` sözlüğü ([2.0.6] · firsat.js:35-37).
+       `GV.action` ek alan kancası sunmuyor; alan pencerenin gövdesine
+       ortak `.field` işaretlemesiyle eklenir ve `run` içinden okunur.
+       (Eksik bileşen olarak raporlandı — ekran kendi penceresini kurmadı.) */
+    if(kayipMi && m && m.el){
+      var govde = m.el.querySelector('.gv-modal-body');
+      if(govde){
+        govde.insertAdjacentHTML('afterbegin',
+          '<div class="field"><label for="frsKayip">Kayıp nedeni <span class="req">*</span></label>' +
+          '<select id="frsKayip"><option value="">Seçiniz…</option>' +
+          (DB.lostReasons || []).map(function(k){
+            return '<option value="' + GV.esc(k) + '">' + GV.esc(k) + '</option>';
+          }).join('') + '</select></div>');
+        kayipSecici = govde.querySelector('#frsKayip');
+      }
+    }
+  }
+
+  /* KAZANMA — `GV.flow.gec` DEĞİL, zincirin kendisi (§5.3).
+     Zincir: aşama → hesabın evresi MUSTERI → denetim izi → öneriler.
+     Ekran kendi zincirini kurmaz, yeni müşteri kopyası üretmez. */
+  function kazan(o){
+    var r = GV.sales.firsatKazan(o.kod, { not:'Satış akışı panosundan kazanıldı' });
+    if(r.ok === false){
+      GV.toast(r.why === 'akis' ? GV.flowHata(r.akis)
+                                : (r.mesaj || 'Kazanma zinciri uygulanamadı.'), 'danger');
+      return;
+    }
+
+    /* Önce tazele — `GV.refresh()` açık overlay'leri kapatır, sonuç penceresi
+       ondan SONRA açılmalı (L-18). */
+    GV.refresh();
+
+    var oneriler = r.oneriler || [];
+    var res = GV.result({
+      title:'Fırsat kazanıldı — ' + o.kod,
+      tone:'ok',
+      text:hesapAdi(o) + (r.evreDegisti ? ' hesabı Müşteri evresine alındı.'
+                                        : ' hesabı zaten Müşteri evresindeydi.'),
+      body:(oneriler.length
+        ? '<p class="u-sm u-muted u-mb-4">Sıradaki adım:</p><div class="u-col">' +
+            oneriler.map(function(s){
+              return '<a class="btn btn-line btn-block" href="' + s.href + '">' +
+                     GV.esc(s.label) + '</a>';
+            }).join('') + '</div>'
+        : '<p class="u-sm u-faint">Bu fırsat için sıradaki adım önerisi türetilemedi.</p>'),
+      actions:[{ label:'Kapat', cls:'btn-acc' }]
+    });
+    /* Öneri bağlantıları `.gv-main` DIŞINA basılır; WIP gözlemcisi oraya
+       bakmaz (shell.js:794-804). Yayında olmayan hedefi kabuk kilitlesin
+       diye `markWip` elle çağrılır — sahte buton bırakılmaz. */
+    if(res && res.el && GV.markWip) GV.markWip(res.el);
+  }
+
+  /* =====================================================================
+     BACKEND PAYI — brief §10.2 (b). Maddeler tablodan KOPYALANIR.
+     ===================================================================== */
+  var BACKEND = [
+    { kod:'BE-S2', madde:'PATCH /api/customers/:id/lifecycle-stage yok; evre değişimi bellekte', bolum:'§9' },
+    { kod:'BE-S5', madde:'Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır', bolum:'§9 audit_event' }
+  ];
+  function backendKarti(){
+    return '<section class="gv-card"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+        '<span class="gc-meta">' + BACKEND.length + ' madde</span></div>' +
+      '<div class="gc-body">' +
+        GV.dl(BACKEND.map(function(g){
+          return ['<span class="cell-code">' + GV.esc(g.kod) + '</span>',
+                  GV.esc(g.madde) + GV.cell.sub(GV.esc(g.bolum))];
+        })) +
+        '<p class="u-faint u-sm u-mt-4">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+          '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+      '</div></section>';
+  }
+
+  /* =====================================================================
+     SAYFA BAŞLIĞI — `GV.list`ten ÖNCE (satır sayacı düğümünü o doğurur)
+     ===================================================================== */
+  GV.pageHead({
+    eyebrow:'Müşteri ve Satış',
+    title:'Satış Akışı',
+    sub:(DB.opportunities || []).length + ' fırsat · ' + ASAMALAR.length + ' aşama, ' +
+        (DB.pipelineGroups || []).length + ' pano kolonu',
+    actions:[
+      { label:'Yeni Fırsat', icon:'i-plus', cls:'btn-acc', href:'app-firsat-form.html' }
+    ]
+  });
+
+  /* Filtre seçenekleri kayıtlardan türetilir — elle liste yazılmaz. */
+  var sorumluSecenek = [];
+  var sicaklikSecenek = [];
+  (DB.opportunities || []).forEach(function(o){
+    if(o.sorumlu && !sorumluSecenek.some(function(x){ return x.value === o.sorumlu; }))
+      sorumluSecenek.push({ value:o.sorumlu, label:DB.empName(o.sorumlu) });
+    if(o.sicaklik && sicaklikSecenek.indexOf(o.sicaklik) === -1)
+      sicaklikSecenek.push(o.sicaklik);
+  });
+
+  GV.list({
+    mount:'#rec', id:'satisakisi', key:'kod',
+    source:function(){ return DB.opportunities; },
+    exportName:'satis-akisi', exportTitle:'Satış Akışı — Fırsatlar',
+    pageSize:10,
+    /* Pano varsayılan görünüm; tablo ve kart onun yanında durur. */
+    views:['kanban', 'table', 'card'],
+    /* Fırsat kaydında arşiv alanı yok — toggle basmak boş bir anahtar olurdu. */
+    archive:false,
+    defaultSort:'kapanisTahmini', defaultDir:'asc',
+
+    search:{
+      placeholder:'Fırsat, hesap, hizmet veya kayıt no ara',
+      fields:['kod', 'baslik', 'asama', 'hizmet', 'sicaklik', 'kaynak', 'legacy_id'],
+      extra:function(o){
+        return hesapAdi(o) + ' ' + (o.sorumlu ? DB.empName(o.sorumlu) : '');
+      }
+    },
+
+    /* Satış temsilcisi `gor:'kendi'` kapsamındadır: yalnız sorumlusu olduğu
+       fırsatları görür. Süzgeci bileşen uygular ve şeritle söyler (UID-05). */
+    scopeField:{ kendi:'sorumlu' },
+
+    kpis:[
+      { label:'Açık fırsat', icon:'i-funnel',
+        calc:function(base){ return base.filter(acikMi).length; },
+        meta:function(base){
+          return base.length + ' fırsatın ' + base.filter(acikMi).length + ' tanesi sonuçlanmadı';
+        } },
+
+      { label:'Toplam açık bütçe', icon:'i-wallet', tone:'info', perm:'finans', format:F.moneyK,
+        calc:function(base){ return toplam(base.filter(acikMi), function(o){ return o.butce; }); },
+        meta:function(base){
+          var eksik = base.filter(acikMi).filter(function(o){ return o.butce == null; }).length;
+          return eksik ? eksik + ' açık fırsatta bütçe yok, toplama girmedi'
+                       : 'açık fırsatların tamamında bütçe ölçüldü';
+        }, metaTone:'warn' },
+
+      { label:'Ağırlıklı hat', icon:'i-trend-up', tone:'ok', perm:'finans', format:F.moneyK,
+        calc:function(base){ return toplam(base.filter(acikMi), agirlikli); },
+        meta:function(){ return 'bütçe × aşama olasılığı — türetilmiş'; } },
+
+      { label:'Bu ay kapanması beklenen', icon:'i-calendar-check', tone:'warn',
+        calc:function(base){
+          var acik = base.filter(acikMi);
+          var tahminli = acik.filter(function(o){ return !!o.kapanisTahmini; });
+          /* Hiç kapanış tahmini yoksa ölçüm yapılamaz — 0 basmak, ölçülmemişi
+             "hiç yok" diye beyan etmek olurdu (L-13). */
+          if(!tahminli.length) return null;
+          return tahminli.filter(function(o){
+            return String(o.kapanisTahmini).slice(0, 7) === BU_AY;
+          }).length;
+        },
+        meta:function(base){
+          var yok = base.filter(acikMi).filter(function(o){ return !o.kapanisTahmini; }).length;
+          return BU_AY + ' dönemi' + (yok ? ' · ' + yok + ' açık fırsatta tahmin yok' : '');
+        } }
+    ],
+
+    /* Sekmeler `DB.pipelineStages`ten TÜRETİLİR: sonuç grubunun her aşaması
+       kendi sekmesini doğurur, gerisi "Açık" sekmesinde toplanır. Sözlüğe
+       yeni bir sonuç aşaması eklenirse sekme kendiliğinden doğar. */
+    tabs:[
+      { key:'tumu', label:'Tümü', icon:'i-list', filter:null },
+      { key:'acik', label:'Açık', icon:'i-funnel', filter:acikMi }
+    ].concat(SONUC_LISTE.map(function(s){
+      return {
+        key:'a' + s.sira,
+        label:s.key,
+        icon:TON_IKON[GV.tone(s.key)] || 'i-flag',
+        filter:function(o){ return o.asama === s.key; }
+      };
+    })),
+
+    columns:[
+      { key:'baslik', label:'Fırsat / Hesap', width:'24%', cellClass:'cell-wrap', locked:true,
+        render:function(o){
+          return GV.cell.link('app-firsat-detay.html?id=' + o.kod, o.baslik || o.kod,
+            '<span class="cell-code">' + GV.esc(o.kod) + ' · ' + GV.esc(hesapAdi(o)) + '</span>');
+        },
+        sortValue:function(o){ return o.baslik || o.kod; },
+        exportValue:function(o){ return (o.baslik || o.kod) + ' — ' + hesapAdi(o); } },
+
+      GV.cols.durum('asama', 'Aşama', {
+        sortValue:function(o){ return (asamaOf(o.asama) || {}).sira || 99; } }),
+
+      GV.cols.money('butce', 'Bütçe', { perm:'finans' }),
+
+      { key:'olasilik', label:'Olasılık', cellClass:'num',
+        sortValue:function(o){ var s = asamaOf(o.asama); return s ? s.olasilik : null; },
+        exportValue:function(o){ var s = asamaOf(o.asama); return s ? s.olasilik : ''; },
+        render:function(o){
+          var s = asamaOf(o.asama);
+          /* Olasılık kayıtta değil AŞAMA SÖZLÜĞÜNDE yaşar (crm.js:42-58).
+             Sözlükte olmayan aşama uydurma bir yüzdeyle doldurulmaz. */
+          return s ? GV.cell.oran(s.olasilik, 50) : GV.cell.faint('—');
+        } },
+
+      { key:'agirlikli', label:'Ağırlıklı tutar', cellClass:'num', perm:'finans',
+        sortValue:agirlikli,
+        exportValue:function(o){ var v = agirlikli(o); return v == null ? '' : v; },
+        render:function(o){
+          var v = agirlikli(o);
+          /* Bütçesi olmayan fırsatta ağırlıklı tutar TÜRETİLEMEZ. */
+          return v == null ? GV.cell.faint('—') : GV.cell.mny(v);
+        } },
+
+      GV.cols.durum('sicaklik', 'Sıcaklık'),
+
+      GV.cols.date('kapanisTahmini', 'Kapanış tahmini', {
+        bosMetin:'planlanmadı',
+        /* Sonuçlanmış fırsatta geçmiş tarih "gecikme" değildir. */
+        done:function(o){ return !acikMi(o); } }),
+
+      GV.cols.kisi('sorumlu', 'Sorumlu'),
+
+      { key:'hizmet', label:'Hizmet', visible:false,
+        render:function(o){ return o.hizmet ? GV.esc(o.hizmet) : GV.cell.faint('—'); } },
+      { key:'kaynak', label:'Kaynak', visible:false,
+        render:function(o){ return o.kaynak ? GV.esc(o.kaynak) : GV.cell.faint('—'); } },
+      { key:'kayipNedeni', label:'Kayıp nedeni', visible:false, cellClass:'cell-wrap',
+        render:function(o){ return o.kayipNedeni ? GV.esc(o.kayipNedeni) : GV.cell.faint('—'); } },
+      /* Göç izlenebilirliği — fırsat lead kaydından türetildi (lifecycle.js:193). */
+      { key:'legacy_id', label:'Kaynak kayıt', visible:false,
+        render:function(o){
+          return '<span class="cell-code">' + GV.esc(o.legacy_id) + ' · ' +
+                 GV.esc(o.legacy_kaynak) + '</span>';
+        } }
+    ],
+
+    filters:[
+      { key:'asama', label:'Aşama', type:'multi',
+        options:ASAMALAR.map(function(s){ return { value:s.key, label:s.key + ' · ' + s.grup }; }) },
+      { key:'sorumlu', label:'Sorumlu', type:'select', options:sorumluSecenek },
+      { key:'sicaklik', label:'Sıcaklık', type:'select', options:sicaklikSecenek },
+      { key:'hizmet', label:'Hizmet', type:'multi', options:DB.services },
+      { key:'kapanisTahmini', label:'Kapanış tahmini', type:'daterange' }
+    ],
+
+    rowClass:function(o){ return acikMi(o) ? '' : 'is-passive'; },
+
+    /* --- PANO: kolon = GRUP, kart = AŞAMA ---------------------------- */
+    kanban:{
+      columns:DB.pipelineGroups,
+      groupOf:function(o){ return DB.pipelineGroupOf(o.asama); },
+      card:function(o){
+        var s = asamaOf(o.asama);
+        return '<div class="gv-kcard-title">' +
+            '<a class="cell-main" href="app-firsat-detay.html?id=' + o.kod + '">' +
+            GV.esc(hesapAdi(o)) + '</a></div>' +
+          '<div class="cell-sub">' + GV.esc(o.baslik || o.kod) + '</div>' +
+          '<div class="gv-kcard-meta">' + GV.badge(o.asama) +
+            (s ? '<span class="u-num">%' + s.olasilik + '</span>' : '') + '</div>' +
+          '<div class="gv-kcard-meta">' + butceHtml(o, true) + GV.badge(o.sicaklik) + '</div>' +
+          '<div class="gv-kcard-meta">' +
+            (o.sorumlu ? GV.user(o.sorumlu, { sm:true }) : '<span class="u-faint">Atanmamış</span>') +
+            (o.kapanisTahmini ? GV.dateCell(o.kapanisTahmini, { done:!acikMi(o) })
+                              : '<span class="u-faint u-xs">tahmin yok</span>') +
+          '</div>' +
+          '<div class="cell-code">' + GV.esc(o.kod) + '</div>' +
+          ilerletDugmesi(o);
+      }
+    },
+
+    card:function(o){
+      var s = asamaOf(o.asama);
+      return '<div class="gv-rcard-top"><div>' +
+          '<a class="cell-main" href="app-firsat-detay.html?id=' + o.kod + '">' +
+          GV.esc(hesapAdi(o)) + '</a>' +
+          '<div class="cell-code">' + GV.esc(o.kod) + ' · ' + GV.esc(o.baslik || '—') + '</div></div>' +
+          GV.badge(o.asama) + '</div>' +
+        '<div class="gv-rcard-meta">' +
+          '<span>' + (s ? '%' + s.olasilik + ' olasılık' : 'olasılık yok') + '</span>' +
+          '<span>' + GV.esc(o.hizmet || '—') + '</span>' +
+          '<span>' + GV.badge(o.sicaklik) + '</span>' +
+        '</div>' +
+        '<div class="gv-rcard-foot">' + butceHtml(o, true) +
+          (o.sorumlu ? GV.user(o.sorumlu, { sm:true }) : '') + '</div>' +
+        ilerletDugmesi(o);
+    },
+
+    /* 980 px altı satır işaretlemesi — ortak `GV.cell.mrow` iskeleti.
+       İkinci bir tablo yazılmaz; aksiyon şeridini bileşen ekler. */
+    mobile:function(o){
+      var s = asamaOf(o.asama);
+      return GV.cell.mrow(
+        '<a class="cell-main" href="app-firsat-detay.html?id=' + o.kod + '">' +
+          GV.esc(o.baslik || o.kod) + '</a>' + GV.badge(o.asama),
+        GV.esc(o.kod) + ' · ' + GV.esc(hesapAdi(o)),
+        [ GV.ico('i-wallet', 'ic-sm') + butceHtml(o, true),
+          GV.ico('i-percent', 'ic-sm') + (s ? '%' + s.olasilik : '—'),
+          GV.ico('i-calendar', 'ic-sm') +
+            (o.kapanisTahmini ? F.dateShort(o.kapanisTahmini) : 'planlanmadı') ],
+        (o.sorumlu ? GV.user(o.sorumlu, { sm:true }) : '') + GV.badge(o.sicaklik)
+      );
+    },
+
+    rowActions:[
+      { key:'ac', icon:'i-external', label:'Fırsatı aç',
+        href:function(o){ return 'app-firsat-detay.html?id=' + o.kod; } },
+      { key:'ilerlet', icon:'i-trend-up', label:'Aşamayı ilerlet',
+        /* Terminal aşamadaki fırsatta hedef yok — ölü buton bırakılmaz. */
+        show:ilerletilebilir,
+        run:function(o){ asamaPenceresi(o); } }
+    ],
+
+    bulk:[
+      { key:'disa', label:'Dışa aktar', icon:'i-download', export:true }
+    ],
+
+    emptyState:{ icon:'i-funnel', title:'Bu görünümde fırsat yok',
+      desc:'Filtreleri değiştirebilirsiniz. Pano kolonları altı satış grubudur; ' +
+           'kartın üzerindeki rozet fırsatın gerçek aşamasını gösterir.' },
+
+    onRender:function(){
+      var kap = document.getElementById('rec');
+      if(!kap) return;
+
+      /* Backend payı beyanı listenin altına basılır. `render()` her çizimde
+         mount'u baştan yazdığı için birikme olmaz. */
+      kap.insertAdjacentHTML('beforeend', backendKarti());
+
+      /* Pano ve kart görünümündeki ilerletme düğmeleri. Düğümler mount'un
+         İÇİNDE olduğu için `GV.on` gerekmez — `innerHTML` onları siliyor. */
+      Array.prototype.forEach.call(kap.querySelectorAll('[data-ilerlet]'), function(b){
+        b.addEventListener('click', function(){
+          var kod = b.dataset.ilerlet;
+          var o = (DB.opportunities || []).filter(function(x){ return x.kod === kod; })[0];
+          if(o) asamaPenceresi(o);
+        });
+      });
+    }
+  });
+});
+</script>
+</body>
+</html>
