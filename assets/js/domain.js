@@ -1998,7 +1998,17 @@
         baslangic:null, termin:v.termin || null, tamamlanma:null,
         tahminiSure:v.tahminiSure != null ? v.tahminiSure : null,
         gercekSure:0,
-        faturalanabilir:v.faturalanabilir === true,
+        /* ⚠️ İKİ KOLEKSİYON, AYNI AD, AYRI ANLAM — ölçüldü:
+             `DB.tasks[].faturalanabilir`    → SAAT (26/26 sayı: 6.5 · 5 · 9 …)
+             `DB.timelogs[].faturalanabilir` → BOOLEAN (satır faturalanır mı)
+           İlk yazımda buraya `v.faturalanabilir === true` konmuştu; bu, sayısal
+           bir kolona boolean yazmak olurdu ve `GV.proje.sure().faturalanabilir`
+           toplaması sessizce bozulurdu.
+
+           Yeni görevin faturalanabilir SAATİ sıfırdır — henüz çalışılmadı.
+           Bu bir varsayım değil ölçüm: değer zaman kayıtlarından birikir,
+           oluşturma anında girilmez. Form bu alanı SORMAZ. */
+        faturalanabilir:0,
         ilerleme:0, revizyon:0, yenidenAcilma:0,
         aciklama:v.aciklama || null, amac:v.amac || null,
         kabulKriteri:v.kabulKriteri || null, beklenenCikti:v.beklenenCikti || null,
@@ -2405,9 +2415,23 @@
         var projeli = aday.filter(function(p){ return p.proje === k.proje; });
         if(projeli.length) aday = projeli;
       }
+      /* ⚠️ SEVİYE EŞLEŞMESİ `tip` ALANINDA DEĞİL. Ölçüldü:
+           `DB.supportPackages[].tip` → 7/7 **'Bakım'** — hizmetin CİNSİ
+           `DB.supportPackages[].ad`  → 'Kurumsal Bakım' · 'Standart Bakım' — SEVİYE
+           `DB.tickets[].bakimPaketi` → 'Kurumsal' · 'Standart' — seviye, KISA biçim
+         Eski kural `p.tip === k.bakimPaketi` karşılaştırıyordu ve iki küme
+         hiç kesişmediği için **hiçbir zaman tutmuyordu**: yordam sessizce
+         `aday[0]`a düşüyor, yani müşterinin birden çok paketi varsa yanlış
+         paketi döndürebiliyordu. Kusur görünmüyordu çünkü fonksiyon yine bir
+         paket döndürüyordu — yanlış olanı.
+
+         Seviye `ad`ın BAŞINDAN okunur; kısa biçim uzun adın önekidir. */
       if(k.bakimPaketi){
-        var tipli = aday.filter(function(p){ return p.tip === k.bakimPaketi; });
-        if(tipli.length) return tipli[0];
+        var ara = String(k.bakimPaketi).toLocaleLowerCase('tr').trim();
+        var seviyeli = aday.filter(function(p){
+          return String(p.ad || '').toLocaleLowerCase('tr').indexOf(ara) === 0;
+        });
+        if(seviyeli.length) return seviyeli[0];
       }
       return aday[0];
     },
