@@ -169,6 +169,22 @@
      1. DURUM SÖZLÜKLERİ (semantik ton eşlemesi)
      =================================================================== */
   var TONE = {
+    /* ---- personel yaşam döngüsü ve varlık durumları (V2-46 · K-33 turu) --
+       Ölçüldü: `DB.employeeStatuses` 7 değerin **6'sı**, `DB.assetStatuses`
+       5 değerin **3'ü** nötr basıyordu — yani rozet, üzerine yazılan kelime
+       dışında hiçbir şey söylemiyordu.
+
+       ⚠️ HEPSİ RENKLENDİRİLMEDİ. Nötr, "sözlükte yok" ile "bu durum gerçekten
+       nötr" arasında ayrım yapamadığı için sorunluydu; çözüm her şeyi boyamak
+       değil, hangisinin bilerek nötr olduğunu YAZMAK:
+         · `Pasif` · `Ayrıldı` · `Hurda` · `İade edildi` → **bilerek nötr.**
+           Dördü de kapanmış/emekli durumdur; gri doğru sinyaldir ve onları
+           renklendirmek kapalı bir kaydı canlı gibi gösterirdi.
+         · `Taslak` zaten yukarıda nötr olarak tanımlı (ortak ad).
+       Renklendirilenler, gerçekten bir şey söyleyen ARA durumlardır: */
+    'Onboarding':'info',         /* işe alım sürüyor */
+    'İzinli':'warn',             /* geçici olarak yok */
+    'Offboarding':'warn',        /* çıkış süreci sürüyor — henüz ayrılmadı */
     /* teslim müşteri onayı — DB.deliveries[].musteriOnay */
     'Revizyon istendi':'warn',
     /* lead sıcaklığı — DB.leads[].sicaklik (tek eksende geçer, çakışma yok) */
@@ -238,7 +254,12 @@
     'Gecikti':'danger', 'Yaklaşıyor':'warn', 'Zamanında':'ok', 'Tamam':'ok',
     'Ödendi':'ok', 'Kısmi':'warn', 'Ödenmedi':'danger', 'İletildi':'purple',
     'Serviste':'warn', 'Tahsisli':'info', 'Ortak kullanım':'accent', 'Kiralık':'info',
-    'Zimmetli':'info', 'Depoda':'neutral', 'Hurda':'neutral', 'Onarımda':'warn',
+    /* Demirbaş sözlüğü K-18'de 5 değere kavuştu (`DB.assetStatuses`) ve
+       `Depoda` artık `Hurda`dan AYRILMASI gereken bir durum: biri atanabilir
+       envanterdir, öbürü emekli. İkisi de nötr basarken rozet ikisini aynı
+       şey gösteriyordu. `Hurda` bilerek nötr KALIR (kapanmış kayıt). */
+    'Zimmetli':'info', 'Depoda':'info', 'Zimmet bekliyor':'warn',
+    'Hurda':'neutral', 'Onarımda':'warn',
     /* 'Onay bekliyor' yukarıda (görev durumları) tanımlı — satın alma ekseninde de aynı
        anlamı taşır, tek ton kullanılır. Sonunda boşluklu ikinci bir anahtar vardı, hiç
        eşleşmiyordu; silindi. Farklı vurgu gerekiyorsa GV.badge(v,'is-warn') ile açık ton geçilir. */
