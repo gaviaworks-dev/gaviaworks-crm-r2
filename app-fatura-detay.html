@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Fatura Detayı — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="finans" data-screen="fatura">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/data/firsat.js"></script>
+<script src="assets/data/odeme.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   FATURA DETAYI — ekran brief §6 (detay deseni) · §7 (GV.flow) · §17 (finans)
+
+   TEK KAYIT, TEK EKRAN. Kaynak `DB.invoices` (17 kayıt, misc.js:72).
+
+   BU EKRANIN İKİ EKSENİ VARDIR VE İKİSİ AYRI ŞEYDİR (org.js:420-427):
+     · `belgeDurum` — BELGE yaşam döngüsü. `GV.flow.gec('invoice', …)` ile
+       yazılır; varlık tanımında durum alanı budur (org.js:376), `durum`
+       DEĞİL. Ekran bu ekseni düğmelerle yönetir.
+     · `durum`      — ÖDEME durumu. TÜRETİLMİŞTİR: tahsis defterinin
+       toplamından hesaplanır (`GV.fin.durumTazele`, domain.js:1152).
+       Hiçbir düğme onu değiştirmez; elle atanan değer bir sonraki
+       tazelemede geri alınır (finans-kanon F5 bunu ölçüyor).
+
+   PARA TEK KAYNAKTAN OKUNUR: tutar çapası `GV.fin.tutar`, bakiye
+   `GV.fin.balance`, zincir `GV.fin.zincirDenetim`. Bu ekranda ikinci bir
+   KDV ya da bakiye formülü YOKTUR — "brüt eksi tahsil" satırı yazmak,
+   R1'in altı kopya bakiye formülünü yeniden doğurmaktı.
+
+   ÖLÇÜLMÜŞ VERİ GERÇEĞİ (brief §17.6): 17 faturanın 10'unda tahsis kaydı
+   var, 7'sinin bakiyesi açık. `DB.payments` bir ALACAK defteridir; 17
+   kaydın 7'si henüz tahsil edilmemiştir ve `GV.fin.tahsisEt` onları
+   REDDEDER. Bu ekran o kayıtları listede gizlemez — sebebiyle gösterir ve
+   seçilemez yapar: kullanıcıyı reddedilecek bir işleme sokmaz.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F     = GV.fmt;
+  var esc   = GV.esc;
+  var ico   = GV.ico;
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var kod       = new URLSearchParams(location.search).get('id');
+  var canFinans = GV.perm.can('finans');
+  var TI        = (DB.transitions || {}).invoice || {};
+  var BOS       = '<span class="u-faint">—</span>';
+
+  var f = (DB.invoices || []).filter(function(x){ return x.kod === kod; })[0] || null;
+
+  /* ---- 1. KAYIT YOK (brief §6 adım 1) ------------------------------ */
+  if(!f){
+    GV.pageHead({
+      eyebrow:'Finans · Faturalar',
+      title:'Kayıt bulunamadı',
+      sub:kod || '—',
+      actions:[{ label:'Listeye dön', icon:'i-arrow-left', href:'app-fatura.html' }]
+    });
+    mount.innerHTML = '<div class="gv-card">' + GV.errorState({
+      title:'Fatura bulunamadı',
+      desc:'Aradığınız fatura silinmiş ya da adres hatalı olabilir. Doğru kaydı fatura ' +
+           'listesinden seçebilirsiniz. Az önce üretilmiş bir kaydı arıyorsanız sebebi ' +
+           'başkadır: prototipte kayıtlar bellekte tutulur, sayfa yenilendiğinde ya da ' +
+           'yeni sekmede sıfırlanır (BE-S5).',
+      action:'<a class="btn btn-acc" href="app-fatura.html">Fatura listesine dön</a>'
+    }) + '</div>';
+    return;
+  }
+
+  /* ---- 2. KAYIT SAHİPLİĞİ KAPISI (brief §6 adım 2) ------------------ */
+  if(!GV.guardRecord({ mount:'#rec', musteri:f.musteri, kod:f.kod,
+                       eyebrow:'Finans · Faturalar', title:f.kod,
+                       geriHref:'app-fatura.html', geriLabel:'Fatura listesine dön' })) return;
+
+  /* ---- Ortak çizim yardımcıları (ekran içi; ortak katmana dokunulmadı)
+     Detay ekranı için tablo/kart ikizi üreten ORTAK bir bileşen yok —
+     `GV.list` liste ekranının bileşenidir. `app-teklif-detay.html:121`
+     aynı yerel yardımcıyı taşıyor; eksik bileşen raporlandı, yazılmadı. */
+  function kartBasi(ikon, baslik, sag){
+    return '<div class="gc-head"><h3 class="gc-title">' + ico(ikon) + esc(baslik) + '</h3>' +
+      (sag ? '<div class="gc-head-acts">' + sag + '</div>' : '') + '</div>';
+  }
+  function sayacEtiketi(n, birim){
+    return '<span class="u-faint u-sm">' + esc(String(n)) + ' ' + esc(birim) + '</span>';
+  }
+  /* Para TEK yerden ve maskeli. Yetkisiz rolde `0` DEĞİL `••••••` basılır
+     (brief §2.3 UID-11): `0` bir değerdir, "göremezsin" demek değildir. */
+  function para(v){
+    if(!canFinans) return '<span class="cell-mask">••••••</span>';
+    return GV.cell.mny(v == null ? null : v);
+  }
+  function paraMetin(v){ return canFinans ? F.money(v) : '••••••'; }
+  function tarih(iso){
+    return iso ? '<span class="cell-date">' + esc(F.date(iso)) + '</span>' : BOS;
+  }
+  function tablo(kolonlar, satirlar, mobil, altSatir){
+    return '<div class="gv-tablewrap"><table class="gtable"><thead><tr>' +
+      kolonlar.map(function(k){
+        return '<th' + (k.cls ? ' class="' + k.cls + '"' : '') + '>' + esc(k.label) + '</th>';
+      }).join('') + '</tr></thead><tbody>' +
+      satirlar.map(function(s){
+        return '<tr>' + s.map(function(hucre, i){
+          var k = kolonlar[i] || {};
+          return '<td' + (k.cls ? ' class="' + k.cls + '"' : '') + '>' + hucre + '</td>';
+        }).join('') + '</tr>';
+      }).join('') +
+      (altSatir
+        ? '<tr class="is-total">' + altSatir.map(function(hucre, i){
+            var k = kolonlar[i] || {};
+            return '<td' + (k.cls ? ' class="' + k.cls + '"' : '') + '>' + hucre + '</td>';
+          }).join('') + '</tr>'
+        : '') +
+      '</tbody></table></div>' +
+      '<div class="gv-cardlist">' + mobil.map(function(m){
+        return '<div class="gv-mrow">' + m + '</div>'; }).join('') + '</div>';
+  }
+
+  /* ===================================================================
+     3. TÜRETMELER — hepsi MOTORDAN, hiçbiri ekranda hesaplanmıyor
+     =================================================================== */
+  /* Çapa = NET (brief §17.2). Faturada KDV ORANI ALANI YOKTUR; oran
+     `kdv / net` üzerinden TÜRETİLİR — ters yönde okumak (oranı varsayıp
+     KDV'yi hesaplamak) R1'in çift KDV kusurunu doğuran hamleydi. */
+  var T   = GV.fin.tutar(f, 'invoice');
+  var bak = GV.fin.balance(f);
+  var gecikmede  = GV.fin.gecikti(f);
+  var gecikmeGun = GV.fin.gecikmeGun(f);
+
+  var tahsisler = (DB.paymentAllocations || []).filter(function(a){ return a.fatura === f.kod; });
+  var linkler   = (DB.paymentLinks || []).filter(function(l){ return l.fatura === f.kod; });
+  var sozlesme  = f.sozlesme
+    ? (DB.contracts || []).filter(function(x){ return x.kod === f.sozlesme; })[0] || null : null;
+  var taksit    = f.milestone
+    ? (DB.milestones || []).filter(function(x){ return x.kod === f.milestone; })[0] || null : null;
+  var zincir    = f.sozlesme ? GV.fin.zincirDenetim(f.sozlesme) : null;
+  var hesap     = GV.lifecycle.hesap(f.musteri);
+
+  /* Aynı müşterinin tahsilat kayıtları. TAHSİL EDİLMEMİŞ olanlar listeden
+     ATILMAZ — `GV.fin.tahsisEt` onları reddediyor ve kullanıcı sebebini
+     görmeden "neden yok" diye arıyordu. Sebep satırın kendisinde yazılı. */
+  function tahsilatlar(){
+    return (DB.payments || []).filter(function(p){ return p.musteri === f.musteri; });
+  }
+  /* Bir tahsilatın bu faturaya tahsis edilebilir olup olmadığı ve
+     OLMAMASININ SEBEBİ. Karar motorun kuralının aynası olarak yazıldı:
+     ret metni kullanıcıya işlemden ÖNCE gösterilir. */
+  function tahsisEngeli(p){
+    if(!p.tahsilEdildi)
+      return 'tahsil edilmedi — bu bir alacak kaydıdır, para hareketi değil; motor tahsisi reddeder';
+    if(tahsisler.filter(function(a){ return a.tahsilat === p.kod; }).length)
+      return 'bu faturaya zaten tahsis edilmiş';
+    if(!(p.dagitilmamis > 0))
+      return 'dağıtılmamış bakiyesi kalmadı';
+    return null;
+  }
+
+  /* ===================================================================
+     4. BELGE ÇIKTISI — GV.doc (brief §6.2)
+     Boş bölüm ve boş alan bileşen tarafından BASILMAZ.
+     =================================================================== */
+  function belge(){
+    var bolumler = [
+      { h:'Fatura bilgileri', dl:[
+        ['Fatura no',      f.kod],
+        ['Müşteri',        f.musteriAd ? f.musteriAd + (f.musteri ? ' (' + f.musteri + ')' : '') : ''],
+        ['Sözleşme',       f.sozlesme || ''],
+        ['Proje',          f.proje || ''],
+        ['Ödeme planı taksiti', taksit ? (taksit.kod + ' · ' + taksit.ad) : (f.milestone || '')],
+        ['Fatura tarihi',  f.tarih ? F.date(f.tarih) : ''],
+        ['Vade',           f.vade ? F.date(f.vade) : ''],
+        ['Belge durumu',   f.belgeDurum],
+        ['Ödeme durumu',   f.durum + ' (tahsis toplamından türetildi)']
+      ] },
+      { h:'Tutar özeti', dl:[
+        ['Net (KDV hariç)', paraMetin(T.net)],
+        ['KDV oranı',       T.oran == null ? '' : '%' + T.oran + ' (tutardan türetildi)'],
+        ['KDV tutarı',      paraMetin(T.kdv)],
+        ['Brüt (KDV dahil)', paraMetin(T.brut)],
+        ['Kayıtlı brüt',    T.tutarli ? '' : paraMetin(T.kayitliBrut)]
+      ] },
+      { h:'Bakiye', dl:[
+        ['Tahsil edilen', paraMetin(bak.tahsil)],
+        ['Açık bakiye',   paraMetin(bak.acik)],
+        ['Tahsilat oranı', canFinans ? '%' + bak.oran : '••••••'],
+        ['Gecikme',       gecikmede ? gecikmeGun + ' gün' : '']
+      ] }
+    ];
+
+    if(tahsisler.length){
+      bolumler.push({ h:'Tahsis defteri', tablo:{
+        head:['Tahsilat', 'Tutar', 'Tarih', 'Yöntem', 'Dekont'],
+        rows:tahsisler.map(function(a){
+          return [a.tahsilat, paraMetin(a.tutar), a.tarih ? F.date(a.tarih) : '—',
+                  a.yontem || '—', a.dekont || '—'];
+        })
+      } });
+    }else{
+      bolumler.push({ h:'Tahsis defteri', metin:'Bu faturaya henüz hiçbir tahsilat tahsis ' +
+        'edilmedi. Bakiye yalnız tahsis defterinden türer; "tahsilat kaydı var" ile ' +
+        '"para geldi" aynı şey değildir.' });
+    }
+
+    bolumler.push({ h:'Beyan', metin:'Bu belge kayıttan türetilmiştir ve ayrıca saklanmaz. ' +
+      'Tutarlar bağımsız çapadan (NET) doğrulanmıştır: brüt her yerde net + KDV olarak ' +
+      'yeniden hesaplanır, kayıttaki brüt otoriter değil doğrulanandır' +
+      (T.tutarli ? ' ve bu kayıtta ikisi tutuyor.' : ' — ve bu kayıtta ikisi TUTMUYOR, sapma yukarıda yazılı.') +
+      ' Ödeme durumu tahsis toplamından türetilir, elle atanmaz. Bu belge bir e-fatura ' +
+      'DEĞİLDİR: prototipte e-fatura/e-arşiv entegrasyonu yoktur (BE-F1).' });
+
+    return GV.doc({
+      baslik:'Fatura ' + f.kod + (f.musteriAd ? ' — ' + f.musteriAd : ''),
+      ikon:'i-receipt',
+      altBilgi:'Gavia Works · ' + (f.tarih ? F.date(f.tarih) : '—') +
+               ' · belge durumu: ' + f.belgeDurum + ' · ödeme durumu: ' + f.durum +
+               (canFinans ? '' : ' · tutarlar rolünüzde maskelidir'),
+      bolumler:bolumler
+    });
+  }
+
+  /* ===================================================================
+     5. SOL SÜTUN
+     =================================================================== */
+
+  /* ---- 5.1 KÜNYE ---------------------------------------------------- */
+  function cizKunye(){
+    /* Müşteri bağı: fatura `musteri` alanı `MUS-*` kodudur (brief §13.1).
+       Hesap kaydı `DB.accounts` üzerinden çözülür; yaşam evresi oradan
+       okunur — `DB.customers[].durum` BAYAT ALANDIR ve okunmaz (K-21). */
+    var musteriHtml;
+    if(!f.musteri){
+      musteriHtml = BOS + GV.cell.sub('faturada müşteri kodu yok');
+    }else if(!hesap){
+      musteriHtml = '<span class="cell-code">' + esc(f.musteri) + '</span>' +
+        GV.cell.sub('bu kodla bir hesap kaydı bulunamadı');
+    }else{
+      musteriHtml = GV.cell.link('app-musteri-detay.html?id=' + esc(hesap.kod), hesap.unvan,
+        GV.cell.sub(esc(hesap.kod) + ' · ' + GV.lifecycle.rozet(hesap.evre)));
+    }
+
+    var vadeHtml;
+    if(!f.vade){
+      vadeHtml = BOS + GV.cell.sub('vade tarihi kayıtta yok');
+    }else if(gecikmede){
+      vadeHtml = '<span class="u-danger">' + esc(F.date(f.vade)) + '</span>' +
+        GV.cell.sub(esc(String(gecikmeGun)) + ' gün gecikti — ölçüm günü ' + esc(F.date(DB.today)) +
+          ' · gecikme ödeme durumundan AYRI eksendir');
+    }else{
+      vadeHtml = GV.dateCell(f.vade, { done:bak.tamOdendi });
+    }
+
+    var satirlar = [
+      ['Fatura no',   '<span class="cell-code">' + esc(f.kod) + '</span>'],
+      ['Müşteri',     musteriHtml],
+      ['Belge durumu', GV.badge(f.belgeDurum) +
+                      ((TI[f.belgeDurum] || {}).terminal
+                        ? GV.cell.sub('terminal durum — tanımlı çıkış yok') : '')],
+      ['Ödeme durumu', GV.badge(f.durum) + GV.cell.sub('türetilmiş — tahsis toplamından')],
+      ['Fatura tarihi', f.tarih ? tarih(f.tarih) : null],
+      ['Vade',        vadeHtml],
+      ['Sözleşme',    f.sozlesme
+                        ? '<span class="cell-code">' + esc(f.sozlesme) + '</span>' +
+                          (sozlesme ? GV.cell.sub(esc(sozlesme.ad || '—'))
+                                    : GV.cell.sub('bu kodla bir sözleşme kaydı bulunamadı'))
+                        : BOS + GV.cell.sub('sözleşmesiz fatura — zincir denetimi yapılamaz')],
+      ['Taksit',      taksit
+                        ? '<span class="cell-code">' + esc(taksit.kod) + '</span>' +
+                          GV.cell.sub(esc(taksit.ad || '—') + ' · ' + esc(String(taksit.taksit || '—')) +
+                            '. taksit · ' + esc(paraMetin(taksit.odeme)) + ' NET')
+                        : BOS + GV.cell.sub(f.milestone
+                            ? 'kayıtta ' + esc(f.milestone) + ' yazılı ama taksit kaydı bulunamadı'
+                            : 'ödeme planı taksitine bağlı değil')],
+      ['Proje',       f.proje ? '<span class="cell-code">' + esc(f.proje) + '</span>' : null],
+      ['Ödeme tarihi', f.odemeTarihi
+                        ? tarih(f.odemeTarihi) + GV.cell.sub('son tahsis tarihinden türetildi')
+                        : BOS + GV.cell.sub('fatura tam ödenmedi — ödeme tarihi türetilmedi')]
+    ];
+
+    return '<section class="gv-card">' +
+      kartBasi('i-receipt', 'Fatura künyesi', GV.badge(f.belgeDurum)) +
+      '<div class="gc-body">' + GV.dl(satirlar) + '</div>' +
+    '</section>';
+  }
+
+  /* ---- 5.2 TUTAR ÖZETİ + BAKİYE ------------------------------------- */
+  function cizTutar(){
+    var maskeNotu = canFinans ? ''
+      : '<div class="gc-body">' + GV.notice({ tone:'info', icon:'i-lock',
+          title:'Tutarlar maskeli',
+          text:'Rolünüzde finans yetkisi yok; tutarlar "••••••" basılır. Bu bir SIFIR ' +
+               'değildir — değer vardır, size gösterilmez.' }) + '</div>';
+
+    var satir = function(etiket, deger, alt){
+      return '<div class="gv-summary-row"><span class="gv-summary-lbl">' + esc(etiket) +
+        (alt ? ' ' + GV.cell.sub(esc(alt)) : '') + '</span>' +
+        '<span class="gv-summary-val">' + deger + '</span></div>';
+    };
+
+    /* Dört satırın DÖRDÜ de `GV.fin.tutar`tan gelir. Ekran net + KDV
+       toplamıyor, oranı bölmüyor — çapa zincirin dışındadır (brief §17.2). */
+    var tutarBlok =
+      satir('Net', para(T.net), 'çapa ekseni · alan adı: tutar') +
+      satir('KDV oranı',
+            T.oran == null ? BOS : '<span class="u-num">%' + esc(String(T.oran)) + '</span>',
+            'faturada oran alanı YOK — KDV/net üzerinden türetildi') +
+      satir('KDV tutarı', para(T.kdv), 'alan adı: vergi') +
+      satir('Brüt', para(T.brut), 'KDV dahil · net + KDV olarak yeniden hesaplandı');
+
+    /* Bakiye de TEK kaynaktan: `GV.fin.balance`. İkinci formül yasak. */
+    var bakiyeBlok =
+      satir('Tahsil edilen', para(bak.tahsil), 'tahsis defteri toplamı') +
+      satir('Açık bakiye', para(bak.acik), bak.tamOdendi ? 'fatura kapandı' : 'brüt eksende') +
+      satir('Tahsilat oranı',
+            canFinans ? GV.progress(bak.oran) : '<span class="cell-mask">••••••</span>');
+
+    /* Kayıt kendi içinde çelişiyorsa SÖYLENİR. Sessizce birini seçmek,
+       hangi sayının doğru olduğuna kod adına karar vermektir. */
+    var denetim;
+    if(T.tutarli){
+      denetim = '<span class="u-faint u-sm">Kayıttaki KDV ve brüt, net üzerinden yapılan ' +
+        'çapa türetmesiyle birebir tutuyor.</span>';
+    }else{
+      denetim = GV.notice({ tone:'danger', icon:'i-alert',
+        title:'Kayıttaki tutar bağımsız çapayla tutmuyor',
+        text:T.sapma.map(function(s){
+          return (s.eksen === 'kdv' ? 'KDV' : 'Brüt') + ' ekseninde kayıtlı ' +
+                 paraMetin(s.kayitli) + ', çapadan beklenen ' + paraMetin(s.beklenen) +
+                 ' (fark ' + paraMetin(Math.abs((s.kayitli || 0) - (s.beklenen || 0))) + ')';
+        }).join(' · ') + '. Bu ekran ikisinden birini doğru sayıp diğerini gizlemez — ' +
+        'hangisinin esas alınacağı bir veri kararıdır ve prototipte verilmemiştir.' });
+    }
+
+    return '<section class="gv-card">' +
+      kartBasi('i-wallet', 'Tutar ve bakiye', GV.badge(f.durum)) +
+      maskeNotu +
+      '<div class="gc-body"><div class="gv-summary">' + tutarBlok + '</div></div>' +
+      '<div class="gc-body"><div class="gv-summary">' + bakiyeBlok + '</div></div>' +
+      '<div class="gc-body">' + denetim + '</div>' +
+      '<div class="gc-body u-faint u-sm">Tutarlar <code>GV.fin.tutar</code>, bakiye ' +
+        '<code>GV.fin.balance</code> yordamından okunur. Bu ekranda ikinci bir KDV ya da ' +
+        'bakiye formülü yoktur; olsaydı ikisi bir gün ayrışır ve kod yanlış cevabı ' +
+        'kendinden emin verirdi.</div>' +
+    '</section>';
+  }
+
+  /* ---- 5.3 ZİNCİR DENETİMİ (brief §17.3) ---------------------------- */
+  function halkaDurumu(hl){
+    if(!hl.kapsam)          return GV.badge('ölçülemedi', 'is-neutral');
+    if(hl.tutar === false)  return GV.badge('sapma var', 'is-danger');
+    return GV.badge('tutuyor', 'is-ok');
+  }
+  function halkaDetay(hl){
+    if(!hl.kapsam) return esc(hl.not || 'sebep bildirilmedi') +
+      ' — bu bir “sıfır” değil, ölçüm yapılamadığı anlamına gelir';
+
+    var s = '';
+    if(hl.sol && hl.sag && hl.sol.net != null && hl.sag.net != null){
+      s = esc(hl.sol.kod) + ' NET ' + esc(paraMetin(hl.sol.net)) + ' → ' +
+          esc(hl.sag.kod) + ' NET ' + esc(paraMetin(hl.sag.net)) +
+          ' · fark ' + esc(paraMetin(hl.fark || 0));
+    }else if(hl.sol || hl.sag){
+      s = esc((hl.sol && hl.sol.kod) || '—') + ' → ' + esc((hl.sag && hl.sag.kod) || '—');
+    }
+    if(hl.tutar === false && hl.sapan && hl.sapan.length){
+      s += (s ? ' · ' : '') + 'sapma: ' + hl.sapan.map(function(x){
+        return esc(x.kod) + ' — ' + esc(x.sebep); }).join(' · ');
+    }
+    return s + (hl.not ? (s ? ' · ' : '') + esc(hl.not) : '');
+  }
+
+  function cizZincir(){
+    /* SÖZLEŞMESİ YOKSA HALKA HİÇ ÇİZİLMEZ. `GV.fin.zincirDenetim` bir
+       sözleşme kodu ister; sözleşmesiz faturayı "sapan" saymak, henüz
+       yapılmamış bir işi hata saymaktır (brief §17.3). */
+    if(!f.sozlesme){
+      return '<section class="gv-card">' +
+        kartBasi('i-layers', 'Finans zinciri') +
+        GV.empty({ icon:'i-layers',
+          title:'Bu fatura bir sözleşmeye bağlı değil',
+          desc:'Zincir denetimi sözleşme ekseninde yürür: teklif → sözleşme → ödeme planı ' +
+               '→ fatura → tahsilat. Bu faturanın sözleşme alanı boş olduğu için hiçbir halka ' +
+               'çizilmedi. Halkaların “tuttuğu” değil, ÖLÇÜLEMEDİĞİ anlamına gelir.' }) +
+      '</section>';
+    }
+    if(!zincir){
+      return '<section class="gv-card">' +
+        kartBasi('i-layers', 'Finans zinciri') +
+        GV.empty({ icon:'i-layers',
+          title:'Sözleşme kaydı bulunamadı',
+          desc:'Fatura ' + f.sozlesme + ' sözleşmesine bağlı ama bu kodla bir sözleşme kaydı ' +
+               'yok; zincir denetimi koşturulamadı. Bu bir sapma bildirimi DEĞİLDİR — ölçüm ' +
+               'yapılamadı.' }) +
+      '</section>';
+    }
+
+    var satirlar = zincir.halka.map(function(hl){
+      /* Bu faturanın zincirdeki yeri: son iki halka onu kapsar. */
+      var burada = String(hl.ad).indexOf('Fatura') !== -1;
+      return '<li' + (burada ? ' aria-current="true"' : '') + '><span>' +
+        '<b>' + esc(hl.ad) + '</b> ' + halkaDurumu(hl) +
+        (burada ? ' ' + GV.badge('bu fatura burada', 'is-accent') : '') +
+        GV.cell.sub(halkaDetay(hl)) +
+      '</span><span class="cell-sub">' +
+        (hl.kapsam ? 'ölçüldü' : 'ölçülemedi') +
+      '</span></li>';
+    }).join('');
+
+    var yer = GV.notice({ tone:'info', icon:'i-milestone',
+      title:'Bu faturanın zincirdeki yeri',
+      text:(sozlesme ? sozlesme.kod + ' sözleşmesi' : f.sozlesme) +
+           ' → ' + (taksit ? taksit.kod + ' taksiti' : 'taksite bağlı değil') +
+           ' → ' + f.kod + ' faturası → ' +
+           (tahsisler.length ? tahsisler.length + ' tahsis kaydı' : 'henüz tahsis yok') +
+           '. Denetim sözleşmenin TAMAMINI ölçer; bu fatura son iki halkanın içindedir.' });
+
+    var ozet = '<div class="gc-body u-faint u-sm">' +
+      esc(String(zincir.olculen)) + '/' + esc(String(zincir.halkaSayisi)) + ' halka ölçülebildi · ' +
+      esc(String(zincir.sapan)) + ' halkada sapma var. Ölçülemeyen halka bir hata değildir: ' +
+      'karşılığı olan kayıt henüz yoktur ve sebebi her satırda yazılı.</div>';
+
+    return '<section class="gv-card">' +
+      kartBasi('i-layers', 'Finans zinciri — ' + f.sozlesme,
+        sayacEtiketi(zincir.olculen + '/' + zincir.halkaSayisi, 'halka ölçüldü')) +
+      '<div class="gc-body">' + yer + '</div>' +
+      '<ul class="gv-checklist">' + satirlar + '</ul>' +
+      ozet +
+      '<div class="gc-body u-faint u-sm">Denetimi <code>GV.fin.zincirDenetim</code> koşturur; ' +
+        'ekran kendi karşılaştırmasını yapmaz. İlk üç halka NET, son halka BRÜT eksende ' +
+        'ölçülür — çapa zincirin DIŞINDADIR: içinden bakan bir kontrol çift KDV kusurunu ' +
+        'göremezdi, çünkü alt zincir yanlış çapaya göre kendi içinde tutarlı kalırdı.</div>' +
+    '</section>';
+  }
+
+  /* ---- 5.4 TAHSİS DEFTERİ ------------------------------------------- */
+  function cizTahsisDefteri(){
+    if(!tahsisler.length){
+      return '<section class="gv-card">' +
+        kartBasi('i-wallet', 'Tahsis defteri') +
+        GV.empty({ icon:'i-wallet',
+          title:'Bu faturaya henüz tahsilat tahsis edilmedi',
+          desc:'Fatura bakiyesinin TEK kaynağı tahsis defteridir; defterde satır olmadığı ' +
+               'için açık bakiye fatura brütüne eşittir. Aynı müşteride bir tahsilat kaydı ' +
+               'bulunması “para geldi” demek değildir — nakit olayı ayrı alandır.' }) +
+      '</section>';
+    }
+
+    var kolonlar = [
+      { label:'Tahsilat' }, { label:'Tutar', cls:'num' }, { label:'Tarih' },
+      { label:'Yöntem' }, { label:'Dekont', cls:'cell-wrap' }
+    ];
+    var satirlar = tahsisler.map(function(a){
+      return [
+        GV.cell.link('app-tahsilat.html?id=' + esc(a.tahsilat), a.tahsilat,
+          a.turetilmis ? GV.cell.sub('R1’deki birebir bağdan türetildi') : ''),
+        para(a.tutar),
+        a.tarih ? tarih(a.tarih) : BOS,
+        a.yontem
+          ? esc(a.yontem) + (a.turetilmis ? GV.cell.sub('yöntem kaynak veride yoktu') : '')
+          : BOS + GV.cell.sub('yöntem kaydedilmemiş'),
+        a.dekont ? esc(a.dekont) : BOS + GV.cell.sub('dekont numarası girilmemiş')
+      ];
+    });
+    /* Alt satır `GV.fin.balance`ın tahsil toplamıdır — burada ikinci bir
+       toplama YAPILMAZ, defterin toplamı motorun söylediğidir. */
+    var altSatir = ['<b>Tahsis toplamı</b>', para(bak.tahsil), '', '', ''];
+    var mobil = tahsisler.map(function(a){
+      return GV.cell.mrow(
+        '<span class="cell-main">' + esc(a.tahsilat) + '</span>',
+        esc(a.tarih ? F.date(a.tarih) : '—'),
+        [ ico('i-wallet','ic-sm') + esc(a.yontem || '—'),
+          ico('i-file','ic-sm') + esc(a.dekont || 'dekont yok') ],
+        para(a.tutar));
+    });
+
+    return '<section class="gv-card">' +
+      kartBasi('i-wallet', 'Tahsis defteri', sayacEtiketi(tahsisler.length, 'satır')) +
+      tablo(kolonlar, satirlar, mobil, altSatir) +
+      '<div class="gc-body u-faint u-sm">Bu defter bakiyenin TEK kaynağıdır ' +
+        '(<code>DB.paymentAllocations</code>). Fatura ödeme durumu buradan türetilir; ' +
+        'defter değişmeden durum değişmez.</div>' +
+    '</section>';
+  }
+
+  /* ---- 5.5 ÖDEME LİNKLERİ ------------------------------------------- */
+  function cizLinkler(){
+    var olusturBaglantisi = bak.acik > 0
+      ? '<a class="btn btn-line btn-sm" href="app-odeme-linki-form.html?fatura=' + esc(f.kod) + '">' +
+          ico('i-plus','ic-sm') + ' Ödeme linki oluştur</a>'
+      : '';
+
+    if(!linkler.length){
+      return '<section class="gv-card">' +
+        kartBasi('i-link', 'Ödeme linkleri', olusturBaglantisi) +
+        GV.empty({ icon:'i-link',
+          title:'Bu faturaya bağlı ödeme linki yok',
+          desc:bak.acik > 0
+            ? 'Açık bakiyesi olan bu fatura için henüz link üretilmemiş. Yukarıdaki ' +
+              'düğmeden oluşturabilirsiniz.'
+            : 'Kapalı faturaya link üretilmez: üretmek, o tahsilatın bir ödeme linki ' +
+              'üzerinden geldiğini iddia etmek olurdu — kaynak veri bunu söylemiyor.' }) +
+      '</section>';
+    }
+
+    var kolonlar = [
+      { label:'Link' }, { label:'Durum' }, { label:'Tutar', cls:'num' }, { label:'Son kullanma' }
+    ];
+    var linkDurum = function(l){
+      var s = (DB.paymentLinkStages || {})[l.durum] || {};
+      return GV.badge(s.ad || l.durum, s.tone || '') +
+        (s.anlam ? GV.cell.sub(esc(s.anlam)) : '');
+    };
+    var satirlar = linkler.map(function(l){
+      return [
+        GV.cell.link('app-odeme-linki-detay.html?id=' + esc(l.kod), l.kod,
+          GV.cell.sub('sağlayıcı: ' + esc(l.saglayici || '—'))),
+        linkDurum(l),
+        para(l.tutar),
+        l.sonKullanma
+          ? (l.sonKullanma < DB.today
+              ? '<span class="u-danger">' + esc(F.date(l.sonKullanma)) + '</span>' +
+                GV.cell.sub('süre doldu')
+              : tarih(l.sonKullanma))
+          : BOS
+      ];
+    });
+    var mobil = linkler.map(function(l){
+      return GV.cell.mrow(
+        '<span class="cell-main">' + esc(l.kod) + '</span>',
+        esc(l.saglayici || '—'),
+        [ ico('i-clock','ic-sm') + esc(l.sonKullanma ? F.date(l.sonKullanma) : '—') ],
+        linkDurum(l));
+    });
+
+    return '<section class="gv-card">' +
+      kartBasi('i-link', 'Ödeme linkleri',
+        sayacEtiketi(linkler.length, 'link') + olusturBaglantisi) +
+      tablo(kolonlar, satirlar, mobil) +
+      '<div class="gc-body u-faint u-sm">Linkler açık bakiyeli faturalardan TÜRETİLİR ' +
+        '(<code>assets/data/odeme.js</code>). Sağlayıcı seçilmedi; bu depoda hiçbir ödeme ' +
+        'bir sağlayıcıdan geçmedi — link üzerinden gelen tahsilat kaydı yoktur.</div>' +
+    '</section>';
+  }
+
+  /* ---- 5.6 AKTİVİTE ------------------------------------------------- */
+  function cizAktivite(){
+    var izler = GV.audit.oku(f.kod, 30);
+    return '<section class="gv-card">' +
+      kartBasi('i-activity', 'Aktivite ve denetim izi', sayacEtiketi(izler.length, 'hareket')) +
+      '<div class="gc-body">' + GV.activity(izler) + '</div>' +
+    '</section>';
+  }
+
+  /* ===================================================================
+     6. SAĞ SÜTUN
+     =================================================================== */
+
+  /* ---- 6.1 BELGE DURUMU GEÇİŞLERİ ----------------------------------- */
+  function cizBelgeGecis(){
+    var adimlar = GV.flow.adimlar('invoice', f.kod) || [];
+    var kural   = TI[f.belgeDurum] || {};
+
+    var govde;
+    if(!adimlar.length){
+      govde = '<div class="gc-body u-faint u-sm">' +
+        (kural.terminal
+          ? '“' + esc(f.belgeDurum) + '” terminal bir belge durumudur; geçiş ' +
+            'tablosunda tanımlı çıkış yok.'
+          : 'Bu belge durumundan tanımlı bir geçiş yok.') + '</div>';
+    }else{
+      govde = '<div class="gc-body"><div class="u-row u-wrap">' +
+        adimlar.map(function(a){
+          var cls = a.birincil ? (a.tone || 'btn-acc')
+                  : (a.tone === 'btn-danger-line' ? 'btn-danger-line' : 'btn-line');
+          var kilit = !a.izin
+            ? ' disabled title="Bu geçiş için yetkiniz yok"'
+            : (a.eksik && a.eksik.length
+                ? ' disabled title="Eksik alan: ' + esc(a.eksik.join(', ')) + '"' : '');
+          return '<button type="button" class="btn ' + cls + ' btn-sm" ' +
+            'data-hedef="' + esc(a.hedef) + '"' + kilit + '>' + esc(a.etiket) + '</button>';
+        }).join('') + '</div></div>';
+    }
+
+    /* Zorunlu alan eksikse motor bunu ADIMDA bildiriyor; ayrıca yazılır ki
+       kullanıcı düğmenin neden kilitli olduğunu tooltip beklemeden görsün. */
+    var eksikAlan = (adimlar[0] && adimlar[0].eksik) || [];
+    var eksikNotu = eksikAlan.length
+      ? '<div class="gc-body">' + GV.notice({ tone:'warn', icon:'i-alert',
+          title:'Geçiş için eksik alan var',
+          text:eksikAlan.join(' · ') + ' — bu alanlar dolmadan geçiş reddedilir. ' +
+               'Liste motordan gelir; ekran kendi zorunluluk sözlüğünü tutmaz.' }) + '</div>'
+      : '';
+
+    var gerekceliler = adimlar.filter(function(a){ return a.gerekce; })
+                              .map(function(a){ return a.hedef; });
+    var gerekceNotu = gerekceliler.length
+      ? '<div class="gc-body u-faint u-sm">Gerekçe isteyen hedefler: <b>' +
+        esc(gerekceliler.join(' · ')) + '</b>. Bu hedeflerde neden kodu ve açıklama ' +
+        'zorunludur; karar penceresi ikisini de sorar ve denetim izine yazar.</div>'
+      : '';
+
+    return '<section class="gv-card">' +
+      kartBasi('i-refresh', 'Belge durumu', GV.badge(f.belgeDurum)) +
+      '<div class="gc-body u-sm u-muted">Şu an: <b class="u-ink">' + esc(f.belgeDurum) + '</b>. ' +
+        'Bu kart faturanın <b>belge</b> eksenini yönetir (<code>belgeDurum</code>); düğmeler ' +
+        '<code>DB.transitions.invoice</code> tablosundan türetilir. Ödeme durumu AYRI bir ' +
+        'eksendir ve buradan değiştirilemez.</div>' +
+      govde + eksikNotu + gerekceNotu +
+    '</section>';
+  }
+
+  /* ---- 6.2 ÖDEME DURUMU — TÜRETİLMİŞ, ELLE DEĞİŞTİRİLEMEZ ----------- */
+  function cizOdemeDurumu(){
+    var gecikmeSatiri = gecikmede
+      ? GV.notice({ tone:'danger', icon:'i-clock',
+          title:'Vadesi ' + gecikmeGun + ' gün geçti',
+          text:'Gecikme AYRI bir eksendir (' + f.kod + ' · vade ' + F.date(f.vade) + '). ' +
+               'Ödeme durumuyla aynı alanda tutulsaydı, kısmi ödenmiş ama vadesi geçmiş bir ' +
+               'faturada ödemenin bir kısmının geldiği bilgisi silinirdi.' })
+      : '';
+
+    return '<section class="gv-card">' +
+      kartBasi('i-percent', 'Ödeme durumu', GV.badge(f.durum)) +
+      '<div class="gc-body"><div class="gv-summary">' +
+        '<div class="gv-summary-row"><span class="gv-summary-lbl">Tahsilat oranı</span>' +
+        '<span class="gv-summary-val">' +
+          (canFinans ? GV.progress(bak.oran) : '<span class="cell-mask">••••••</span>') +
+        '</span></div>' +
+      '</div></div>' +
+      (gecikmeSatiri ? '<div class="gc-body">' + gecikmeSatiri + '</div>' : '') +
+      '<div class="gc-body">' + GV.notice({ tone:'info', icon:'i-info',
+        title:'Bu durum TÜRETİLMİŞTİR',
+        text:'“' + f.durum + '” değeri tahsis defterinin toplamından hesaplanır, ' +
+             'elle atanmaz. Bu yüzden bu kartta durum değiştirme düğmesi YOKTUR: faturayı ' +
+             'kapatmanın tek yolu bir para hareketini ona tahsis etmektir. Elle yazılan bir ' +
+             'değer bir sonraki tazelemede geri alınır.' }) + '</div>' +
+    '</section>';
+  }
+
+  /* ---- 6.3 TAHSİLAT TAHSİS ET --------------------------------------- */
+  function cizTahsisEt(){
+    if(bak.acik <= 0){
+      return '<section class="gv-card">' +
+        kartBasi('i-check-circle', 'Tahsilat tahsis et') +
+        '<div class="gc-body">' + GV.notice({ tone:'ok', icon:'i-check-circle',
+          title:'Faturanın açık bakiyesi yok',
+          text:'Tahsis toplamı fatura brütüne ulaştı; fazla ödeme ayrı bir kayıt gerektirir ' +
+               've motor fazlasını reddeder. Yeni bir tahsis alanı açılmadı.' }) + '</div>' +
+      '</section>';
+    }
+    if(!canFinans){
+      return '<section class="gv-card">' +
+        kartBasi('i-lock', 'Tahsilat tahsis et') +
+        '<div class="gc-body">' + GV.notice({ tone:'info', icon:'i-lock',
+          title:'Bu işlem rolünüze kapalı',
+          text:'Tahsis yalnız finans yetkisi olan rollerde yapılabilir; motor yetkisiz ' +
+               'çağrıyı zaten reddeder. Kullanılamayacak bir form basmak yerine sebebi ' +
+               'yazıldı.' }) + '</div>' +
+      '</section>';
+    }
+
+    var liste = tahsilatlar();
+    if(!liste.length){
+      return '<section class="gv-card">' +
+        kartBasi('i-wallet', 'Tahsilat tahsis et') +
+        GV.empty({ icon:'i-wallet',
+          title:'Bu müşterinin tahsilat kaydı yok',
+          desc:'Tahsis, aynı müşterinin bir para hareketini bu faturaya dağıtmaktır; ' +
+               'farklı müşterilere ait tahsilat ve fatura eşleştirilemez. Önce tahsilat ' +
+               'kaydı oluşturulmalı.' }) +
+      '</section>';
+    }
+
+    var secilebilir = 0;
+    var secenekler = liste.map(function(p){
+      var engel = tahsisEngeli(p);
+      if(!engel) secilebilir++;
+      var etiket = p.kod + ' · ' + paraMetin(p.tutar) +
+        (engel ? ' — ' + engel
+               : ' · dağıtılmamış ' + paraMetin(p.dagitilmamis));
+      return '<option value="' + esc(p.kod) + '"' + (engel ? ' disabled' : '') + '>' +
+        esc(etiket) + '</option>';
+    }).join('');
+
+    var uyari = secilebilir
+      ? ''
+      : '<div class="gc-body">' + GV.notice({ tone:'warn', icon:'i-alert',
+          title:'Seçilebilir tahsilat yok',
+          text:'Bu müşterinin ' + liste.length + ' tahsilat kaydının hiçbiri bu faturaya ' +
+               'tahsis edilemez; sebepleri listede satır satır yazılı. En sık sebep şudur: ' +
+               'kayıt bir ALACAKTIR, para henüz gelmemiştir — nakit olayı ayrı bir adımdır.' }) +
+        '</div>';
+
+    return '<section class="gv-card">' +
+      kartBasi('i-wallet', 'Tahsilat tahsis et',
+        sayacEtiketi(secilebilir + '/' + liste.length, 'seçilebilir')) +
+      '<div class="gc-body u-sm u-muted">Açık bakiye <b class="u-ink">' + esc(paraMetin(bak.acik)) +
+        '</b>. Tahsis BRÜT eksende yürür ve faturanın ödeme durumunu türetir.</div>' +
+      uyari +
+      '<div class="gc-body">' +
+        '<div class="field">' +
+          '<label for="ftrTahsilat">Tahsilat kaydı <span class="req">*</span></label>' +
+          '<select id="ftrTahsilat"><option value="">Seçiniz…</option>' + secenekler + '</select>' +
+          '<p class="f-hint">Tahsil edilmemiş kayıtlar listede <b>sebebiyle</b> görünür ama ' +
+            'seçilemez: <code>GV.fin.tahsisEt</code> onları reddeder ve sizi reddedilecek bir ' +
+            'işleme sokmanın anlamı yok.</p>' +
+        '</div>' +
+        '<div class="field">' +
+          '<label for="ftrTutar">Tahsis tutarı</label>' +
+          '<input type="number" id="ftrTutar" min="1" step="1" placeholder="boş bırakılırsa motor en uygun tutarı dağıtır">' +
+          '<p class="f-hint">Boş bırakılırsa tahsis, faturanın açık bakiyesi ile tahsilatın ' +
+            'dağıtılmamış bakiyesinin küçüğü kadar yapılır. Kararı motor verir, ekran değil.</p>' +
+        '</div>' +
+        '<div class="field">' +
+          '<label for="ftrDekont">Dekont / referans</label>' +
+          '<input type="text" id="ftrDekont" placeholder="banka dekont numarası">' +
+          '<p class="f-hint">Ödeme yöntemi sözlüğü kaynak veride YOK; bu yüzden yöntem ' +
+            'seçtirilmiyor — motor tahsilat kaydındaki yöntemi yazar. Uydurulmuş bir yöntem ' +
+            'listesi basmak, olmayan bir sözlüğü varmış gibi göstermek olurdu.</p>' +
+        '</div>' +
+        '<button type="button" class="btn btn-acc btn-block" id="ftrTahsisEt"' +
+          (secilebilir ? '' : ' disabled title="Seçilebilir tahsilat yok"') + '>' +
+          ico('i-link') + ' Tahsilat tahsis et</button>' +
+      '</div>' +
+    '</section>';
+  }
+
+  /* ---- 6.4 BACKEND PAYI — brief §10.2 (b) --------------------------- */
+  var BACKEND = [
+    { kod:'BE-F1', bolum:'§10.4 e-fatura',
+      madde:'E-fatura / e-arşiv entegrasyonu yok. `belgeDurum` bir İÇ EKSENDİR: GİB ya da ' +
+            'entegratör gönderimi, UBL belgesi, e-fatura numarası ve kabul/ret bildirimi ' +
+            'prototipte üretilmez — “Gönderildi” burada iç bir işaretlemedir' },
+    { kod:'BE-F2', bolum:'§10.4.4 mutabakat',
+      madde:'Banka mutabakatı yok. Hesap hareketi çekilmez, dekont doğrulanmaz, otomatik ' +
+            'eşleştirme koşmaz; tahsilat ve tahsis ELLE işlenir' },
+    { kod:'BE-S5', bolum:'§9 audit_event',
+      madde:'Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır' }
+  ];
+  function cizBackend(){
+    return '<section class="gv-card">' +
+      kartBasi('i-shield', 'Backend payı', sayacEtiketi(BACKEND.length, 'madde')) +
+      '<ul class="gv-checklist">' + BACKEND.map(function(g){
+        return '<li><span><b>' + esc(g.kod) + '</b> — ' + esc(g.madde) + '</span>' +
+          '<span class="cell-sub">' + esc(g.bolum) + '</span></li>';
+      }).join('') + '</ul>' +
+      '<div class="gc-body u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+        '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</div>' +
+    '</section>';
+  }
+
+  /* ===================================================================
+     7. ÇİZİM — idempotent; `gv:ready` her atıldığında aynı sonucu verir
+     =================================================================== */
+  function ciz(){
+    GV.pageHead({
+      eyebrow:'Finans · Faturalar',
+      title:f.kod,
+      sub:(f.musteriAd || '—') + ' · belge: ' + f.belgeDurum + ' · ödeme: ' + f.durum +
+          ' · ' + paraMetin(T.brut) + ' (KDV dahil)' +
+          (bak.acik > 0 ? ' · açık ' + paraMetin(bak.acik) : ''),
+      actions:[
+        { label:'Faturayı yazdır', icon:'i-printer', cls:'btn-acc',
+          run:function(){ belge().onizle(); } },
+        { label:'Listeye dön', icon:'i-arrow-left', href:'app-fatura.html' }
+      ]
+    });
+
+    var ust = '';
+    if(!T.tutarli){
+      ust += '<div class="u-mb-4">' + GV.notice({ tone:'danger', icon:'i-alert',
+        title:'Bu faturanın tutarları kendi içinde çelişiyor',
+        text:'Bağımsız çapa (NET) kayıttaki değerlerle tutmuyor; ayrıntı “Tutar ve bakiye” ' +
+             'kartındadır. Sapma gizlenmedi ve ekran hangi sayının doğru olduğuna karar ' +
+             'vermedi.' }) + '</div>';
+    }
+    if(gecikmede){
+      ust += '<div class="u-mb-4">' + GV.notice({ tone:'warn', icon:'i-clock',
+        title:'Vadesi geçmiş fatura',
+        text:'Vade ' + F.date(f.vade) + ', ölçüm günü ' + F.date(DB.today) + ' — ' +
+             gecikmeGun + ' gün gecikme ve ' + paraMetin(bak.acik) + ' açık bakiye var. ' +
+             'Gecikme ödeme durumundan ayrı bir eksendir; “' + f.durum + '” değeri tahsis ' +
+             'toplamını, gecikme ise vadeyi anlatır.' }) + '</div>';
+    }
+
+    mount.innerHTML = ust +
+      '<div class="gv-grid gv-grid-main">' +
+        '<div>' + cizKunye() + cizTutar() + cizZincir() + cizTahsisDefteri() +
+                  cizLinkler() + cizAktivite() + '</div>' +
+        '<aside>' + cizBelgeGecis() + cizOdemeDurumu() + cizTahsisEt() + cizBackend() + '</aside>' +
+      '</div>';
+  }
+
+  /* ===================================================================
+     8. EYLEMLER — mount içi delegasyon
+     =================================================================== */
+  GV.on(mount, 'click', function(ev){
+    var b = ev.target.closest('[data-hedef]');
+    if(b && !b.disabled){ gecisDene(b.getAttribute('data-hedef')); return; }
+    var t = ev.target.closest('#ftrTahsisEt');
+    if(t && !t.disabled){ tahsisEtDene(); return; }
+  }, 'faturaDetay-click');
+
+  /* ---- 8.1 BELGE DURUMU GEÇİŞİ -------------------------------------- */
+  function gecisDene(hedef){
+    var adim = (GV.flow.adimlar('invoice', f.kod) || [])
+      .filter(function(a){ return a.hedef === hedef; })[0];
+    if(!adim) return;
+    if(adim.gerekce){ gerekceliGec(hedef); return; }
+
+    var r = GV.flow.gec('invoice', f.kod, hedef);
+    if(r.ok === false){ GV.toast(GV.flowHata(r), 'danger'); return; }
+    GV.toast(f.kod + ' belge durumu → ' + hedef, 'ok');
+    GV.refresh();
+  }
+
+  /* Neden kodu türü hedeften okunur; sözlükte karşılığı olmayan hedefte
+     `GV.action` tüm sözlüğü basar (boş select bırakmaz). */
+  function nedenTuru(hedef){
+    if(hedef === 'Ret')   return 'ret';
+    if(hedef === 'İptal') return 'iptal';
+    if(hedef === 'İade')  return 'iade';
+    return null;
+  }
+
+  function gerekceliGec(hedef){
+    var terminalMi = !!(TI[hedef] || {}).terminal;
+    GV.action({
+      eylem:hedef === 'İade' ? 'İade Et' : hedef === 'İptal' ? 'İptal Et'
+          : hedef === 'Ret'  ? 'Reddet'  : hedef,
+      kayit:{ kod:f.kod, baslik:f.musteriAd },
+      sonuc:'Bu faturanın BELGE durumu “' + hedef + '” olacak. Ödeme durumu (“' + f.durum +
+            '”) bu geçişten ETKİLENMEZ: o tahsis defterinden türetilir.',
+      gerekce:true,
+      nedenTuru:nedenTuru(hedef),
+      tone:/İptal|Ret/.test(hedef) ? 'danger' : 'warn',
+      geriDonusYok:terminalMi,
+      etkilenen:terminalMi
+        ? ['“' + hedef + '” terminal bir durumdur; geçiş tablosunda tanımlı çıkış yoktur']
+        : [],
+      run:function(v){
+        var r = GV.flow.gec('invoice', f.kod, hedef, null, { neden:v.neden, not:v.not });
+        if(r.ok === false) return { ok:false, mesaj:GV.flowHata(r) };
+        GV.refresh();
+        return { mesaj:f.kod + ' belge durumu → ' + hedef, auditKod:r.kayit.kod };
+      }
+    });
+  }
+
+  /* ---- 8.2 TAHSİS ---------------------------------------------------
+     Mutasyonun tek noktası `GV.fin.tahsisEt`; ekran ne `durum` ne bakiye
+     yazar. Motor tahsil edilmemiş kaydı REDDEDER — o yüzden reddedilecek
+     seçenek zaten `disabled` basıldı; buradaki kontrol ikinci kapıdır. */
+  function tahsisEtDene(){
+    var sel     = mount.querySelector('#ftrTahsilat');
+    var tutarEl = mount.querySelector('#ftrTutar');
+    var dekEl   = mount.querySelector('#ftrDekont');
+    var tKod    = sel ? sel.value : '';
+    if(!tKod){
+      GV.toast('Önce tahsis edilecek tahsilat kaydını seçin.', 'danger');
+      if(sel) sel.focus();
+      return;
+    }
+    var p = (DB.payments || []).filter(function(x){ return x.kod === tKod; })[0] || null;
+    if(!p){ GV.toast('Seçilen tahsilat kaydı bulunamadı: ' + tKod, 'danger'); return; }
+    var engel = tahsisEngeli(p);
+    if(engel){ GV.toast(p.kod + ' tahsis edilemez — ' + engel, 'danger'); return; }
+
+    var ham = tutarEl ? String(tutarEl.value).trim() : '';
+    var istenen = ham === '' ? null : Number(ham);
+    if(istenen != null && (!isFinite(istenen) || istenen <= 0)){
+      GV.toast('Tahsis tutarı sıfırdan büyük bir sayı olmalı.', 'danger');
+      if(tutarEl) tutarEl.focus();
+      return;
+    }
+    var dekont = dekEl ? String(dekEl.value).trim() : '';
+
+    GV.action({
+      eylem:'Onayla',
+      kayit:{ kod:f.kod, baslik:f.musteriAd },
+      sonuc:p.kod + ' tahsilatı bu faturaya tahsis edilecek' +
+            (istenen == null
+              ? ' — tutarı motor belirler: açık bakiye ile tahsilatın dağıtılmamış ' +
+                'bakiyesinin küçüğü kadar.'
+              : ' (' + paraMetin(istenen) + ').') +
+            ' Faturanın ödeme durumu bu tahsisten TÜRETİLİR; elle atanmaz.',
+      etkilenen:[
+        f.kod + ' faturası — açık bakiye ' + paraMetin(bak.acik) + ' düşecek',
+        p.kod + ' tahsilatı — dağıtılmamış bakiyesi ' + paraMetin(p.dagitilmamis) + ' azalacak',
+        (taksit ? taksit.kod + ' taksiti — ödeme durumu faturadan aynalanır'
+                : 'bağlı taksit yok; ödeme planı tarafında değişiklik olmayacak')
+      ],
+      tone:'ok',
+      run:function(){
+        var r = GV.fin.tahsisEt(tKod, f.kod, istenen, {
+          tarih:DB.today,
+          dekont:dekont || null
+        });
+        if(!r || r.ok === false)
+          return { ok:false, mesaj:(r && (r.mesaj || r.why)) || 'Tahsis uygulanamadı.' };
+        GV.refresh();
+        return { mesaj:paraMetin(r.tahsis) + ' tahsis edildi · ' + f.kod +
+                 ' ödeme durumu → ' + r.durum };
+      }
+    });
+  }
+
+  ciz();
+  /* `GV.refresh()` `gv:ready` tetikler; ekran kendini güncel veriyle yeniden
+     kurar. `location.reload()` KULLANILMAZ (L-15). */
+});
+</script>
+</body>
+</html>
