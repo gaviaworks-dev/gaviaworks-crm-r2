@@ -24,7 +24,7 @@
 
 | # | Madde | Ölçüm | Etki |
 |---|---|---|---|
-| **V2-07** | **Müşteri tipi sözlüğü YOK** | `DB.customerTypes` hiçbir dosyada tanımlı değil **ve** `DB.customers`ın 12 kaydının hiçbirinde `tip` alanı dolu değil → 20 hesabın 20'sinde `null` | Şartname §5.2 "müşteri tipi"ni ilk görünüm alanı sayıyor. Form alanı **serbest metne** düştü. Sözlük gelince tek satırda `select`e döner. **Beyar kararı gerekiyor** |
+| ~~**V2-07**~~ **KAPANDI** (K-19 · ADR-R2-16) | ~~Müşteri tipi sözlüğü YOK~~ | `DB.customerTypes` hiçbir dosyada tanımlı değil **ve** `DB.customers`ın 12 kaydının hiçbirinde `tip` alanı dolu değil → 20 hesabın 20'sinde `null` | Şartname §5.2 "müşteri tipi"ni ilk görünüm alanı sayıyor. Form alanı **serbest metne** düştü. Sözlük gelince tek satırda `select`e döner. **Beyar kararı gerekiyor** |
 | **V2-08** | Sıcaklık sözlüğü yok | `Sıcak/Ilık/Soğuk` yalnız `DB.leads[].sicaklik` içinde veri olarak var; fırsat formu listeyi defterden türetiyor | Düşük risk; `DB.leadTemperatures` eklenirse iki ekran tek satırda ona döner |
 | **V2-09** | `DB.company.paraBirimi` yok | Ölçüldü; `odeme.js:131` de aynı düşüşü `\|\| 'TRY'` ile karşılıyor. Teklif formu dövizi teklif defterindeki tek değerden (`TRY`, 8/8) türetti | Çok dövizli teklif gerektiğinde açılır |
 | **V2-10** | `risk` ve `buyukluk` için sözlük yok | Değerleri var, sözlükleri yok; formlar seçenekleri defterden türetiyor ve kaynağını yazıyor | Kabul edilebilir; sözlük gelirse türetme düşer |
@@ -33,8 +33,8 @@
 
 | # | Madde | Karar |
 |---|---|---|
-| **V2-11** | **Teklif sürümleme (K-17)** — revizyon yeni kayıt üretmiyor, eski sürüm kilitlenmiyor, `versiyon` düzenlemede artmıyor | Görev tanımında açıkça kapsam dışı. Teklif detayı ve formu bunu **ekranda beyan ediyor** (BE-S3) |
-| **V2-12** | **Ön analiz oluşturma yüzeyi** (rota satır 23) | Fırsat detayında ön analiz **okunuyor ve durumu ilerletiliyor**; yeni analiz açan drawer yazılmadı. Rota satırı bu notla işaretli |
+| ~~**V2-11**~~ **KAPANDI** (K-17 · ADR-R2-17) | ~~Teklif sürümleme~~ — revizyon yeni kayıt üretmiyor, eski sürüm kilitlenmiyor, `versiyon` düzenlemede artmıyor | Görev tanımında açıkça kapsam dışı. Teklif detayı ve formu bunu **ekranda beyan ediyor** (BE-S3) |
+| **V2-12** | **Ön analiz oluşturma yüzeyi** (rota satır 23) — K-20 ile KAPSAMA ALINDI (ADR-R2-20) | Fırsat detayında ön analiz **okunuyor ve durumu ilerletiliyor**; yeni analiz açan drawer yazılmadı. Rota satırı bu notla işaretli |
 | **V2-13** | Komisyon satırları (rota 27-29) | Nakit ve Tahsilat raporunun drill-down'ına ait; bu dilimde değil |
 | **V2-14** | Müşteri portalı kapısının sınanması | `GV.guardRecord` müşteri detayında kurulu ama `musteri` rolü `satis` alanına kabuk tarafından zaten 403 alıyor — kapı bugün **ulaşılamaz bir savunma katmanı**. Portal açıldığında tek testi o zaman yapılabilir |
 
@@ -65,3 +65,18 @@ ana oturum tarafından onarıldı:
 Ayrıca `.gc-meta` sınıfının CSS karşılığı yazıldı (beş oturumdur kullanılıyor,
 tanımı yoktu) ve evre rozeti üç ekrandaki kopyasından ortak yordama alındı
 (`GV.lifecycle.rozet`).
+
+
+---
+
+## Dilim 2 açılışında kapanan borçlar (11 Ağustos 2026, ikinci tur)
+
+| Borç | Kapatan karar | Ölçüm |
+|---|---|---|
+| V2-07 müşteri tipi sözlüğü | K-19 · ADR-R2-16 | `DB.customerTypes` 4 değer · form seçim listesine döndü · teyit tek bayrakta |
+| V2-11 teklif sürümleme | K-17 · ADR-R2-17 | revizyon yeni kayıt · eski sürüm kilitli · fark karşılaştırılabilir · `satis-akis.js` S10, 9 kontrol |
+| V2-12 ön analiz drawer'ı | K-20 · ADR-R2-20 | kapsama alındı, fırsat detayında yazılacak |
+| BE-S2 yaşam evresi çapası | K-21 · ADR-R2-18 | bayat alan tuzağa çevrildi · `bayat-alan.js` 11 kontrol |
+
+**Açık kalanlar:** V2-01 · V2-02 · V2-03 · V2-04 · V2-05 · V2-06 · V2-08 ·
+V2-09 · V2-10 · V2-13 · V2-14 · V2-15 · V2-16 — on üç madde.

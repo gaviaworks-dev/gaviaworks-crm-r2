@@ -376,3 +376,133 @@ hangisinin geçerli olduğunu bilemez.
 **Uygulama.** Dil sözlüğü `GV.quickNote.dil` içinde **tek yerde** durur.
 Silme yüzeyi henüz yazılmadı; yazıldığında kelimesini bu sözlükten
 okuyacak, kendisi uydurmayacak (R1 dersi L-40).
+
+---
+
+## ADR-R2-16 · Müşteri tipi sözlüğü açıldı, teyit tek bayrakta
+
+**Karar (K-19).** `DB.customerTypes = ['Kurumsal','Bireysel','Kamu','İş Ortağı']`
+veri katmanında tanımlandı; müşteri formundaki alan serbest metinden **seçim
+listesine** döndü.
+
+**Neden gerekti.** Dilim 1'de ölçüldü: sözlük hiçbir dosyada tanımlı değildi ve
+20 hesabın 20'sinde `tip` alanı boştu. Şartname §5.2 "müşteri tipi"ni ilk
+görünüm alanı sayıyor. Ekran ajanı iki değer uydurmayı reddetti ve eksikliği
+bildirdi — doğru davranış, ama alan o hâlde kullanılamıyordu.
+
+**Teyit ekseni.** Sözlük Yasin Bey teyidini bekliyor. Bu, `DB.customerTypesTeyit`
+**tek bayrağıyla** taşınır: `false` iken ekran alanın altına "teyit bekliyor"
+notunu basar, `true` olduğunda not kendiliğinden düşer. Ekranlar kendi
+bayrağını tutmaz (L-40) ve sözlüğü kendi listelemez.
+
+**Geriye dönük doldurma YAPILMADI.** Hangi müşterinin hangi tipte olduğu
+ölçülemez; 12 kayda tip yazmak yanlış beyan olurdu (L-13). Alan yeni
+kayıtlarda dolar, eskilerde "—" kalır ve sebebi ekranda yazılıdır.
+
+---
+
+## ADR-R2-17 · Teklif revizyonu yeni kayıttır, eski sürüm kilitlenir
+
+**Karar (K-17).** R1'in üç tur açık kalan borcu kapatıldı. Üç hüküm:
+
+1. **Revizyon yeni kayıt üretir.** `GV.teklif.revizyonAc` alanları ve kalemleri
+   kopyalar, `kokTeklif` + `oncekiSurum` ile zinciri kurar, yeni sürüm `Taslak`
+   doğar. Eski kayıt **değişmez**.
+2. **Eski sürüm kilitlenir.** Kilit bir ALAN DEĞİL, zincirden türetilir: ardılı
+   olan kayıt kilitlidir (`Gates.teklifSurumKilidi`). `kilitli:true` bayrağı
+   tutmak, bir sonraki turda zincirle çelişecek ikinci bir defter açardı (L-08).
+3. **İki sürüm karşılaştırılabilir.** `GV.teklif.fark` alan ve kalem farkını
+   birlikte verir; kalemler `sira` üzerinden eşlenir.
+
+**Motor değişikliği — varlık düzeyinde kilit.** `kapi` ve `girisKapi` tek bir
+GEÇİŞİ engeller; revize edilmiş bir teklif ise **hiçbir yöne** gidemez. Bunu her
+duruma ayrı `kapi` yazarak kurmak aynı kuralı on yerde tekrarlamak olurdu ve bir
+durum eklendiğinde sessizce açık kalırdı. Yeni sözleşme:
+`DB.flowEntities[tur].kilit = '<GV.gates yordamı>'`. `GV.flow.adimlar` kilitli
+kayıtta **boş** döner (ölü buton basılmaz), `GV.flow.gec` `why:'kilit'` ile
+reddeder.
+
+**Geçiş tablosu değişti.** `quote` tablosunda `Müzakere/Revizyon → Taslak`
+kenarı **kaldırıldı**: o kenar revizyonu aynı kaydı taslağa geri çekmek diye
+tanımlıyordu, yani içeriğin üzerine yazıyordu. Revizyon artık bir geçiş değil,
+ayrı bir yordamdır.
+
+**Kilit simetriktir.** Beyar kısıtı: "bir işi geri almak ya da kaybetmek, onu
+tamamlamaktan daha ağır koşula bağlanamaz." Kilit kaydın tamamını dondurur;
+kazanmayı da kaybetmeyi de **aynı** koşulda reddeder. Eksen bunu ayrıca ölçer
+(`satis-akis.js` S10).
+
+**Devralınan sayaç dürüstçe işaretlenir.** 8 teklifin dördü `versiyon > 1`
+taşıyor ama zincirde tek kayıt var — bu sayılar R1'den geldi ve karşılığı yok.
+`GV.teklif.zincir` bunu `devralinan:true` ile söyler; sahte sürüm satırı
+üretilmez (L-13).
+
+---
+
+## ADR-R2-18 · Yaşam evresi tek defterde; bayat alan tuzağa çevrildi
+
+**Karar (K-21).** BE-S2 onaylandı: yaşam evresi `DB.accounts[].evre` üzerinde
+yaşar. Yarım bırakılmadı — bayat kaynak alan **ölçülebilir** hâle getirildi.
+
+**Üç iş yapıldı:**
+
+1. `DB.accounts[].durum` **kaldırıldı.** Bu alan hesap kaydına ölü doğuyordu:
+   `GV.lifecycle.gec` evreyi değiştirdiğinde `durum` olduğu gibi kalıyor, yani
+   kaydın kendi içinde iki cevabı oluyordu. Göç izi kaybolmadı — `evreKaynak`
+   ham değeri metin olarak taşıyor, `legacy_id` kaynağa bağlıyor.
+2. `DB.customers[].durum` bir **tuzağa** çevrildi: okunduğunda `DB.bayat.sayac`
+   artar ve `undefined` döner; yazıldığında değer tutulmaz. `enumerable:false`
+   kuruldu ki `JSON.stringify` / `Object.keys` yanlış alarm üretmesin (L-26).
+3. Göçün kendisi ham alanı **bir kez** okur ve o satır
+   `/* bayat-alan:goc-kaynagi */` ile **açıkça** işaretlidir. Sessiz beyaz liste
+   yok; işaret kaldırılırsa eksen o satırı yeniden yakalar.
+
+**Ölçüm.** `tasks/qa/bayat-alan.js` üç eksende ölçer: tuzak kurulu mu · yükleme
+ve iş akışlarında sıfır okuma · kaynak taraması. Tek bir okuma kalırsa kırmızı
+yanar.
+
+**Gerekçe (Beyar).** R1'de çift KDV hatası tam bu sınıftandı: alt zincir yanlış
+çapaya göre kendi içinde tutarlıydı ve hiçbir eksen çelişki göremiyordu. Bayat
+çapayı ölçülebilir kılmak o hatanın tek panzehiri.
+
+---
+
+## ADR-R2-19 · Finansal çapa NET'tir, brüt her yerde yeniden hesaplanır
+
+**Karar (Beyar talimatı C).** Teklif → sözleşme → ödeme planı → fatura →
+tahsilat zincirinde tutar ekseni **NET** olarak sabitlendi. `GV.fin.tutar`
+her koleksiyonu bu eksene çevirir; brüt **her zaman** `net + kdv` olarak
+yeniden hesaplanır ve kayıttaki brüt değer otoriter değil, **doğrulanandır**.
+
+**Neden zincirin dışında.** R1'de KDV iki kez uygulanıyordu ve kusur
+görünmüyordu: her halka bir öncekinden türediği için hepsi aynı şişmiş sayıyı
+taşıyordu, yani zincirin İÇİNDEN bakan hiçbir kontrol çelişki göremiyordu.
+Çapa zincirin dışında olmak zorundadır.
+
+**Eksen ayrımı ölçüldü, varsayılmadı:** ödeme planı taksitleri **NET**
+eksende (19 taksitin 19'u sözleşmenin net bedelini bölüyor), tahsis ve bakiye
+**BRÜT** eksende (`GV.fin.balance` fatura `toplam` alanı üzerinden çalışır).
+Faturada KDV oranı alanı **yoktur**; oran tutardan türetilir — ters yönde
+okumak (oranı varsayıp KDV'yi hesaplamak) çift KDV'yi doğuran hamleydi.
+
+**Ölçüm.** `tasks/qa/finans-kanon.js` altı eksende ölçer ve çift KDV tuzağını
+**enjekte ederek** sınar: şişmiş bir sözleşme kendi içinde tutarlı kalır ama
+dış çapa onu yakalar. Bu, kusurun sinsiliğinin kanıtıdır.
+
+---
+
+## ADR-R2-20 · Ön analiz oluşturma, fırsat detayının drawer'ı
+
+**Karar (K-20).** Ön analiz oluşturma yüzeyi ayrı ekran değildir; fırsat
+detayında drawer olarak açılır. Rota haritasındaki 23 numaralı satır bununla
+kapanır. Dilim 1'de okuma ve durum ilerletme yazılmıştı, oluşturma eksikti
+(V2-12 olarak kayıtlıydı) — bu ADR o borcu kapsam içine alır.
+
+---
+
+## ADR-R2-21 · Sıradaki dilim Finans
+
+**Karar (K-22).** Müşteri ve satış zincirinden sonra Finans gelir: fatura
+listesi/detay/form, tahsilat listesi/form, satın alma. Sözleşme ve ödeme planı
+**ayrı ekran değildir** — şartname §3.3 gereği ilgili kaydın sekmesidir ve
+dilim 1'de müşteri detayının Finans sekmesine yerleşti.
