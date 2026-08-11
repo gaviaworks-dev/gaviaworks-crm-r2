@@ -23,6 +23,26 @@ DB.interactionTypes = ['Toplantı','Telefon','E-posta','Ziyaret'];
    basmak zorunda kalmıştı, kullanıcı gerçek bir seçim yapamıyordu. */
 DB.timeUnits = ['saat','gün','hafta','ay'];
 
+/* ---- Müşteri tipi sözlüğü (K-19 · ADR-R2-16) -------------------------
+   Dilim 1'de ölçüldü: bu sözlük YOKTU ve 20 hesabın 20'sinde `tip` alanı
+   boştu. Müşteri formu §5.2'nin ilk görünüm alanını serbest metne düşürmek
+   zorunda kalmıştı — ajan 'Kurumsal/Bireysel' uydurmadı, eksikliği bildirdi.
+   Beyar K-19 ile dört değeri verdi.
+
+   ⚠️ TEYİT BEKLİYOR — TEK BAYRAKLA DEĞİŞİR.
+   `DB.customerTypesTeyit` bu sözlüğün Yasin Bey tarafından onaylanıp
+   onaylanmadığını taşır. `false` iken ekranlar alanın yanında "teyit
+   bekliyor" notu basar; sözlük onaylandığında BU TEK SATIR `true` olur ve
+   not kendiliğinden düşer. Ekranlar kendi bayrağını tutmaz (L-40).
+
+   Veride karşılığı YOK: 12 müşteri kaydının hiçbirinde `tip` dolu değil.
+   Geriye dönük doldurma YAPILMADI — hangi müşterinin hangi tipte olduğu
+   ölçülemez, uydurmak 12 kayda yanlış beyan yazmak olurdu (L-13). Alan
+   yeni kayıtlarda dolar, eskilerde "—" kalır ve sebebi ekranda yazılıdır. */
+DB.customerTypes = ['Kurumsal','Bireysel','Kamu','İş Ortağı'];
+DB.customerTypesTeyit = false;
+DB.customerTypesNot = 'Sözlük K-19 ile açıldı, Yasin Bey teyidi bekliyor.';
+
 DB.sectors = ['Lojistik','Sağlık','Perakende','Eğitim','İnşaat','Turizm','Üretim','Finans',
   'Enerji','Gıda','Otomotiv','Tekstil','Kamu','Teknoloji','Hukuk','Tarım'];
 

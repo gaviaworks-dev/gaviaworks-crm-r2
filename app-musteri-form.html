@@ -94,15 +94,13 @@ document.addEventListener('gv:ready', function(){
   /* =================================================================
      SÖZLÜK ÖLÇÜMÜ — uydurma seçenek yok
      -----------------------------------------------------------------
-     Müşteri tipi sözlüğü (customerTypes) YOK (ölçüldü: veri katmanında
-     hiçbir dosyada tanımlı değil) ve `DB.customers` kayıtlarının
-     hiçbirinde `tip` alanı DOLU DEĞİL — `lifecycle.js:112` alanı taşıyor
-     ama kaynakta değer olmadığı için 20 hesabın 20'sinde `null`.
-     Bu yüzden `tip` bir seçim listesi olarak KURULAMAZ: iki değer
-     ('Kurumsal'/'Bireysel') uydurmak, olmayan bir sözlüğü varmış gibi
-     göstermek olurdu. Alan serbest metne düşer ve nedeni ipucunda yazar.
-     Sözlük ortak katmana eklendiğinde bu blok kendiliğinden select'e
-     döner — ekranda ikinci bir liste tutulmuyor.
+     Müşteri tipi sözlüğü K-19 ile AÇILDI (`DB.customerTypes`, dört değer)
+     ve alan artık seçim listesidir; serbest metin kalktı. Sözlük Yasin Bey
+     teyidini bekliyor — bunu `DB.customerTypesTeyit` TEK bayrağı taşır ve
+     ekran o bayrağa bakıp not basar, kendi kararını vermez.
+     ⚠️ Mevcut 20 hesabın 20'sinde `tip` hâlâ BOŞ: geriye dönük doldurma
+     yapılmadı, çünkü hangi müşterinin hangi tipte olduğu ölçülemez (L-13).
+     Alan yeni kayıtlarda dolar, eskilerde "—" kalır.
 
      `risk` ve `buyukluk` için de sözlük yok; ikisinin de MEVCUT DEĞERLERİ
      var, o yüzden seçenekler defterden TÜRETİLİR (kaynağı yazılı).
@@ -113,7 +111,6 @@ document.addEventListener('gv:ready', function(){
     return (list || []).filter(function(v, i, s){
       return v != null && v !== '' && s.indexOf(v) === i; });
   }
-  var tipDegerleri  = benzersiz((DB.accounts || []).map(function(h){ return h.tip; }));
   var riskDegerleri = benzersiz((DB.accounts || []).map(function(h){ return h.risk; }));
   var buyuklukDegerleri = benzersiz((DB.customers || []).map(function(c){ return c.buyukluk; }))
     .sort(function(a, b){ return parseInt(a, 10) - parseInt(b, 10); });
@@ -183,17 +180,23 @@ document.addEventListener('gv:ready', function(){
      şartname ikisini "veya" ile bağlıyor — birini boş bırakmak serbest,
      ikisini birden boş bırakmak değil.
      ================================================================= */
-  var tipAlan = { key:'tip', label:'Müşteri tipi', cols:6 };
-  if(tipDegerleri.length){
-    tipAlan.type = 'select';
-    tipAlan.options = tipDegerleri;
-    tipAlan.hint = 'Ortak sözlük yok; seçenekler mevcut hesap kayıtlarındaki değerlerden türetildi.';
-  }else{
+  /* K-19 · ADR-R2-16 — sözlük ortak katmanda açıldı; serbest metin KALKTI.
+     Ekran kendi listesini yazmaz, `DB.customerTypes`i okur (L-40). Teyit
+     bayrağı da tek yerdedir: sözlük onaylandığında `crm.js`teki TEK satır
+     `true` olur ve aşağıdaki not kendiliğinden düşer. */
+  var tipAlan = { key:'tip', label:'Müşteri tipi', cols:6,
+                  type:'select', options:DB.customerTypes || [] };
+  if(!(DB.customerTypes || []).length){
+    /* Sözlük kaldırılırsa alan serbest metne düşer ve bunu SÖYLER —
+       sessizce boş bir seçim listesi basmak, doldurulamayan bir zorunlu
+       alan bırakmaktır. */
     tipAlan.type = 'text';
-    tipAlan.placeholder = 'Örn. kurumsal ya da bireysel';
-    tipAlan.hint = 'Müşteri tipi için ortak sözlük yok ve ' + (DB.accounts || []).length +
-                   ' hesabın hiçbirinde tip değeri dolu değil — liste türetilemedi, alan serbest metin. ' +
-                   'Sözlük ortak katmana eklendiğinde seçim listesine döner.';
+    tipAlan.hint = 'Müşteri tipi sözlüğü ortak katmanda tanımlı değil — alan serbest metin.';
+  }else if(DB.customerTypesTeyit !== true){
+    tipAlan.hint = (DB.customerTypesNot || 'Sözlük teyit bekliyor.') +
+                   ' Seçenekler: ' + DB.customerTypes.join(' · ') + '.';
+  }else{
+    tipAlan.hint = 'Ortak sözlükten okunur.';
   }
 
   var form = GV.form({
