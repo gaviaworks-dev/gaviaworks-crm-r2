@@ -299,6 +299,22 @@
         : { ok:true };
     },
 
+    /* [K-17] — TEKLİF SÜRÜM KİLİDİ.
+       Bir teklifin ARDILI varsa o kayıt donmuştur: revize edilmiş bir teklif
+       ne onaylanır, ne gönderilir, ne iptal edilir. Kilit bir ALAN DEĞİL,
+       zincirden TÜRETİLİR (L-08): `kilitli:true` diye bir bayrak tutmak, bir
+       sonraki turda zincirle çelişecek ikinci bir defter açardı.
+       `DB.flowEntities.quote.kilit` bunu motora bağlar. */
+    teklifSurumKilidi:function(q){
+      var ardil = (window.DB && DB.quotes || []).filter(function(x){
+        return x.oncekiSurum === q.kod; })[0];
+      if(!ardil) return { ok:true };
+      return { ok:false, kilit:'surum', ardil:ardil.kod,
+               why:'Bu teklif ' + ardil.kod + ' (sürüm ' + (ardil.versiyon || '?') +
+                   ') ile revize edildi. Revize edilmiş sürüm salt okunurdur; ' +
+                   'işlemler güncel sürüm üzerinden yürür.' };
+    },
+
     /* Destek kapanışı: bakım kotası aşımı — ADR-10 */
     destekKota:function(t){
       if(t.ucretli) return { ok:true };
@@ -324,6 +340,28 @@
 
     /* Durum alanının adı — fatura `belgeDurum`, diğerleri `durum` */
     alan:function(tur){ var t = Flow.tanim(tur); return t ? t.alan : 'durum'; },
+
+    /* ===================================================================
+       KAYIT KİLİDİ — varlık düzeyinde, duruma bağlı DEĞİL (K-17)
+       -------------------------------------------------------------------
+       `kapi` ve `girisKapi` tek bir GEÇİŞİ engeller. Bazı olgular ise kaydın
+       TAMAMINI dondurur: teklifin yeni bir sürümü doğduğunda eski sürüm artık
+       hiçbir yöne gidemez — ne onaylanır, ne gönderilir, ne iptal edilir.
+       Bunu her duruma ayrı ayrı `kapi` yazarak kurmak, aynı kuralı on yerde
+       tekrarlamaktı (L-40) ve bir durum eklendiğinde sessizce açık kalırdı.
+
+       Sözleşme: `DB.flowEntities[tur].kilit = '<GV.gates yordamı>'`.
+       Yordam `{ok:false, why}` dönerse HİÇBİR geçiş yapılamaz ve
+       `adimlar()` boş döner — ekran ölü buton basmaz.
+       =================================================================== */
+    kilit:function(tur, kodYaKayit){
+      var t = Flow.tanim(tur);
+      if(!t || !t.kilit || !Gates[t.kilit]) return null;
+      var rec = typeof kodYaKayit === 'string' ? Flow.kayit(tur, kodYaKayit) : kodYaKayit;
+      if(!rec) return null;
+      var g = Gates[t.kilit](rec);
+      return (g && g.ok === false) ? g : null;
+    },
 
     /* Geçiş tablosu. Görev tablosu ayrı yerde yaşıyor; motor ikisini de okur. */
     tablo:function(tur){
@@ -366,6 +404,9 @@
     adimlar:function(tur, kod){
       if(tur === 'task') return GV.task.nextSteps(kod);
       var rec = Flow.kayit(tur, kod); if(!rec) return [];
+      /* Kilitli kayıtta HİÇBİR adım yok — ekran ölü buton basmasın.
+         Sebebini `Flow.kilit()` ile ayrıca okur ve kullanıcıya yazar. */
+      if(Flow.kilit(tur, rec)) return [];
       var kural = Flow.kural(tur, rec[Flow.alan(tur)]);
       if(!kural || !kural.next || !kural.next.length) return [];
       var izin = Flow.yetkili(rec, kural);
@@ -412,6 +453,10 @@
       if(tur === 'task') return GV.task.transition(kod, hedef, ek, opts.not);
       var rec = Flow.kayit(tur, kod);
       if(!rec) return { ok:false, why:'kayıt yok: ' + kod };
+      /* KİLİT en başta bakılır: kilitli kaydın durumunu, yetkisini ya da
+         zorunlu alanını tartışmak anlamsız — kayıt donmuştur. */
+      var kilitli = Flow.kilit(tur, rec);
+      if(kilitli) return { ok:false, why:'kilit', mesaj:kilitli.why, kilit:kilitli };
       var alan = Flow.alan(tur), eski = rec[alan];
       var kural = Flow.kural(tur, eski);
       if(!kural) return { ok:false, why:'"' + eski + '" için geçiş kuralı tanımlı değil' };
@@ -1310,7 +1355,183 @@
     },
 
     /* Müşterinin bekleyen tahsilatı — TÜRETİLİR, elle yazılmaz (L-08) */
-    refreshCustomer:function(kod){ return musteriOzet(kod); }
+    refreshCustomer:function(kod){ return musteriOzet(kod); },
+
+    /* ===================================================================
+       BAĞIMSIZ ÇAPA — tutar normalizasyonu (dilim 2 · Beyar talimatı C)
+       -------------------------------------------------------------------
+       ÖLÇÜLMÜŞ TARİHÇE: R1'de teklif → sözleşme zinciri KDV'yi İKİ KEZ
+       uyguluyordu. Kusur görünmedi çünkü alt zincir (ödeme planı, fatura,
+       tahsilat) YANLIŞ ÇAPAYA GÖRE KENDİ İÇİNDE TUTARLIYDI: her halka bir
+       öncekinden türediği için hepsi aynı şişmiş sayıyı taşıyordu ve hiçbir
+       eksen çelişki göremiyordu. Çözüm zinciri düzeltmek değil, ÇAPAYI
+       ZİNCİRİN DIŞINA ÇIKARMAKTI.
+
+       ÇAPA = NET. Her koleksiyon kendi alan adlarını kullanmaya devam eder
+       (`quotes` → `araToplam`/`vergiOran`, `contracts` → `tutar`/`kdvOran`,
+       `invoices` → `tutar`/`vergi`), ama bu yordam hepsini TEK bir eksene
+       çevirir ve brüt HER ZAMAN `net + kdv` olarak yeniden hesaplanır —
+       kayıttaki brüt değer otoriter DEĞİLDİR, doğrulanır.
+
+       Dönüş: { net, oran, kdv, brut, kayitliBrut, sapma, kaynak }
+       `sapma` sıfır değilse kayıt kendi içinde çelişiyordur ve ekran bunu
+       SÖYLER — sessizce birini seçmek, hangi sayının doğru olduğuna kod
+       adına karar vermektir. */
+    tutar:function(kayit, tur){
+      if(!kayit) return null;
+      /* Tür verilmezse alan imzasından çıkarılır — ekranlar tür adı
+         taşımak zorunda kalmasın. */
+      if(!tur){
+        tur = kayit.araToplam != null ? 'quote'
+            : kayit.kdvOran   != null ? 'contract'
+            : kayit.odeme     != null ? 'milestone'
+            : kayit.vergi     != null ? 'invoice' : null;
+      }
+      var net = null, oran = null, kdv = null, kayitliBrut = null, kaynak = tur;
+
+      if(tur === 'quote'){
+        net = (kayit.araToplam || 0) - (kayit.indirim || 0);
+        oran = kayit.vergiOran != null ? kayit.vergiOran : null;
+        kdv = kayit.vergi != null ? kayit.vergi : null;
+        kayitliBrut = kayit.toplam != null ? kayit.toplam : null;
+      }else if(tur === 'contract'){
+        net = kayit.tutar || 0;
+        oran = kayit.kdvOran != null ? kayit.kdvOran : null;
+        kdv = kayit.kdv != null ? kayit.kdv : null;
+        kayitliBrut = kayit.toplam != null ? kayit.toplam : null;
+      }else if(tur === 'invoice'){
+        net = kayit.tutar || 0;
+        kdv = kayit.vergi != null ? kayit.vergi : null;
+        /* Faturada oran alanı YOK — orandan değil, tutardan türetilir.
+           Ters yönde okumak (oranı varsayıp KDV'yi hesaplamak) tam olarak
+           çift KDV'yi doğuran hamleydi. */
+        oran = (net && kdv != null) ? Math.round(kdv / net * 100) : null;
+        kayitliBrut = kayit.toplam != null ? kayit.toplam : null;
+      }else if(tur === 'milestone'){
+        /* Ödeme planı taksiti NET eksendedir — ölçüldü: 19 taksitin
+           19'u bağlı sözleşmenin NET bedelini bölüyor, brütünü değil. */
+        net = kayit.odeme || 0;
+        oran = null; kdv = null; kayitliBrut = null;
+      }else{
+        return null;
+      }
+
+      var hesaplananKdv = (oran != null) ? Math.round(net * oran / 100) : kdv;
+      var brut = net + (hesaplananKdv || 0);
+      var sapma = [];
+      if(oran != null && kdv != null && Math.abs(kdv - hesaplananKdv) > 1)
+        sapma.push({ eksen:'kdv', kayitli:kdv, beklenen:hesaplananKdv });
+      if(kayitliBrut != null && Math.abs(kayitliBrut - brut) > 1)
+        sapma.push({ eksen:'brut', kayitli:kayitliBrut, beklenen:brut });
+
+      return { net:net, oran:oran, kdv:hesaplananKdv, brut:brut,
+               kayitliBrut:kayitliBrut, kayitliKdv:kdv,
+               sapma:sapma, tutarli:sapma.length === 0, kaynak:kaynak };
+    },
+
+    /* ===================================================================
+       ZİNCİR DENETİMİ — teklif → sözleşme → taksit → fatura → tahsilat
+       -------------------------------------------------------------------
+       Her halka bir öncekinden TÜRER; bu yordam halkaların NET ekseninde
+       birbirini tutup tutmadığını söyler. Ekran da eksen de burayı çağırır;
+       ikinci bir karşılaştırma yazılmaz (L-40).
+
+       `kapsam:false` olan halka ÖLÇÜLEMEDİ demektir, "sıfır" demek değil
+       (L-13): sözleşmesi olmayan bir teklifi "sapma" saymak, henüz
+       yapılmamış bir işi hata saymaktır.
+       =================================================================== */
+    zincirDenetim:function(sozlesmeKod){
+      if(!window.DB || !DB.contracts) return null;
+      var c = DB.contracts.filter(function(x){ return x.kod === sozlesmeKod; })[0];
+      if(!c) return null;
+
+      var halkalar = [];
+      var cT = Fin.tutar(c, 'contract');
+
+      /* 1 — teklif → sözleşme (NET eksende) */
+      var q = c.teklif ? (DB.quotes || []).filter(function(x){ return x.kod === c.teklif; })[0] : null;
+      if(!q){
+        halkalar.push({ ad:'Teklif → Sözleşme', kapsam:false,
+                        not:c.teklif ? ('Bağlı teklif kaydı bulunamadı: ' + c.teklif)
+                                     : 'Sözleşme bir teklife bağlı değil' });
+      }else{
+        var qT = Fin.tutar(q, 'quote');
+        halkalar.push({ ad:'Teklif → Sözleşme', kapsam:true,
+          sol:{ kod:q.kod, net:qT.net }, sag:{ kod:c.kod, net:cT.net },
+          fark:qT.net - cT.net, tutar:Math.abs(qT.net - cT.net) <= 1,
+          not:'Teklifin indirim sonrası NET tutarı sözleşme bedeline eşit olmalı' });
+      }
+
+      /* 2 — sözleşme → ödeme planı toplamı (NET eksende) */
+      var taksit = (DB.milestones || []).filter(function(m){ return m.sozlesme === c.kod; });
+      if(!taksit.length){
+        halkalar.push({ ad:'Sözleşme → Ödeme planı', kapsam:false,
+                        not:'Bu sözleşmede taksit kaydı yok — ölçüm yapılamadı' });
+      }else{
+        var tTop = taksit.reduce(function(s, m){ return s + (m.odeme || 0); }, 0);
+        halkalar.push({ ad:'Sözleşme → Ödeme planı', kapsam:true,
+          sol:{ kod:c.kod, net:cT.net }, sag:{ kod:taksit.length + ' taksit', net:tTop },
+          fark:cT.net - tTop, tutar:Math.abs(cT.net - tTop) <= 1,
+          not:'Taksit toplamı sözleşmenin NET bedelini tam bölmeli (Gates.sozlesmeAktif aynı ekseni arar)' });
+      }
+
+      /* 3 — taksit → fatura (NET eksende, taksit başına) */
+      var fatura = (DB.invoices || []).filter(function(f){ return f.sozlesme === c.kod; });
+      if(!fatura.length){
+        halkalar.push({ ad:'Ödeme planı → Fatura', kapsam:false,
+                        not:'Bu sözleşmeye bağlı fatura yok — henüz kesilmemiş olabilir' });
+      }else{
+        var sapan = [];
+        fatura.forEach(function(f){
+          var fT = Fin.tutar(f, 'invoice');
+          if(!fT.tutarli) sapan.push({ kod:f.kod, sebep:'kendi içinde tutarsız', sapma:fT.sapma });
+          if(!f.milestone) return;
+          var m = taksit.filter(function(x){ return x.kod === f.milestone; })[0];
+          if(!m){ sapan.push({ kod:f.kod, sebep:'bağlı taksit bulunamadı: ' + f.milestone }); return; }
+          if(Math.abs((m.odeme || 0) - fT.net) > 1)
+            sapan.push({ kod:f.kod, sebep:'taksit NET ' + m.odeme + ' ≠ fatura NET ' + fT.net });
+        });
+        halkalar.push({ ad:'Ödeme planı → Fatura', kapsam:true,
+          sol:{ kod:taksit.length + ' taksit' }, sag:{ kod:fatura.length + ' fatura' },
+          sapan:sapan, tutar:sapan.length === 0,
+          not:'Her fatura bağlı taksitin NET tutarını taşımalı; brüt = net + KDV olmalı' });
+      }
+
+      /* 4 — fatura → tahsilat (BRÜT eksende — tahsis brüt üzerinden yürür) */
+      if(!fatura.length){
+        halkalar.push({ ad:'Fatura → Tahsilat', kapsam:false, not:'Fatura yok' });
+      }else{
+        var sapanT = [];
+        fatura.forEach(function(f){
+          var b = Fin.balance(f);
+          if(!b) return;
+          var fT = Fin.tutar(f, 'invoice');
+          /* Bakiye BRÜT eksende çalışır; çapadan hesaplanan brüt ile
+             `balance`ın kullandığı `toplam` ayrışırsa tahsilat yanlış
+             faturayı kapatır. */
+          if(Math.abs(b.brut - fT.brut) > 1)
+            sapanT.push({ kod:f.kod, sebep:'bakiye brütü ' + b.brut + ' ≠ çapadan brüt ' + fT.brut });
+          if(b.tahsil > b.brut + 1)
+            sapanT.push({ kod:f.kod, sebep:'tahsis toplamı fatura brütünü aşıyor (' + b.tahsil + ' > ' + b.brut + ')' });
+          var beklenen = Fin.odemeDurum(f);
+          if(f.durum !== beklenen)
+            sapanT.push({ kod:f.kod, sebep:'durum "' + f.durum + '" ama tahsis toplamı "' + beklenen + '" diyor' });
+        });
+        halkalar.push({ ad:'Fatura → Tahsilat', kapsam:true,
+          sag:{ kod:(DB.paymentAllocations || []).filter(function(a){
+                  return fatura.some(function(f){ return f.kod === a.fatura; }); }).length + ' tahsis' },
+          sapan:sapanT, tutar:sapanT.length === 0,
+          not:'Tahsis BRÜT eksende yürür; fatura durumu tahsis toplamından TÜRETİLİR, elle atanmaz' });
+      }
+
+      var olculen = halkalar.filter(function(h){ return h.kapsam; });
+      return {
+        sozlesme:c.kod, halka:halkalar,
+        olculen:olculen.length, halkaSayisi:halkalar.length,
+        sapan:olculen.filter(function(h){ return h.tutar === false; }).length,
+        tutarli:olculen.every(function(h){ return h.tutar !== false; })
+      };
+    }
   };
 
   /* Taksitin ödeme durumu bağlı faturanın aynasıdır (VB-25): tek yerde yazılır */
@@ -2754,7 +2975,10 @@
       var yeniM = {
         kod:kod, unvan:kaynak.firma || kaynak.unvan, kisa:kaynak.firma || kaynak.unvan,
         sektor:kaynak.sektor || null, buyukluk:kaynak.buyukluk || null,
-        durum:'Aktif', risk:'Düşük', sorumlu:kaynak.sorumlu || null,
+        /* ⚠️ `durum` YAZILMIYOR (K-21): yaşam evresi `DB.accounts[].evre`
+           üzerinde yaşar. Bu yordam R1 zinciridir ve R2'de çağrılmaz;
+           bayat alana yazmaya devam etseydi tuzağı da tetiklerdi. */
+        risk:'Düşük', sorumlu:kaynak.sorumlu || null,
         kaynak:kaynak.kaynak || null, referans:kaynak.referans || null,
         tel:kaynak.tel || null, eposta:kaynak.eposta || null, web:kaynak.web || null,
         adres:null, vergiNo:kaynak.vergiNo || null, vergiDairesi:null,
@@ -2994,6 +3218,245 @@
      Sessizce "0 senaryo" demek, koşulmuş 62 senaryoyu yok saymak olurdu
      (ders L-13: karşılığı olmayan veri "yok" diye yazılır, uydurulmaz).
      =================================================================== */
+  /* ===================================================================
+     GV.teklif — TEKLİF SÜRÜMLEME (K-17 · ADR-R2-17)
+     -------------------------------------------------------------------
+     R1'de üç tur boyunca SAHTE kaldı: ekranlarda "revizyon" yazıyordu ama
+     revizyon yeni kayıt üretmiyor, `versiyon` alanı elle artırılıyor ve eski
+     içerik ÜZERİNE yazılıyordu. Yani "sürüm 3" diyen bir teklifin 1. ve 2.
+     sürümü hiçbir yerde yoktu — sayaç bir şey ANLATIYOR ama karşılığı yok.
+     `tasks/riskler-ve-kapsam.md` K-17 bunu borç olarak taşıyordu.
+
+     ÜÇ HÜKÜM, üçü de ölçülebilir:
+       1. Revizyon YENİ KAYIT üretir (`revizyonAc`) — eski kayıt değişmez.
+       2. Eski sürüm KİLİTLENİR — `Gates.teklifSurumKilidi` + motor kilidi.
+          Kilit bir alan değil, zincirden türetilir: ardılı olan kilitlidir.
+       3. İki sürüm KARŞILAŞTIRILABİLİR (`fark`) — alanlar ve kalemler.
+
+     ZİNCİR İKİ ALANLA KURULUR, üçüncüsü türetilir:
+       `kokTeklif`    — zincirin ilk kaydının kodu (tüm sürümlerde aynı)
+       `oncekiSurum`  — bir önceki sürümün kodu (ilk sürümde null)
+       `versiyon`     — zincirdeki sıra; YAZILIR ama otoriter değildir,
+                        `sira()` onu zincirden doğrular.
+
+     ⚠️ MEVCUT VERİ: 8 teklifin hiçbirinde zincir alanı yok ve dördü
+     `versiyon` > 1 taşıyor (2 · 3 · 2 · 2). Bu sayılar R1'den DEVRALINDI ve
+     karşılığı olan kayıt YOK. Uydurup geçmiş sürüm ÜRETMİYORUZ (L-13):
+     `devralinan` bayrağı bunu söyler ve ekran "önceki sürümlerin kaydı
+     kaynak veride yok" diye yazar.
+     =================================================================== */
+  GV.teklif = (function(){
+
+    function kayit(x){
+      if(!x) return null;
+      if(typeof x !== 'string') return x;
+      return (window.DB && DB.quotes || []).filter(function(q){ return q.kod === x; })[0] || null;
+    }
+
+    /* Zincirin kökü. Alan yoksa kayıt kendi köküdür. */
+    function kok(x){
+      var q = kayit(x);
+      return q ? (q.kokTeklif || q.kod) : null;
+    }
+
+    /* Bir teklifin TÜM sürümleri, eskiden yeniye. Zincir alanı olmayan
+       (devralınmış) kayıt yalnız kendini döndürür — geçmiş uydurulmaz. */
+    function surumler(x){
+      var k = kok(x);
+      if(!k || !window.DB || !DB.quotes) return [];
+      return DB.quotes.filter(function(q){ return (q.kokTeklif || q.kod) === k; })
+        .sort(function(a, b){ return (a.versiyon || 1) - (b.versiyon || 1); });
+    }
+
+    function sonSurum(x){
+      var s = surumler(x);
+      return s.length ? s[s.length - 1] : null;
+    }
+
+    /* Kilitli mi — `Gates` ile AYNI yordamı çağırır, ikinci bir tanım yok. */
+    function kilitli(x){
+      var q = kayit(x);
+      if(!q) return null;
+      var g = Gates.teklifSurumKilidi(q);
+      return g.ok ? null : g;
+    }
+
+    /* Sayaç ile zincir çelişiyor mu — `versiyon` alanı devralınmış olabilir.
+       Ekran bu ayrımı KULLANMAK zorundadır: iki farklı güvenilirlikteki
+       sayıyı aynı biçimde basmak yanlış beyandır (GV.test ile aynı disiplin). */
+    function zincir(x){
+      var s = surumler(x);
+      var q = kayit(x);
+      if(!q) return null;
+      var devralinan = s.length === 1 && (q.versiyon || 1) > 1;
+      return {
+        kok:kok(q), surum:s, adet:s.length,
+        sira:s.indexOf(q) + 1,
+        guncel:s.length ? s[s.length - 1].kod : q.kod,
+        sonuncuMu:s.length ? s[s.length - 1].kod === q.kod : true,
+        kilit:kilitli(q),
+        /* R1'den gelen sayaç: kayıtları olmayan sürüm iddiası */
+        devralinan:devralinan,
+        devralinanSayi:devralinan ? (q.versiyon || 1) : 0
+      };
+    }
+
+    /* Revizyon açılabilir mi — kapı REDDEDER, uyarıp geçmez.
+       Terminal ve kilitli kayıtta revizyon YOKTUR. */
+    function revizyonIzni(x){
+      var q = kayit(x);
+      if(!q) return { ok:false, why:'kayit', mesaj:'Teklif kaydı bulunamadı.' };
+      var kl = kilitli(q);
+      if(kl) return { ok:false, why:'kilit', mesaj:kl.why, ardil:kl.ardil };
+      var kural = (window.DB && DB.transitions && DB.transitions.quote &&
+                   DB.transitions.quote[q.durum]) || {};
+      if(kural.terminal)
+        return { ok:false, why:'terminal',
+                 mesaj:'"' + q.durum + '" sonuçlanmış bir durumdur; revizyon açılmaz. ' +
+                       'Yeni bir teklif oluşturun.' };
+      if(!can('ekle'))
+        return { ok:false, why:'yetki', roller:['ekle'],
+                 mesaj:'Teklif revizyonu açma yetkiniz yok.' };
+      return { ok:true };
+    }
+
+    function yeniKod(){
+      var yil = String(DB.today).slice(0, 4), max = 0;
+      (DB.quotes || []).forEach(function(q){
+        var m = new RegExp('^TKL-' + yil + '-(\\d+)$').exec(q.kod || '');
+        if(m) max = Math.max(max, +m[1]);
+      });
+      return 'TKL-' + yil + '-' + String(max + 1).padStart(3, '0');
+    }
+
+    /* ---- REVİZYON AÇ ------------------------------------------------
+       Yeni kayıt ESKİSİNDEN türetilir; alanlar kopyalanır, zincir kurulur,
+       yeni sürüm `Taslak` doğar. Eski kayıt DEĞİŞTİRİLMEZ — kilidi zaten
+       ardılın varlığından doğar, üzerine bayrak yazmaya gerek yok.
+       Kalemler de kopyalanır: revizyon boş bir kalem tablosuyla açılsaydı
+       kullanıcı her seferinde sıfırdan yazardı ve "revizyon" bir kopya değil
+       yeni teklif olurdu. */
+    function revizyonAc(x, opts){
+      opts = opts || {};
+      var q = kayit(x);
+      var izin = revizyonIzni(q);
+      if(!izin.ok) return izin;
+
+      var s = surumler(q);
+      var enBuyuk = s.reduce(function(m, r){ return Math.max(m, r.versiyon || 1); }, 0);
+      var kokKod = kok(q);
+      var yeni = {};
+      Object.keys(q).forEach(function(k){ yeni[k] = q[k]; });
+
+      yeni.kod          = yeniKod();
+      yeni.kokTeklif    = kokKod;
+      yeni.oncekiSurum  = q.kod;
+      yeni.versiyon     = enBuyuk + 1;
+      yeni.tarih        = opts.tarih || DB.today;
+      yeni.durum        = 'Taslak';
+      yeni.icOnay       = 'Bekliyor';
+      yeni.musteriOnay  = '—';
+      yeni.arsiv        = false;
+      yeni.aktif        = true;
+      /* Önceki sürümün karar alanları TAŞINMAZ: yeni sürüm henüz hiçbir
+         karara bağlanmadı. Taşımak, alınmamış bir kararı alınmış gösterirdi. */
+      delete yeni.kayipNedeni;
+      delete yeni.sonNedenKodu;
+      delete yeni.sonNedenAciklama;
+
+      /* Kökün kendisi de zincire yazılır ki `surumler()` ikisini de bulsun.
+         Bu, kök kayda dokunan TEK yazımdır ve içeriğini değiştirmez. */
+      var kokKayit = kayit(kokKod);
+      if(kokKayit && !kokKayit.kokTeklif) kokKayit.kokTeklif = kokKod;
+
+      (DB.quotes || (DB.quotes = [])).unshift(yeni);
+
+      /* Kalemler kopyalanır — miktar/fiyat aynen, teklif kodu yeni. */
+      var kalem = (DB.quoteItems || []).filter(function(i){ return i.teklif === q.kod; });
+      kalem.forEach(function(i){
+        var kopya = {};
+        Object.keys(i).forEach(function(k){ kopya[k] = i[k]; });
+        kopya.teklif = yeni.kod;
+        DB.quoteItems.push(kopya);
+      });
+
+      Audit.yaz({ kayit:yeni.kod, modul:'Satış',
+        islem:'Teklif revizyonu açıldı — ' + q.kod + ' sürüm ' + (q.versiyon || 1) +
+              ' → ' + yeni.kod + ' sürüm ' + yeni.versiyon +
+              (kalem.length ? ' · ' + kalem.length + ' kalem kopyalandı' : ' · kalem dökümü yok') +
+              (opts.not ? ' — ' + opts.not : ''),
+        eski:q.kod, yeni:yeni.kod, tone:'ok', icon:'i-copy' });
+      Audit.yaz({ kayit:q.kod, modul:'Satış',
+        islem:'Bu sürüm revize edildi ve kilitlendi — ardıl ' + yeni.kod,
+        eski:'açık', yeni:'kilitli', tone:'warn', icon:'i-lock' });
+
+      return { ok:true, yeni:yeni, eski:q, versiyon:yeni.versiyon,
+               kalem:kalem.length, kok:kokKod };
+    }
+
+    /* ---- FARK -------------------------------------------------------
+       İki sürüm arasındaki değişiklik. Alan listesi SABİT değil, iki kaydın
+       birleşimidir; yeni bir alan eklendiğinde karşılaştırma kendiliğinden
+       kapsar. Zincir ve kimlik alanları dışarıdadır — onlar zaten farklı. */
+    var GIZLI = ['kod','kokTeklif','oncekiSurum','versiyon','aktif','arsiv'];
+    var ETIKET = {
+      firma:'Firma', musteri:'Müşteri hesabı', lead:'Bağlı aday', analiz:'Ön analiz',
+      tarih:'Teklif tarihi', gecerlilik:'Geçerlilik', hazirlayan:'Hazırlayan',
+      araToplam:'Ara toplam', indirim:'İndirim', vergiOran:'Vergi oranı',
+      vergi:'Vergi', toplam:'Genel toplam', doviz:'Döviz', durum:'Durum',
+      icOnay:'İç onay', musteriOnay:'Müşteri onayı', kalemSayisi:'Kalem sayısı',
+      odemePlani:'Ödeme planı', teslimSuresi:'Teslim süresi',
+      garanti:'Garanti', destek:'Destek'
+    };
+
+    function fark(a, b){
+      var qa = kayit(a), qb = kayit(b);
+      if(!qa || !qb) return null;
+      var alanlar = {};
+      Object.keys(qa).concat(Object.keys(qb)).forEach(function(k){
+        if(GIZLI.indexOf(k) === -1) alanlar[k] = 1;
+      });
+      var degisen = [];
+      Object.keys(alanlar).sort().forEach(function(k){
+        var x = qa[k] == null ? '' : qa[k], y = qb[k] == null ? '' : qb[k];
+        if(String(x) === String(y)) return;
+        degisen.push({ alan:k, etiket:ETIKET[k] || k, eski:qa[k], yeni:qb[k],
+                       sayisal:typeof qa[k] === 'number' || typeof qb[k] === 'number' });
+      });
+
+      /* Kalem farkı — sıra numarası üzerinden eşlenir; ad değişse bile aynı
+         satırın revizyonu olduğu görülsün. */
+      function kalemler(kod){
+        return (DB.quoteItems || []).filter(function(i){ return i.teklif === kod; })
+          .sort(function(m, n){ return (m.sira || 0) - (n.sira || 0); });
+      }
+      var ka = kalemler(qa.kod), kb = kalemler(qb.kod);
+      var siralar = {};
+      ka.concat(kb).forEach(function(i){ siralar[i.sira] = 1; });
+      var kalemFark = [];
+      Object.keys(siralar).sort(function(m, n){ return m - n; }).forEach(function(sira){
+        var x = ka.filter(function(i){ return String(i.sira) === String(sira); })[0] || null;
+        var y = kb.filter(function(i){ return String(i.sira) === String(sira); })[0] || null;
+        if(x && !y){ kalemFark.push({ sira:+sira, tur:'silindi', eski:x, yeni:null }); return; }
+        if(!x && y){ kalemFark.push({ sira:+sira, tur:'eklendi', eski:null, yeni:y }); return; }
+        var d = ['kalem','tur','birim','miktar','birimFiyat','tutar'].filter(function(k){
+          return String(x[k] == null ? '' : x[k]) !== String(y[k] == null ? '' : y[k]); });
+        if(d.length) kalemFark.push({ sira:+sira, tur:'degisti', eski:x, yeni:y, alanlar:d });
+      });
+
+      return {
+        eski:qa, yeni:qb, alan:degisen, kalem:kalemFark,
+        /* Tutar ekseni ayrıca özetlenir: revizyonun ticari anlamı budur. */
+        tutarFarki:(qb.toplam || 0) - (qa.toplam || 0),
+        degisiklikSayisi:degisen.length + kalemFark.length
+      };
+    }
+
+    return { kayit:kayit, kok:kok, surumler:surumler, sonSurum:sonSurum,
+             kilitli:kilitli, zincir:zincir, revizyonIzni:revizyonIzni,
+             revizyonAc:revizyonAc, fark:fark };
+  })();
+
   GV.test = (function(){
 
     function kosumlar(testKod){

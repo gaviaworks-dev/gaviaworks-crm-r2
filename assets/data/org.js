@@ -369,7 +369,9 @@ DB.flowEntities = {
   task:     { koleksiyon:'tasks',          alan:'durum',      ad:'Görev' },
   project:  { koleksiyon:'projects',       alan:'durum',      ad:'Proje' },
   contract: { koleksiyon:'contracts',      alan:'durum',      ad:'Sözleşme' },
-  quote:    { koleksiyon:'quotes',         alan:'durum',      ad:'Teklif' },
+  /* `kilit` — VARLIK düzeyinde dondurma (K-17). Ardılı olan teklif sürümü
+     hiçbir geçiş yapamaz; kural her duruma ayrı ayrı yazılmaz. */
+  quote:    { koleksiyon:'quotes',         alan:'durum',      ad:'Teklif', kilit:'teklifSurumKilidi' },
   analysis: { koleksiyon:'analyses',       alan:'durum',      ad:'Ön analiz' },
   invoice:  { koleksiyon:'invoices',       alan:'belgeDurum', ad:'Fatura' },
   bug:      { koleksiyon:'bugs',           alan:'durum',      ad:'Hata' },
@@ -512,7 +514,12 @@ DB.transitions = {
     'Onaylandı':         { next:['Gönderildi','Taslak'],                   yetki:['satismudur','satistemsilci','sahip','genelmudur'], zorunlu:[], etiket:'Müşteriye Gönder', tone:'btn-acc' },
     'Gönderildi':        { next:['Müşteri İncelemesi','Süresi Doldu','İptal Edildi'], yetki:['satismudur','satistemsilci','sahip','genelmudur'], zorunlu:[], anaHedef:'Müşteri İncelemesi', etiket:'İncelemede İşaretle', tone:'btn-line' },
     'Müşteri İncelemesi':{ next:['Kazanıldı','Kaybedildi','Müzakere/Revizyon','Süresi Doldu'], yetki:['satismudur','satistemsilci','sahip','genelmudur'], zorunlu:[], anaHedef:'Kazanıldı', etiket:'Kazanıldı', tone:'btn-ok' },
-    'Müzakere/Revizyon': { next:['Taslak','Kazanıldı','Kaybedildi'],       yetki:['satismudur','satistemsilci','sahip','genelmudur'], zorunlu:[], etiket:'Revizyon Oluştur', tone:'btn-acc' },
+    /* ⚠️ `Taslak` KENARI KALDIRILDI (K-17). Eskiden revizyon, AYNI kaydı
+       taslağa geri çekmekti: içerik üzerine yazılıyor, eski sürüm yok
+       oluyordu — `versiyon` sayacı bir geçmiş ANLATIYOR ama karşılığı
+       yoktu. Revizyon artık bir geçiş değil, `GV.teklif.revizyonAc`
+       ile YENİ KAYITTIR; bu kayıt olduğu yerde kilitlenir. */
+    'Müzakere/Revizyon': { next:['Kazanıldı','Kaybedildi'],                yetki:['satismudur','satistemsilci','sahip','genelmudur'], zorunlu:[], anaHedef:'Kazanıldı', etiket:'Kazanıldı', tone:'btn-ok' },
     'Kazanıldı':         { next:[], terminal:true },
     'Kaybedildi':        { next:[], terminal:true, girisGerekce:true },
     'Süresi Doldu':      { next:['Taslak'],                                yetki:['satismudur','satistemsilci','sahip','genelmudur'], zorunlu:[], etiket:'Yeniden Aç', tone:'btn-line' },
