@@ -371,7 +371,8 @@ Dönüş yüzeyi (`ui.js:1881-1894`) — ekran dışarıdan çağırabilir:
 **Hazır kolon fabrikaları** (`ui.js:2935-3022`) — tekrar yazma:
 
 ```js
-GV.cols.money('toplam','Tutar', { signed:true, cur:'₺', perm:'finans', sub:function(x){…} })
+GV.cols.money('toplam','Tutar', { signed:true, cur:'₺', perm:'finans', sub:function(x){…},
+                                  deger:function(x){ return GV.fin.balance(x).acik; } })  // türetilmiş tutar
 GV.cols.num('adet','Adet', { basamak:1 })
 GV.cols.pct('ilerleme','İlerleme', { bar:true, esik:50 })
 GV.cols.date('tarih','Tarih', { plain:true, done:function(x){…}, bosMetin:'planlanmadı' })
@@ -432,7 +433,7 @@ filters:[
     options:[{ value:'ADAY', label:'Aday' }, …] },
   { key:'sorumlu', label:'Sorumlu', type:'select', options:[…] },
   { key:'tarih',  label:'Tarih', type:'daterange' },
-  { key:'tutar',  label:'En az tutar', type:'text' },
+  { key:'tutar',  label:'En az tutar', type:'money', currency:'₺' },   // 'percent' de var
   { key:'firsatVar', label:'Açık fırsatı olanlar', type:'select',
     options:[{ value:'var', label:'…' }],
     test:function(r, v){ return …; } }          // özel süzgeç yordamı

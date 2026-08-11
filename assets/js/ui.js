@@ -1563,16 +1563,23 @@
             '<input type="date" data-f="' + f.key + '" data-part="1" value="' + esc(p[1] || '') + '" aria-label="Bitiş">' +
             '</div></div>';
         }
-        if(f.type === 'text'){
+        /* UID-10 — Para ve yüzde filtresinde BİRİM EKİ.
+           ⚠️ ÖLÜ KODDU: bu dal `if(f.type === 'text')` bloğunun İÇİNDE
+           duruyordu, yani `type:'money'` verildiğinde koşul zaten yanlıştı ve
+           akış aşağıdaki `select` dalına düşüyordu — orada `f.options.map`
+           çağrıldığı için filtre `options` taşımayan bir para alanında
+           PATLIYORDU. Bir ekran maliyet aralığı filtresini bu yüzden
+           `type:'text'` + `test` ile kurmak zorunda kaldı ve birim ekini
+           başlığa yazdı. Dal kendi koşuluna çıkarıldı. */
+        if(f.type === 'money' || f.type === 'percent'){
           return '<div class="field fd-field"><label>' + esc(f.label) + '</label>' +
-            /* UID-10 — Para ve yüzde filtresinde BİRİM EKİ. Form tarafında
-               `f-affix`/`f-suffix` vardı, filtre panelinde yoktu; kullanıcı
-               "en az 50000" yazarken neyin birimi olduğunu göremiyordu. */
-            (f.type === 'money' || f.type === 'percent'
-              ? '<div class="f-affix"><input type="number" class="inp" data-f="' + f.key + '" value="' + esc(cur || '') + '" min="0"' +
-                (f.type === 'percent' ? ' max="100"' : '') + '><span class="f-suffix">' +
-                esc(f.type === 'percent' ? '%' : (f.currency || '₺')) + '</span></div>'
-              : '<input type="' + (f.type === 'number' ? 'number' : 'text') + '" class="inp" data-f="' + f.key + '" value="' + esc(cur || '') + '">') + '</div>';
+            '<div class="f-affix"><input type="number" class="inp" data-f="' + f.key + '" value="' + esc(cur || '') + '" min="0"' +
+            (f.type === 'percent' ? ' max="100"' : '') + '><span class="f-suffix">' +
+            esc(f.type === 'percent' ? '%' : (f.currency || '₺')) + '</span></div></div>';
+        }
+        if(f.type === 'text' || f.type === 'number'){
+          return '<div class="field fd-field"><label>' + esc(f.label) + '</label>' +
+            '<input type="' + (f.type === 'number' ? 'number' : 'text') + '" class="inp" data-f="' + f.key + '" value="' + esc(cur || '') + '"></div>';
         }
         return '<div class="field fd-field"><label>' + esc(f.label) + '</label><select data-f="' + f.key + '">' +
           '<option value="">Tümü</option>' +
@@ -3024,11 +3031,18 @@
   GV.cols = {
     money:function(key, label, o){
       o = o || {};
+      /* `deger(x)` — tutar kayıtta DEĞİL, türetiliyorsa. `GV.cols.durum`da
+         bu kapı vardı, `money`de YOKTU: net/KDV/brüt `GV.fin.tutar`dan,
+         bakiye `GV.fin.balance`tan gelir ve hiçbiri ham alan değildir.
+         Kapı olmayınca bir ekran beş para kolonunu fabrikanın sözleşmesini
+         (cellClass · perm · sortValue · exportValue) elle taşıyarak yazmak
+         zorunda kaldı — fabrikayı kullanamamak, fabrikanın eksikliğidir. */
+      var oku = o.deger || function(x){ return x[key]; };
       return colGecir({ key:key, label:label, cellClass:o.cellClass != null ? o.cellClass : 'num', visible:o.visible !== false,
-        sortValue:function(x){ return x[key] == null ? null : x[key]; },
-        exportValue:o.exportValue || function(x){ return x[key] == null ? '' : x[key]; },
+        sortValue:o.sortValue || function(x){ var v = oku(x); return v == null ? null : v; },
+        exportValue:o.exportValue || function(x){ var v = oku(x); return v == null ? '' : v; },
         render:function(x){
-          return GV.cell.mny(x[key], { signed:o.signed, cur:o.cur, tone:o.tone ? o.tone(x) : null }) +
+          return GV.cell.mny(oku(x), { signed:o.signed, cur:o.cur, tone:o.tone ? o.tone(x) : null }) +
                  (o.sub ? GV.cell.sub(o.sub(x)) : ''); } }, o);
     },
     num:function(key, label, o){
