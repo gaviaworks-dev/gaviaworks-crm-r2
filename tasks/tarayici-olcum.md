@@ -337,3 +337,39 @@ Sıfır bulgu tek başına temiz değildir. Bozulmuş kopyaya iki kusur enjekte 
 
 2 kusur → 4 bulgu (her genişlikte ayrı). Enjeksiyon kopyası silindi; depo
 dosyası değiştirilmedi.
+
+---
+
+## Dilim 2 — Finans zinciri (11 Ağustos 2026)
+
+| | |
+|---|---:|
+| Ölçülen ekran | **26** (önceki 19 + finans 6 + teklif sürüm yüzeyi) |
+| Genişlik | **6** — 1600 · 1440 · 1280 · 1024 · 768 · 390 |
+| Toplam ölçüm | **156** |
+| Yatay taşma · konsol hatası · eksik ikon · odak bulgusu | **0 · 0 · 0 · 0** |
+| Düzeltme gerektiren bulgu | **0** |
+| Dış kaynak (Google Fonts CDN) | 8 — depo kusuru değil, ayrı sayılıyor |
+
+Eklenen yüzeyler: `app-fatura.html` · `app-fatura-detay.html?id=FTR-2026-025` ·
+`app-fatura-form.html?taksit=MS-004` · `app-tahsilat.html` ·
+`app-tahsilat-form.html?id=THS-2026-041` · `app-satinalma.html` ·
+`app-teklif-detay.html?id=TKL-2026-011` (sürüm zinciri yüzeyi).
+
+**Kayıt seçimi ölçümden geldi:** `FTR-2026-025` zincirin dört halkasını da
+taşıyan fatura · `THS-2026-041` tahsil **edilmemiş** kayıt (nakit olayı yok) ·
+`MS-004` faturası olmayan dört taksitten biri · `TKL-2026-011` devralınan
+sürüm sayacı taşıyan teklif.
+
+### İki yeni eksenin kusur yakaladığı kanıtlandı
+
+Bozulmuş kopyaya **dört kusur** enjekte edildi, **dördü de yakalandı**:
+
+| Kusur | Yakalayan eksen | Bulgu |
+|---|---|---|
+| Bayat alan tuzağı söküldü | `bayat-alan.js` | tuzak kurulmamış · okuma sessiz · yazma yakalanmıyor |
+| Hesap kaydına `durum` aynası geri kondu | `bayat-alan.js` | 12 hesap ayna taşıyor |
+| Çapa brütü net sayıyor (çift KDV) | `finans-kanon.js` | 7/7 sözleşme çelişkili · 6 ödeme planı eksen dışı · 9 halka sapması |
+| Fatura durumu tazelemede yazılmıyor | `finans-kanon.js` | elle atanan "Ödendi" hayatta kaldı |
+
+4 kusur → **19 bulgu**. Enjeksiyon kopyası silindi; depo dosyası değişmedi.

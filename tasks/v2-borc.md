@@ -80,3 +80,23 @@ tanımı yoktu) ve evre rozeti üç ekrandaki kopyasından ortak yordama alınd�
 
 **Açık kalanlar:** V2-01 · V2-02 · V2-03 · V2-04 · V2-05 · V2-06 · V2-08 ·
 V2-09 · V2-10 · V2-13 · V2-14 · V2-15 · V2-16 — on üç madde.
+
+---
+
+## Dilim 2'de açılan yeni borç
+
+| # | Madde | Ölçüm |
+|---|---|---|
+| **V2-17** | `GV.form` select seçeneklerinde `disabled` bayrağı yok (`ui.js` metin/select dalı) | Fatura formu "faturası olan taksiti göster ama seçtirme" desenini kuramadı; seçenekleri **listeden çıkarmak** zorunda kaldı ve sebebi ipucunda yazılı. `app-fatura-detay.html` aynı deseni ham `<option disabled>` ile kuruyor — form motorunda karşılığı yok |
+| **V2-18** | `GV.form` alan sözleşmesinde `datalist` yuvası yok | Tahsilat formunda yöntem alanı sözlüksüz; ölçülmüş değerleri öneri olarak sunmak için `datalist` çizimden **sonra** iliştirildi. `list:[]` yuvası ortak katmana ait |
+| **V2-19** | Detay ekranı için tablo + mobil-ikiz bileşeni yok | `GV.list` liste ekranının bileşeni; detayda ikisini birlikte basan yordam yok. `app-teklif-detay.html` ve `app-fatura-detay.html` aynı yerel `tablo()` yardımcısını taşıyor — **iki kopya**, üçüncüde `ui.js`'e taşınmalı |
+| **V2-20** | Sarmalayan buton satırı için sınıf yok | `.gv-drawer-foot` sarmıyor ve `flex:1` uyguluyor; satın alma ekranı 5 geçiş düğmesi için `.lh-acts`ı ödünç aldı. Genel bir `.gv-actrow` gerekiyor |
+| **V2-21** | Satır uyarı tonu tek eksende | `ui.css` satır için yalnız `is-late` / `is-passive` taşıyor; "vadesi geçmiş" ile "kendi içinde çelişkili" aynı şeridi paylaşmak zorunda |
+| **V2-22** | Tahsis geri alma yüzeyi yok | `GV.fin.tahsisKaldir` yordamı **var**, hiçbir ekranda yüzeye çıkmadı — gerekçe ve yetki kararı gerektiriyor |
+| **V2-23** | Ödeme yöntemi ve banka/kasa hesabı sözlüğü yok | Ölçüldü: `DB.payments` 17/17 kayıtta `yontem` alanı **yok**; `DB.paymentMethods` ve hesap planı tanımlı değil. İki form da serbest metin kullandı ve sebebini yazdı |
+| **V2-24** | Satın alma alt kayıtları henüz gömülmedi | Rota 116-122 (teklif toplama · siparişler · tedarikçiler) satın alma ekranının sekmeleri olacak; bu dilimde yazılmadı |
+| **V2-25** | Tahsilat detay ekranı yok | Rota 71 `KARŞILIĞI VAR` ama bu dilimin kapsamında değildi; liste kod kolonu bu yüzden bağlantı taşımıyor |
+| **V2-26** | Veri bulgusu: EMP-011'in departman çelişkisi | Personel kaydında `dep:'DEP-14'`, açtığı 3 talepte `dep:'DEP-17'`. `departman` kapsamı oturum departmanını kayıt departmanına eşitlediği için bu kişi kendi taleplerini departman kapsamında göremiyor. Ekranda düzeltilmedi — kapsam eşleşmesi bileşenin sözleşmesi |
+
+**Kapanan:** V2-07 · V2-11 · V2-12 (kapsama alındı) · BE-S2.
+**Açık toplam:** 13 (dilim 1'den) + 10 (dilim 2) = **23 madde**.
