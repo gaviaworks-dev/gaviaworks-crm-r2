@@ -254,6 +254,33 @@
         '. Ayrılış tamamlanmadan demirbaşlar iade edilmeli.' };
     },
 
+    /* [5.3] — FIRSAT KAZANMA KAPISI.
+       Şartname §5.3 adım 2: "Sistem zorunlu müşteri bilgilerini kontrol eder."
+       Kontrolün yeri burasıdır, ekran değil: fırsat üç yerden kazanılabilir
+       (fırsat detayı · Satış Akışı kartı · teklif detayı) ve üçü ayrı ayrı
+       kontrol yazsaydı biri diğerinden sessizce ayrılırdı (L-40).
+
+       Kapı UYARMAZ, REDDEDER. Eksik alan listesi `GV.lifecycle`ten okunur —
+       aynı liste evre geçişinde de geçerlidir, iki ayrı zorunluluk sözlüğü
+       tutmak er geç çelişirdi. */
+    firsatKazanma:function(o){
+      var h = GV.lifecycle && GV.lifecycle.hesap(o.hesap);
+      if(!h) return { ok:false, why:'Fırsatın bağlı olduğu müşteri hesabı bulunamadı (' +
+                                    (o.hesap || '—') + '). Kazanma, hesabı olmayan bir fırsata uygulanamaz.' };
+      /* Hesap zaten MÜŞTERİ ise alan kontrolü tekrar edilmez: evre değişmeyecek. */
+      if(h.evre === 'MUSTERI') return { ok:true };
+      var izinli = (GV.lifecycle.sonraki(h.evre) || []).indexOf('MUSTERI') !== -1;
+      if(!izinli)
+        return { ok:false, why:'“' + (GV.lifecycle.ad(h.evre) || h.evre) + '” evresindeki bir hesap doğrudan ' +
+                 'Müşteri yapılamaz (§5.1). Önce hesabı “' +
+                 (GV.lifecycle.ad('NITELIKLI')) + '” evresine taşıyın.' };
+      var eksik = GV.lifecycle.eksikAlanlar(h);
+      return eksik.length
+        ? { ok:false, why:'Müşteri evresine geçiş için hesapta eksik alan var: ' +
+                          eksik.join(' · ') + '. Kazanma bu alanlar dolmadan uygulanamaz.' }
+        : { ok:true };
+    },
+
     /* Destek kapanışı: bakım kotası aşımı — ADR-10 */
     destekKota:function(t){
       if(t.ucretli) return { ok:true };
@@ -469,6 +496,150 @@
 
   GV.flow  = Flow;
   GV.gates = Gates;
+
+  /* ===================================================================
+     GV.lifecycle — MÜŞTERİ YAŞAM EVRESİ (şartname §5.1 · §5.2 · §5.3)
+     -------------------------------------------------------------------
+     `lifecycle.js` evre SÖZLÜĞÜNÜ ve türetilmiş hesapları taşıyor
+     (`DB.lifecycleStages` · `DB.accounts`), ama evreyi DEĞİŞTİREN bir
+     yordam yoktu. Karşılığı olmayan tek şey buydu ve doldurulmasaydı üç
+     ekran (müşteri detayı · müşteri formu · fırsat kazanma) evreyi
+     `h.evre = 'MUSTERI'` diye elle yazardı — `GV.flow`un kapattığı hatanın
+     birebir aynısı, yeni bir eksende.
+
+     NEDEN `GV.flow` DEĞİL: geçiş motoru `DB.transitions` sözleşmesini okur ve
+     ROL/İLİŞKİ eksenli yetki çözer. Yaşam evresi tablosu şartnamede AYRI bir
+     biçimde yazılı (§5.1 tablosu: `sonraki` listesi) ve `lifecycle.js` onu
+     zaten o biçimde taşıyor. Aynı tabloyu ikinci bir biçime çevirip
+     `DB.transitions`e kopyalamak, tek kaynağı ikiye bölmek olurdu (L-40).
+     Bu yordam o tabloyu OLDUĞU YERDEN okur — motorun kendisiyle aynı
+     sözleşmeyi (`{ok:false, why:…}`) döndürür ki `GV.flowHata` onu da
+     çevirebilsin.
+
+     ⚠️ BACKEND PAYI (BE-S2): evre değişimi `DB.accounts` kaydında yaşar;
+     kaynak `DB.customers[].durum` alanına AYNALANMAZ. Aynalamak, aynı olguyu
+     iki deftere yazmak olurdu (VB-25'in tam tarifi) ve prototipte ikisi
+     arasında hakem yok. Gerçek sistemde tek kayıt vardır:
+     `PATCH /api/customers/:id/lifecycle-stage` (§9).
+     =================================================================== */
+  var EVRE_ROL = ['satismudur','sahip','genelmudur','operasyon'];
+
+  var Lifecycle = {
+    sozluk:function(){ return (window.DB && DB.lifecycleStages) || {}; },
+    evreler:function(){ return (window.DB && DB.lifecycleOrder) || []; },
+    ad:function(evre){ var s = Lifecycle.sozluk()[evre]; return s ? s.ad : null; },
+
+    /* Kod da kayıt da kabul edilir — çağıran elindekini verir. */
+    hesap:function(x){
+      if(!x) return null;
+      if(typeof x !== 'string') return x;
+      if(!window.DB || !DB.accounts) return null;
+      return DB.accounts.filter(function(h){ return h.kod === x; })[0] || null;
+    },
+
+    /* §5.1 tablosundan — ekran kendi listesini YAZMAZ */
+    sonraki:function(evre){
+      var s = Lifecycle.sozluk()[evre];
+      return (s && s.sonraki) ? s.sonraki.slice() : [];
+    },
+
+    /* §5.2 son cümlesi: "Kayıt müşteri evresine geçirilirken eksik olan
+       yasal/fatura alanları DOĞRULANMALIDIR; ilk aday kaydında bunların
+       tamamı zorunlu olmamalıdır." Yani zorunluluk kaydın doğduğu anda değil,
+       MÜŞTERİ evresine geçerken doğar. Liste burada TEK yerdedir; form da
+       kapı da fırsat kazanma da bunu okur.
+       Ölçüldü: 20 hesabın 8'inde `vergiNo` boş (hepsi aday kaydından türedi),
+       yani bu kapı gerçekten ısırıyor. */
+    eksikAlanlar:function(h, hedef){
+      h = Lifecycle.hesap(h);
+      if(!h) return [];
+      if((hedef || 'MUSTERI') !== 'MUSTERI') return [];
+      var eksik = [];
+      if(!String(h.unvan || '').trim()) eksik.push('Firma / unvan');
+      if(!String(h.vergiNo || '').trim()) eksik.push('Vergi numarası');
+      if(!h.sorumlu) eksik.push('Sorumlu');
+      if(!h.tel && !h.eposta) eksik.push('Telefon veya e-posta');
+      return eksik;
+    },
+
+    /* Bu hesap + bu oturum için yapılabilir evre geçişleri.
+       Ekran buradan buton üretir; `GV.flow.adimlar` ile aynı biçimde döner. */
+    adimlar:function(x){
+      var h = Lifecycle.hesap(x);
+      if(!h) return [];
+      var rol = (GV.perm && GV.perm.role) ? GV.perm.role() : null;
+      return Lifecycle.sonraki(h.evre).map(function(hedef){
+        var yetkiVar = hedef === 'MUSTERI' ? EVRE_ROL.indexOf(rol) !== -1 : can('duzenle');
+        return {
+          hedef:hedef,
+          etiket:Lifecycle.ad(hedef) || hedef,
+          birincil:hedef === 'MUSTERI' || hedef === 'NITELIKLI',
+          tone:hedef === 'MUSTERI' ? 'btn-ok'
+             : hedef === 'KAYIP' ? 'btn-danger-line' : 'btn-line',
+          izin:yetkiVar,
+          eksik:Lifecycle.eksikAlanlar(h, hedef),
+          gerekce:hedef === 'KAYIP'
+        };
+      });
+    },
+
+    /* TEK MUTASYON NOKTASI. `h.evre = …` yazmak yasaktır.
+       opts: { neden, not } — `KAYIP` için ikisi de zorunlu ([2.0.6]). */
+    gec:function(x, hedef, opts){
+      opts = opts || {};
+      var h = Lifecycle.hesap(x);
+      if(!h) return { ok:false, why:'kayit', mesaj:'Hesap kaydı bulunamadı: ' + x };
+      if(!Lifecycle.sozluk()[hedef])
+        return { ok:false, why:'gecis', mesaj:'"' + hedef + '" tanımlı bir yaşam evresi değil' };
+      var eski = h.evre;
+      if(eski === hedef)
+        return { ok:false, why:'ayni', mesaj:'Hesap zaten "' + (Lifecycle.ad(hedef) || hedef) + '" evresinde' };
+
+      var izinli = Lifecycle.sonraki(eski);
+      if(izinli.indexOf(hedef) === -1)
+        return { ok:false, why:'gecis',
+                 mesaj:'"' + (Lifecycle.ad(eski) || eski) + '" evresinden "' + (Lifecycle.ad(hedef) || hedef) +
+                       '" evresine geçilemez. İzinli evreler: ' +
+                       (izinli.map(function(k){ return Lifecycle.ad(k) || k; }).join(', ') || 'yok') + '.' };
+
+      var rol = (GV.perm && GV.perm.role) ? GV.perm.role() : null;
+      /* §10 yetki tablosu: "Müşteri evresini Müşteri yap → Satış yöneticisi
+         veya tanımlı rol". Diğer evreler düz düzenleme yetkisine bağlıdır. */
+      if(hedef === 'MUSTERI' && EVRE_ROL.indexOf(rol) === -1)
+        return { ok:false, why:'yetki', roller:EVRE_ROL,
+                 mesaj:'Hesabı Müşteri evresine almak için satış yöneticisi yetkisi gerekir.' };
+      if(hedef !== 'MUSTERI' && !can('duzenle'))
+        return { ok:false, why:'yetki', roller:['duzenle'],
+                 mesaj:'Yaşam evresini değiştirme yetkiniz yok.' };
+
+      var eksik = Lifecycle.eksikAlanlar(h, hedef);
+      if(eksik.length)
+        return { ok:false, why:'zorunlu', eksik:eksik,
+                 mesaj:'Müşteri evresine geçiş için şu alanlar dolu olmalı: ' + eksik.join(', ') + '.' };
+
+      if(hedef === 'KAYIP' && (!opts.neden || !String(opts.not || '').trim()))
+        return { ok:false, why:'gerekce',
+                 mesaj:'Kayıp işaretlemek için neden kodu ve açıklama zorunludur.' };
+
+      h.evre = hedef;
+      /* Türetme izi KORUNUR, üzerine yazılmaz: kaydın nereden geldiği
+         (`customers.durum=…`) göç doğrulamasının kanıtıdır. */
+      h.evreKaynak = (h.evreKaynak || '') + ' + elle geçiş: ' + eski + '→' + hedef;
+      if(opts.neden){ h.sonNedenKodu = opts.neden; h.sonNedenAciklama = opts.not || ''; }
+
+      Audit.yaz({
+        kayit:h.kod, modul:'Müşteri',
+        islem:'Yaşam evresi değiştirildi' + (opts.neden ? ' [' + opts.neden + ']' : '') +
+              (opts.not ? ' — ' + opts.not : ''),
+        eski:Lifecycle.ad(eski) || eski, yeni:Lifecycle.ad(hedef) || hedef,
+        tone:hedef === 'MUSTERI' ? 'ok' : hedef === 'KAYIP' ? 'danger' : 'info',
+        icon:hedef === 'MUSTERI' ? 'i-check-circle' : 'i-refresh'
+      });
+      return { ok:true, hesap:h, eski:eski, yeni:hedef };
+    }
+  };
+
+  GV.lifecycle = Lifecycle;
 
   /* ===================================================================
      İŞ TAKVİMİ / SLA MOTORU — şartname §9.5.3 · §11.1.3 (CLOUD TURU)
@@ -2431,29 +2602,54 @@
        telefon · alan adı. Her eşleşme GEREKÇESİYLE döner; ekran kullanıcıya
        "neden mükerrer sanıyorum" diyebilsin. Vergi no tek başına kesin
        kanıttır, diğerleri işarettir — bu ayrım `kesin` bayrağıyla taşınır. */
-    function mukerrer(aday){
+    /* Tarama gövdesi TEK yerdedir; iki koleksiyon (R1 `DB.customers`,
+       R2 `DB.accounts`) aynı beş ekseni kullanır. İkinci bir kopya yazmak,
+       kapatmaya çalıştığımız hatanın kendisi olurdu (L-40). */
+    function tara(aday, liste){
       aday = aday || {};
       var vNo    = String(aday.vergiNo || '').replace(/\D/g, '');
       var unvanN = norm(aday.unvan || aday.firma);
       var posta  = String(aday.eposta || '').toLocaleLowerCase('tr').trim();
       var alan   = alanAdi(aday.eposta) || String(aday.web || '').replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '').toLocaleLowerCase('tr');
       var tel    = telNorm(aday.tel);
+      /* Çağıran `hariç` de yazabilir `haric` de — ilk yazımda alan adı
+         Türkçe karakterliydi ve dışarıdan çağıran onu ıskalıyordu. */
+      var haric  = aday.hariç || aday.haric || null;
       var out = [];
 
-      (DB.customers || []).forEach(function(c){
-        if(aday.hariç && c.kod === aday.hariç) return;
+      (liste || []).forEach(function(c){
+        if(haric && c.kod === haric) return;
         var nedenler = [], kesin = false;
         if(vNo && String(c.vergiNo || '').replace(/\D/g, '') === vNo){ nedenler.push('aynı vergi numarası'); kesin = true; }
         if(unvanN && (norm(c.unvan) === unvanN || norm(c.kisa) === unvanN)) nedenler.push('aynı unvan');
         if(posta && String(c.eposta || '').toLocaleLowerCase('tr').trim() === posta) nedenler.push('aynı e-posta');
         if(tel && telNorm(c.tel) === tel) nedenler.push('aynı telefon');
         if(alan && alanAdi(c.eposta) === alan) nedenler.push('aynı e-posta alan adı');
-        if(nedenler.length) out.push({ musteri:c, nedenler:nedenler, kesin:kesin });
+        if(nedenler.length) out.push({ kayit:c, nedenler:nedenler, kesin:kesin });
       });
       /* Kesin eşleşme önce; sonra en çok işaret taşıyan. */
       return out.sort(function(a, b){
         if(a.kesin !== b.kesin) return a.kesin ? -1 : 1;
         return b.nedenler.length - a.nedenler.length;
+      });
+    }
+
+    function mukerrer(aday){
+      return tara(aday, DB.customers).map(function(x){
+        return { musteri:x.kayit, nedenler:x.nedenler, kesin:x.kesin };
+      });
+    }
+
+    /* R2 EKSENİ — §5.3 son paragrafı: "Mükerrer kontrolü vergi numarası,
+       normalize telefon, e-posta ve unvan benzerliği üzerinden yapılmalı;
+       OTOMATİK BİRLEŞTİRME yerine kullanıcıya EŞLEŞME ÖNERİSİ verilmelidir."
+
+       Bu yordam öneri üretir, birleştirme YAPMAZ. Kaynak `DB.accounts`tır:
+       R2'de aday ve müşteri aynı defterde yaşar, `DB.customers` üzerinden
+       taramak sekiz aday kaynaklı hesabı görmezden gelirdi. */
+    function hesapMukerrer(aday){
+      return tara(aday, DB.accounts).map(function(x){
+        return { hesap:x.kayit, nedenler:x.nedenler, kesin:x.kesin };
       });
     }
 
@@ -2630,7 +2826,91 @@
       }
     }
 
-    return { mukerrer:mukerrer, musteriUret:musteriUret, kazanildi:kazanildi };
+    /* ---- FIRSAT KAZANMA — R2 ZİNCİRİ (şartname §5.3) -----------------
+       R1 zinciri (`kazanildi`, yukarıda) YENİ BİR `MUS-` KAYDI ÜRETİR.
+       §5.3 adım 3 bunu açıkça yasaklıyor: "Aynı müşteri hesabının yaşam
+       evresi Müşteri yapılır; YENİ MÜŞTERİ KOPYASI OLUŞTURULMAZ."
+       Bu yüzden R2'de kazanma zinciri kopya üretmez, evre ilerletir.
+
+       Beş adım, şartnamedeki sırayla:
+         1. Fırsatta "Kazanıldı" seçilir      → GV.flow.gec('opportunity', …)
+         2. Zorunlu müşteri bilgileri kontrol → Gates.firsatKazanma (motorda)
+         3. Aynı hesabın evresi MUSTERI olur  → GV.lifecycle.gec(…)
+         4. Teklif/sözleşme/proje seçenekleri → `oneriler` dizisi
+         5. Dönüşüm denetim izine yazılır     → GV.audit.yaz
+
+       ⚠️ PROTOTİPTE TRANSACTION YOK. 1. adım geçtikten sonra 3. adım
+       düşerse fırsat kazanılmış, hesap aday kalmış olurdu — kullanıcıya
+       "kazandın" deyip ortada müşteri olmaması, bu depodaki UID-27 sınıfının
+       tam tarifi. Bu yüzden aşama GERİ ALINIR ve geri alma denetim izine
+       ayrıca yazılır (sessiz geri alma, olmamış gibi göstermek olurdu). */
+    function firsatKazan(firsatKod, opts){
+      opts = opts || {};
+      if(!window.DB) return { ok:false, why:'veri' };
+      var o = (DB.opportunities || []).filter(function(x){ return x.kod === firsatKod; })[0];
+      if(!o) return { ok:false, why:'firsat', mesaj:'Fırsat kaydı bulunamadı: ' + firsatKod };
+
+      var h = GV.lifecycle.hesap(o.hesap);
+      if(!h) return { ok:false, why:'hesap',
+                      mesaj:'Fırsatın bağlı olduğu hesap bulunamadı (' + (o.hesap || '—') + ').' };
+
+      /* 1 + 2 — motor ve kapı. Kapı `Gates.firsatKazanma`, tablo firsat.js'te. */
+      var g = Flow.gec('opportunity', o.kod, 'Kazanıldı', null,
+                       { neden:opts.neden, not:opts.not, istisna:opts.istisna });
+      if(!g.ok) return { ok:false, why:'akis', akis:g,
+                         mesaj:g.mesaj || g.why, eksik:g.eksik, roller:g.roller,
+                         istisnaMumkun:g.istisnaMumkun };
+
+      /* 3 — AYNI kaydın evresi. Yeni müşteri kopyası ÜRETİLMEZ. */
+      var evreDegisti = false, evreSonuc = null;
+      if(h.evre !== 'MUSTERI'){
+        evreSonuc = GV.lifecycle.gec(h.kod, 'MUSTERI',
+                     { neden:opts.neden, not:'fırsat kazanıldı — ' + o.kod });
+        if(!evreSonuc.ok){
+          /* GERİ ALMA — yarım sonuç bırakılmaz */
+          o.asama = g.eski;
+          Audit.yaz({ kayit:o.kod, modul:'Satış',
+            islem:'Kazanma geri alındı — hesabın evresi ilerletilemedi: ' +
+                  (evreSonuc.mesaj || evreSonuc.why),
+            eski:'Kazanıldı', yeni:g.eski, tone:'danger', icon:'i-refresh' });
+          return { ok:false, why:'evre', mesaj:evreSonuc.mesaj || evreSonuc.why,
+                   eksik:evreSonuc.eksik, roller:evreSonuc.roller, geriAlindi:true };
+        }
+        evreDegisti = true;
+      }
+
+      /* 5 — dönüşüm olayı: iki kaydı BİRBİRİNE bağlayan tek satır.
+         `GV.flow` ve `GV.lifecycle` kendi kayıtlarını zaten yazdı; bu satır
+         onları tek olay olarak ilişkilendirir (§5.3 adım 5). */
+      Audit.yaz({ kayit:h.kod, modul:'Satış',
+        islem:'Fırsat kazanıldı — ' + o.kod + ' (' + (o.baslik || '') + ')' +
+              (evreDegisti ? ' · hesap Müşteri evresine alındı' : ' · hesap zaten Müşteri evresindeydi'),
+        eski:g.eski, yeni:'Kazanıldı', tone:'ok', icon:'i-check-circle' });
+
+      /* 4 — seçenekler. Var olan teklif bulunursa ONA gidilir; yoksa
+         oluşturma bağlantısı verilir. Hedef ekran yayında değilse kabuk
+         `markWip` ile kilitler — burada tahmin yapılmaz. */
+      var teklifler = DB.opportunityQuotes ? DB.opportunityQuotes(o.kod) : [];
+      var oneriler = [];
+      if(teklifler.length){
+        oneriler.push({ tur:'Teklif', kod:teklifler[0].kod, yeni:false,
+          label:'Teklifi aç — ' + teklifler[0].kod,
+          href:'app-teklif-detay.html?id=' + teklifler[0].kod });
+      }else{
+        oneriler.push({ tur:'Teklif', kod:null, yeni:true, label:'Teklif oluştur',
+          href:'app-teklif-form.html?firsat=' + o.kod });
+      }
+      oneriler.push({ tur:'Sözleşme', kod:null, yeni:true, label:'Sözleşme oluştur',
+        href:'app-sozlesme-form.html?hesap=' + h.kod });
+      oneriler.push({ tur:'Proje', kod:null, yeni:true, label:'Proje oluştur',
+        href:'app-proje-form.html?hesap=' + h.kod });
+
+      return { ok:true, firsat:o, hesap:h, eskiAsama:g.eski,
+               evreDegisti:evreDegisti, evre:evreSonuc, oneriler:oneriler };
+    }
+
+    return { mukerrer:mukerrer, hesapMukerrer:hesapMukerrer,
+             musteriUret:musteriUret, kazanildi:kazanildi, firsatKazan:firsatKazan };
   })();
 
 
