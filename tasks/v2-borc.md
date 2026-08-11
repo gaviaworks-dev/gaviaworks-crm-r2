@@ -100,3 +100,22 @@ V2-09 · V2-10 · V2-13 · V2-14 · V2-15 · V2-16 — on üç madde.
 
 **Kapanan:** V2-07 · V2-11 · V2-12 (kapsama alındı) · BE-S2.
 **Açık toplam:** 13 (dilim 1'den) + 10 (dilim 2) = **23 madde**.
+
+---
+
+## Dilim 3 açılışında KAPANAN borç
+
+| Borç | Kapatan karar | Ölçüm |
+|---|---|---|
+| **V2-22** tahsis geri alma yüzeyi | K-25 · ADR-R2-24 | Tahsilat çekmecesinde yüzeye çıktı · gerekçe zorunlu · kayıt silinmiyor, ters kayıt üretiliyor · `acilis-uc.js` 10 kontrol |
+| **V2-24** satın alma alt kayıtları | K-24 · ADR-R2-23 | Rota 116-122 → dört yüzey sekmesi · teklif 9 · sipariş 4 · tedarikçi 7 satır · `acilis-uc.js` 17 kontrol |
+| **V2-25** tahsilat detay ekranı | K-23 · ADR-R2-22 | Ekran **yazılmadı ve yazılmayacak** — tahsis defteri çekmece oldu. Rota 71 `KARŞILIĞI VAR` → `GÖMÜLÜYOR` olarak düzeltilmeli |
+
+## Dilim 3'te açılan yeni borç
+
+| # | Madde | Ölçüm |
+|---|---|---|
+| **V2-27** | Operasyon kuyruğunun **dokuz** satırı hâlâ hedefsiz | Ölçüldü: `app-istalebi-detay` 4 · `app-izin-detay` 2 · `app-onanaliz-detay` 1 · `app-komisyon-detay` 1 · `app-zaman-onay` 1. Beşi de bu dilimin kapsamı dışında (departman talebi Operasyon paneline, izin ve timesheet Ekip ve Kaynaklar dilimine, ön analiz fırsat detayına, komisyon müşteri detayına ait). Düğme **dürüstçe devre dışı** ve hedef dosya adı ipucunda yazılı — gizlenmedi |
+| **V2-28** | `GV.sales.firsatKazan` önerileri yazılmamış üç ekrana bağlanıyor | `domain.js` `app-sozlesme-detay.html` · `app-odemeplani-detay.html` · `app-sozlesme-form.html` hedefleri üretiyor. Üçü de rota haritasında **GÖMÜLÜYOR** (müşteri detayı › Finans sekmesi) — hedefler oraya çevrilmeli. Kabuk bugün `markWip` ile kilitliyor, yani sahte buton yok ama hedef de yanlış |
+| **V2-29** | `DB.supportPackages[].proje` 7/7 boş ve türetilemez | Tek dolaylı zincir (`paket.sozlesme → contract.proje`) hiçe çıkıyor. Bağı kullanıcı kurar (`GV.proje.bakimBagla`); prototipte hiçbir paket bir projeye bağlı **değil**, o yüzden proje detayının bakım bloğu 14 projenin 14'ünde boş |
+| **V2-30** | Kalite sekmesi tek projede dolu | `DB.testCases` 5 kaydın 5'i `PRJ-2026-001`de. Kalan 13 projede test defteri **yok** — eksiklik değil ölçüm, ama tek projeyle sınanan bir sekme kapsamlı sınanmamış sayılır |
