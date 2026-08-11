@@ -39,7 +39,7 @@
 | KARAR BEKLİYOR | **0** | %0 | 9 |
 | **Toplam** | **148** | %100 | 148 |
 | YENİ yazılacak | **8** (2'si karar bekliyordu, artık kesin) | — | 6+2 |
-| **Bugün R2'de yayında** | **9** | | 3 |
+| **Bugün R2'de yayında** | **13** | | 9 |
 
 > **Bu tablo ölçüldü, yazılmadı.** Defterin §2–§12 arasındaki numaralı karar
 > satırları taranarak sayıldı: 148 satır, eksik numara yok, tekrar yok.
@@ -95,16 +95,16 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
 | 7 | `app-musteri.html` | **KARŞILIĞI VAR** ✅ | R2'de yayında. Kaynak artık `DB.accounts` (20 hesap); evre kolonu + filtre + evre sekmeleri var. Aday **nötr etiket**, ayrı renk teması yok (§5.1). |
-| 8 | `app-musteri-detay.html` | **KARŞILIĞI VAR** | §5.4 sekmeleri: Özet · Yetkililer · **Fırsatlar ve Teklifler** · Projeler · Finans · Destek · Belgeler · Aktivite. |
-| 9 | `app-musteri-form.html` | **KARŞILIĞI VAR** | §5.2: ilk görünüm **6 alan** (ad · tip · yaşam evresi · telefon/e-posta · sorumlu · kısa ihtiyaç). Kalanı "Daha fazla bilgi" altında kapalı. Evre `ADAY` varsayılan. |
+| 8 | `app-musteri-detay.html` | **KARŞILIĞI VAR** ✅ | §5.4 sekmeleri **yayında**: Özet · Yetkililer · Fırsatlar ve Teklifler · Projeler · Finans · Destek · Belgeler · Aktivite. Yetkili ve iletişim ekleme drawer'da; evre geçişi `GV.lifecycle.gec` üzerinden ve **kapı reddediyor** (vergi no eksikse Müşteri düğmesi kilitli). |
+| 9 | `app-musteri-form.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** İlk görünüm ölçüldü: §5.2'nin altı maddesi, yedi girdi (telefon ve e-posta ayrı doğrulama). Kalan dokuz alan “Daha fazla bilgi” sekmesinde kapalı. Evre `ADAY` varsayılan; `MUSTERI` doğumu rol kapısına takılıyor. |
 
 ### 3.2 Lead ailesi — müşteriye katlandı
 
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
-| 10 | `app-lead.html` | **YÖNLENDİRİLİYOR** | → `app-musteri.html?t=aday` — R2'de bu sekme **çalışıyor** |
-| 11 | `app-lead-detay.html` | **YÖNLENDİRİLİYOR** | → `app-musteri-detay.html?id=<eşlenen hesap>` · Fırsatlar sekmesi |
-| 12 | `app-lead-form.html` | **YÖNLENDİRİLİYOR** | → `app-musteri-form.html?evre=ADAY` |
+| 10 | `app-lead.html` | **YÖNLENDİRİLİYOR** ✅ | → `app-musteri.html?t=aday` — R2'de bu sekme **çalışıyor** |
+| 11 | `app-lead-detay.html` | **YÖNLENDİRİLİYOR** ✅ | → `app-musteri-detay.html?id=<eşlenen hesap>` · **yayında**, Fırsatlar ve Teklifler sekmesiyle |
+| 12 | `app-lead-form.html` | **YÖNLENDİRİLİYOR** ✅ | → `app-musteri-form.html?evre=ADAY` — **yayında** |
 
 > ⚠️ **Ölçülmüş göç kuralı** — `assets/data/lifecycle.js` bunu uyguluyor:
 > `LEAD-2026-001/002/005/008` mevcut müşteriyle **aynı firma adını** taşıyor
@@ -117,17 +117,17 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
-| 13 | `app-musteri-yetkili.html` | **GÖMÜLÜYOR** | → müşteri detayı › Yetkililer sekmesi (§3.3) |
-| 14 | `app-musteri-yetkili-form.html` | **GÖMÜLÜYOR** | → aynı sekmede drawer/modal |
-| 15 | `app-musteri-iletisim.html` | **GÖMÜLÜYOR** | → müşteri detayı › Aktivite sekmesi |
-| 16 | `app-musteri-iletisim-form.html` | **GÖMÜLÜYOR** | → aynı sekmede drawer/modal |
+| 13 | `app-musteri-yetkili.html` | **GÖMÜLÜYOR** ✅ | → müşteri detayı › Yetkililer sekmesi — **çalışıyor** (aday kaynaklı hesapta boş ve nedeni yazılı) |
+| 14 | `app-musteri-yetkili-form.html` | **GÖMÜLÜYOR** ✅ | → aynı sekmede drawer — `GV.drawer` + `GV.form`, `DB.contacts`a gerçek kayıt yazıyor |
+| 15 | `app-musteri-iletisim.html` | **GÖMÜLÜYOR** ✅ | → müşteri detayı › Aktivite sekmesi — `DB.interactions` + denetim izi tek zaman çizelgesinde |
+| 16 | `app-musteri-iletisim-form.html` | **GÖMÜLÜYOR** ✅ | → aynı sekmede drawer — iletişim kaydı ekleme çalışıyor |
 
 ### 3.4 Satış akışı
 
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
-| 17 | `app-pipeline.html` | **KARŞILIĞI VAR** | R2'de `app-satis-akisi.html` — §3.1'deki "Satış Akışı". Ekseni lead'den **fırsata** döner: kart artık `DB.opportunities` kaydıdır (12 kayıt türetildi). |
-| 18 | `app-teklif.html` | **KARŞILIĞI VAR** | §3.1'de kendi menü girdisi var |
+| 17 | `app-pipeline.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** `app-satis-akisi.html` — 12 fırsat, pano kolonu `DB.pipelineGroups` (6 grup), 15 aşamanın hiçbiri silinmedi. Aşama atlanamıyor; kazanma `GV.sales.firsatKazan` zinciriyle. |
+| 18 | `app-teklif.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** 8 teklif; hesap bağı iki yoldan da çözülüyor (5 doğrudan, 3 fırsat üzerinden). Kazanma oranı paydası 0 iken `—` basıyor. |
 | 19 | `app-teklif-detay.html` | **KARŞILIĞI VAR** | ⚠️ R1'in **teklif sürümleme borcu** açık geldi: revizyon yeni kayıt üretmiyor. R2'de kapatılacak mı? → `tasks/riskler-ve-kapsam.md` K-17 |
 | 20 | `app-teklif-form.html` | **KARŞILIĞI VAR** | — |
 | 21 | `app-onanaliz.html` | **GÖMÜLÜYOR** | §3.1: ön analiz "Müşteri ve Satış" altında birleştirilen içerik → müşteri/fırsat detayı sekmesi |
@@ -138,9 +138,9 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
-| 24 | `app-referans.html` | **GÖMÜLÜYOR** ✔ | **ADR-R2-04:** yönlendiren kişi müşteri detayında **alan** olur. Ayrı menü girdisi açılmaz; `DB.referrers` verisi korunur. |
-| 25 | `app-referans-detay.html` | **GÖMÜLÜYOR** ✔ | → müşteri detayı › Özet (yönlendiren alanı) |
-| 26 | `app-referans-form.html` | **GÖMÜLÜYOR** ✔ | → drawer |
+| 24 | `app-referans.html` | **GÖMÜLÜYOR** ✔ ✅ | → müşteri detayı › Özet (yönlendiren alanı) — **çalışıyor**, `DB.referrers` okunuyor |
+| 25 | `app-referans-detay.html` | **GÖMÜLÜYOR** ✔ ✅ | → müşteri detayı › Özet (yönlendiren alanı) |
+| 26 | `app-referans-form.html` | **GÖMÜLÜYOR** ✔ ✅ | → aynı alan; ayrı form açılmadı |
 | 27 | `app-komisyon.html` | **GÖMÜLÜYOR** ✔ | **ADR-R2-04:** komisyon Finans raporunda **satır** olur. Finans'ın dört girdisi dolu; beşinci girdi 18 sınırını zorlardı. |
 | 28 | `app-komisyon-detay.html` | **GÖMÜLÜYOR** ✔ | → Nakit ve Tahsilat raporu drill-down |
 | 29 | `app-komisyon-form.html` | **GÖMÜLÜYOR** ✔ | → drawer |
@@ -207,8 +207,8 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | 55 | `app-destek-detay.html` | **KARŞILIĞI VAR** | — |
 | 56 | `app-destek-form.html` | **KARŞILIĞI VAR** | — |
 | 57 | `app-destek-sla.html` | **GÖMÜLÜYOR** | destek kayıtlı görünümü + "Hizmet ve Destek" raporu (§7.1: SLA o şablonun ölçütü) |
-| 58 | `app-destek-paket.html` | **GÖMÜLÜYOR** | müşteri detayı › Destek sekmesi. §2 "bağlamsal işlemler" ilkesinden **çıkarım** |
-| 59 | `app-destek-paket-form.html` | **GÖMÜLÜYOR** | drawer |
+| 58 | `app-destek-paket.html` | **GÖMÜLÜYOR** ✅ | → müşteri detayı › Destek sekmesi — **çalışıyor** (ADR-R2-13) |
+| 59 | `app-destek-paket-form.html` | **GÖMÜLÜYOR** ✅ | → aynı sekmede paket kartı |
 | 60 | `app-destek-memnuniyet.html` | **GÖMÜLÜYOR** | "Hizmet ve Destek" raporu (§7.1: memnuniyet o şablonun ölçütü) |
 
 ### 4.6 Toplantı ve ajanda
@@ -248,12 +248,12 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | 70 | `app-tahsilat.html` | **KARŞILIĞI VAR** | §3.1 menü girdisi |
 | 71 | `app-tahsilat-detay.html` | **KARŞILIĞI VAR** | — |
 | 72 | `app-tahsilat-form.html` | **KARŞILIĞI VAR** | — |
-| 73 | `app-sozlesme.html` | **GÖMÜLÜYOR** | §3.1: "Sözleşme ve ödeme planı **sekmeleri**" → müşteri detayı › Finans |
-| 74 | `app-sozlesme-detay.html` | **GÖMÜLÜYOR** | aynı sekme |
-| 75 | `app-sozlesme-form.html` | **GÖMÜLÜYOR** | drawer |
-| 76 | `app-odemeplani.html` | **GÖMÜLÜYOR** | §3.1 aynı hüküm → müşteri/sözleşme Finans sekmesi |
-| 77 | `app-odemeplani-detay.html` | **GÖMÜLÜYOR** | aynı sekme |
-| 78 | `app-odemeplani-form.html` | **GÖMÜLÜYOR** | drawer |
+| 73 | `app-sozlesme.html` | **GÖMÜLÜYOR** ✅ | → müşteri detayı › Finans sekmesi — **çalışıyor** |
+| 74 | `app-sozlesme-detay.html` | **GÖMÜLÜYOR** ✅ | → aynı sekme |
+| 75 | `app-sozlesme-form.html` | **GÖMÜLÜYOR** ✅ | → aynı sekmede kayıt görünümü |
+| 76 | `app-odemeplani.html` | **GÖMÜLÜYOR** ✅ | → müşteri detayı › Finans sekmesi (taksitler bağlı sözleşmeden okunuyor) |
+| 77 | `app-odemeplani-detay.html` | **GÖMÜLÜYOR** ✅ | → aynı sekme |
+| 78 | `app-odemeplani-form.html` | **GÖMÜLÜYOR** ✅ | → aynı sekme |
 | 79 | `app-butce.html` | **GÖMÜLÜYOR** | proje detayı › Bütçe sekmesi (`GV.proje.maliyet` orada zaten okunuyor). Şartname anmıyor; §2'den **çıkarım** |
 
 ### 5.1 YENİ — Ödeme Linkleri
@@ -497,7 +497,7 @@ Her ikisi de rota haritasında zaten GÖMÜLÜYOR işaretliydi; değişen şey
 | Standart kullanıcıda görünür (en yüksek) | — | **17** |
 | Yönetici rolde görünür (toplam) | — | **20** (3'ü ayrı "Yönetim" bloğunda, soluk) |
 | Menü ayracı | 13 | **0** |
-| Yayında olan ekran | 148 | **9** |
+| Yayında olan ekran | 148 | **13** |
 
 ⚠️ **ADR-R2-06'nın menüye etkisi henüz uygulanmadı.** Doküman arşivi yönetim
 bloğuna dördüncü girdi olarak eklendiğinde yönetici rolde toplam 20 → 21,
