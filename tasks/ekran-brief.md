@@ -1801,3 +1801,53 @@ basılır ve sebebi yazılır; `0` ya da bugünün tarihi **yazılmaz**.
 | `BE-D1` | SLA sayacı gerçek zamanlı çalışmaz; `slaDurum` kaynak veride yazılı sabittir, yeni kayıtta `null` | destek listesi · destek formu |
 | `BE-S4` | Belge yükleme gerçek depoya yazmaz | görev formu · destek formu |
 | `BE-S5` | Denetim izi kalıcı değildir | dördünde de |
+
+### 19.7 Ortak katmanda VAR ama brief'te yazılı olmayan üç imza
+
+Proje listesi ajanı bunları koda bakıp buldu; brief eksikti. Artık yazılı:
+
+```js
+GV.pri(v)     // ui.js:287 — ÖNCELİK rozeti. Türkçe harfleri sınıf adına çevirir
+              //   ('Çok yüksek' → <span class="pri is-cok-yuksek">). CSS'te
+              //   .pri.is-kritik/.is-yuksek/.is-orta/.is-dusuk tanımlı.
+GV.tone(v)    // ui.js:276 — bir değerin ton anahtarını sözlükten türetir
+              //   ('ok'|'warn'|'danger'|'info'|'neutral'|…). `GV.badge` bunu kullanır.
+```
+
+⚠️ **`GV.badge` ile `GV.pri` AYNI ŞEY DEĞİL.** `badge` tonu sözlükten türetir;
+öncelik değerleri (`Kritik · Yüksek · Orta · Düşük`) o sözlükte **yoktur** ve
+dördü de nötr rozet basar — yani rozet hiçbir şey söylemez. Öncelik için
+`GV.pri` kullan ya da düz metin yaz; `GV.badge(p.oncelik)` **yazma**.
+
+### 19.8 İki escape sözleşmesi — kardeş alanlar ayrışıyor
+
+| Alan | Escape ediliyor mu |
+|---|---|
+| `GV.notice({ text })` · `GV.badge` · `GV.empty` | **EVET** — bileşen kaçırır |
+| `GV.list` `kpis[].meta` çıktısı | **HAYIR** — HAM basılır (`ui.js:1006`) |
+| `GV.dl` `dt`/`dd` · `GV.cell.sub` | **HAYIR** |
+
+Kullanıcı verisini `meta` içine koyuyorsan `GV.esc`'ten **sen** geçir.
+
+### 19.9 `GV.cols.date` — boş dalda da alt satır basar (bu turda düzeltildi)
+
+```js
+GV.cols.date('gercekBitis','Gerçek bitiş', {
+  bosMetin:'—',
+  bosSub:function(p){ return 'proje açık · teslim edilmedi'; },   // YENİ
+  sub:function(p){ … }, plain:true, done:function(p){ … } })
+```
+
+Eskiden boş değerde yalnız `bosMetin` dönüyordu ve "neden boş" cümlesini
+yazmak isteyen ekran fabrikayı bırakıp kolonu **elle** yazmak zorunda
+kalıyordu — fabrika, en çok gerektiği yerde (boş değer, §10.1)
+kullanılamıyordu. `bosSub` verilirse o, verilmezse `sub` çağrılır.
+
+### 19.10 Hâlâ eksik olanlar — ihtiyaç duyarsan YAZMA, rapor et
+
+| Borç | Ne eksik |
+|---|---|
+| **V2-31** | `GV.list` `filters[]` sözleşmesinde `perm` kapısı yok. Para süzgecini yetkisiz rolden gizlemek için ekran kendi `if(canFinans)` kapısını kurmak zorunda |
+| V2-17 · V2-18 | `GV.form` `option disabled` ve `datalist` yuvası |
+| V2-19 | Detay ekranı tablo + mobil-ikiz yardımcısı |
+| V2-20 | Sarmalayan buton satırı sınıfı (`.gv-actrow`) |

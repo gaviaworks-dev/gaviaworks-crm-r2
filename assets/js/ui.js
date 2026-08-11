@@ -3105,7 +3105,15 @@
       return colGecir({ key:key, label:label, cellClass:o.cellClass != null ? o.cellClass : 'center', visible:o.visible !== false,
         exportValue:o.exportValue || function(x){ return x[key] || ''; },
         render:function(x){
-          if(!x[key]) return GV.cell.faint(o.bosMetin || '—');
+          /* BOŞ DALDA DA `sub` BASILIR. Eskiden boş değerde yalnız
+             `bosMetin` dönüyordu; "neden boş" cümlesini yazmak isteyen ekran
+             fabrikayı bırakıp kolonu elle yazmak zorunda kalıyordu — yani
+             fabrika, en çok gerektiği yerde (boş değer, §10.1) kullanılamaz
+             hâle geliyordu. `bosSub` verilirse o, verilmezse `sub` çağrılır. */
+          if(!x[key]){
+            var bs = o.bosSub ? o.bosSub(x) : (o.sub ? o.sub(x) : '');
+            return GV.cell.faint(o.bosMetin || '—') + (bs ? GV.cell.sub(bs) : '');
+          }
           var g = o.plain ? '<span class="cell-date">' + Fmt.date(x[key]) + '</span>'
                           : GV.dateCell(x[key], { done:o.done ? o.done(x) : false });
           return g + (o.sub ? GV.cell.sub(o.sub(x)) : ''); } }, o);
