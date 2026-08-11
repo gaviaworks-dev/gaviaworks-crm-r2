@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Personel — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="ekip" data-screen="personel">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/hr.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   PERSONEL — ekran brief §4 (GV.list) · §20 (Dilim 4 — Ekip ve Kaynaklar)
+
+   TEK LİSTE. Tablo, sayfalama, arama, gelişmiş filtre, kolon yönetimi,
+   çıktı, sekme sayacı, tablo/kart anahtarı, URL senkronu, satır kapsamı ve
+   HÜCRE MASKELEME `GV.list`in işidir; bu ekran yalnız yapılandırma yazar.
+
+   ── BU EKRANIN EN ÖNEMLİ KURALI: KİŞİSEL VERİ KAPISI (brief §20.1) ──
+   Personel kaydı ÜÇ ayrı hassasiyette alan taşır ve üçü aynı kapıdan
+   geçmez:
+     · genel  (ad · pozisyon · departman · rol · durum · lokasyon ·
+               uzmanlık · yetkinlik · teknoloji · giriş tarihi · doluluk)
+               → kapı yok, herkes görür
+     · özlük  (dogum · kanGrubu · acilKisi · tel · eposta · egitim ·
+               sertifika · sozlesme · calismaTuru)
+               → `GV.hr.ozlukGorebilir(e)` · SATIR BAZLI kapı
+     · maaş   (maas · saatlikUcret) → `GV.hr.maasGorebilir()` / `perm:'maas'`
+   Yetkisizde `0` ya da BOŞ basılmaz: boş "veri yok" demektir, oysa veri var
+   ve görülemiyor — ikisi ayrı şeydir (UID-11). Bileşen `••••••` basar ve o
+   hücre ÇIKTIYA DA girmez. Özlük kapısı satırdan satıra değiştiği için
+   kolon `mask:function(kayit)` kancasını kullanır, `perm` değil: `perm`
+   kolonun tamamına bakar, `depmudur` ise yalnız KENDİ departmanının
+   özlüğünü görebilmelidir.
+
+   ⚠️ ARAMADA ÖZLÜK ALANI YOKTUR. `search.fields` içine e-posta ya da
+   telefon koymak maskeyi dolaylı olarak açardı: hücre `••••••` basarken
+   arama kutusuna yazılan e-posta o satırı listede bırakır ve kullanıcı
+   göremediği veriyi DOĞRULAMIŞ olurdu. Aynı gerekçe maaş süzgeci için de
+   geçerlidir (aşağıda `canMaas` kapısı).
+
+   ── K-18: `aktif` ALANI OKUNMAZ ──
+   Personelin yaşam döngüsü `durum` alanındadır (`DB.employeeStatuses`,
+   7 değer) ve geçişleri `DB.transitions.employee` yürütür. Eski boolean
+   alan TUZAĞA çevrildi (okuyan `undefined` alır, `DB.ikBayat.sayac` artar).
+   Bu ekranda o alan hiçbir yerde okunmaz; küme soruları yordamlara sorulur:
+   `GV.hr.istihdamda` · `GV.hr.atanabilir` · `GV.hr.durum`. `archive:false`
+   bildirilmesinin ikinci gerekçesi de budur — personel kaydında arşiv alanı
+   yoktur, arşiv ekseni `durum`dur.
+
+   Veri dosyaları: `hr.js` ZORUNLUDUR — `DB.leaves` (izin bakiyesinin
+   karşılığı), `DB.assignments` (ayrılış kapısının konusu) ve `DB.onboarding`
+   (giriş/çıkış süreci) orada yaşar. `firsat.js` ve `odeme.js` bu ekranda
+   kullanılmaz, yüklenmez.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F = GV.fmt;
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  /* =================================================================
+     0. SÖZLÜKLER, KAPILAR VE ÖLÇÜMLER — hepsi veriden TÜRETİLİR
+     ================================================================= */
+  var DURUMLAR = DB.employeeStatuses || [];        /* 7 durum */
+  var ET       = (DB.transitions && DB.transitions.employee) || {};
+  var TIPLER   = DB.workTypes || [];               /* 5 çalışma tipi */
+  var NEDENLER = DB.reasonCodes || [];
+  var tumu     = DB.employees || [];
+
+  /* Kapılar TEK YERDE ölçülür; ekran ikinci bir yetki cümlesi kurmaz. */
+  var canMaas     = GV.hr.maasGorebilir();
+  var ozlukKapsam = GV.perm.scope('personel');     /* tum | departman | proje | yok */
+  var canRapor    = GV.perm.can('personelRapor');
+  var canEkle     = GV.perm.can('ekle');
+
+  /* Defter kapsamı ile defterin YÜKLÜ OLMAMASI ayrı şeylerdir (L-13);
+     ekran hangisini söylediğini bilsin diye ikisi ayrı ölçülür. */
+  var izinDefteri   = !!(DB.leaves && DB.leaves.length);
+  var zimmetDefteri = !!(DB.assignments && DB.assignments.length);
+  var surecDefteri  = !!(DB.onboarding && DB.onboarding.length);
+
+  function uniq(a){
+    return (a || []).reduce(function(acc, v){
+      if(v != null && v !== '' && acc.indexOf(v) === -1) acc.push(v);
+      return acc; }, []);
+  }
+
+  /* ---- DURUM KÜMELERİ — elle dizi YAZILMAZ, tablodan türetilir ------
+     Sekme listesi bir durum listesi değil, birer KURALDIR ve kural
+     `DB.employeeStatuses` + `DB.transitions.employee`ten okunur. Sözlüğe
+     sekizinci bir durum eklendiğinde bu ekran kendiliğinden doğru kalır. */
+  function kural(d){ return ET[d] || {}; }
+  function hedefler(d){ return kural(d).next || []; }
+
+  /* Son durak: tabloda `terminal` işaretli ya da çıkışı olmayan durum. */
+  var TERMINAL = DURUMLAR.filter(function(d){
+    return kural(d).terminal === true || !hedefler(d).length; });
+  /* Çıkış süreci: bir adım sonrası SON DURAK olan durum(lar). */
+  var CIKIS = DURUMLAR.filter(function(d){
+    return TERMINAL.indexOf(d) === -1 &&
+           hedefler(d).some(function(h){ return TERMINAL.indexOf(h) !== -1; }); });
+  /* Bordro ve atama kümeleri yordamdan türetilir — ekran kendi cümlesini
+     kurmaz (K-18). Sentetik kayıt yalnız SÖZLÜĞÜ sınıflamak için. */
+  var ISTIHDAM_D   = DURUMLAR.filter(function(d){ return GV.hr.istihdamda({ kod:'?', durum:d }); });
+  var ATANABILIR_D = DURUMLAR.filter(function(d){ return GV.hr.atanabilir({ kod:'?', durum:d }); });
+
+  /* ---- Kısa geçitler — tanım TEK YERDE (brief §20.2) ---------------- */
+  function atanabilir(e){ return GV.hr.atanabilir(e); }
+  function istihdamda(e){ return GV.hr.istihdamda(e); }
+  function cikista(e){ return CIKIS.indexOf(GV.hr.durum(e)) !== -1; }
+
+  /* ---- Bağ okuma — türetilemeyen bağ kurulmaz ----------------------- */
+  function kisiAd(kod){ return (kod && DB.empName) ? (DB.empName(kod) || kod) : (kod || ''); }
+  function rolAd(k){ return (k && DB.roleName) ? DB.roleName(k) : (k || ''); }
+  function nedenAd(kod){
+    var r = NEDENLER.filter(function(x){ return x.kod === kod; })[0];
+    return r ? r.ad : (kod || '');
+  }
+  /* Karara BAĞLANMAMIŞ izin talebi: `onayTarihi` boş olan kayıt. Durum
+     dizesiyle karşılaştırmak yerine karar alanına bakılır — ölçüldü, 7
+     izin kaydının 2'sinde `onayTarihi` boş ve ikisi de karar beklemede;
+     reddedilenlerde de tarih yazılı. */
+  function bekleyenIzin(kod){
+    return (DB.leaves || []).filter(function(l){
+      return l.personel === kod && !l.onayTarihi; });
+  }
+  /* Kişinin üzerindeki AÇIK zimmetler — ortak yordam (brief §20.3).
+     Ayrılış kapısının kendi ölçümü motorda; ekran onu tekrar yazmaz. */
+  function acikZimmet(kod){
+    return (GV.varlik && GV.varlik.zimmetliler) ? (GV.varlik.zimmetliler(kod) || []) : [];
+  }
+  /* İşe giriş/çıkış süreci kayıtları. `tur` alanının SÖZLÜĞÜ YOKTUR
+     (brief §20.4 uyarısı) — değer kayıttan okunur ve ekranda olduğu gibi
+     gösterilir, ekran kendi tür listesini uydurmaz. */
+  function surecler(kod){
+    return (DB.onboarding || []).filter(function(o){ return o.personel === kod; });
+  }
+  function surecOzet(o){
+    var ad = (o.adimlar || []);
+    var tamam = ad.filter(function(a){ return a.tamam === true; }).length;
+    return { tamam:tamam, toplam:ad.length,
+             eksik:ad.filter(function(a){ return a.tamam !== true; })
+                     .map(function(a){ return a.ad; }) };
+  }
+  /* Kıdem — `girisTarihi`ten ve `DB.today`den türetilir; `new Date()` ile
+     "bugün" alınmaz (brief §13.2). Yaklaşıklık AÇIKÇA yazılır. */
+  function kidemGun(e){
+    var g = F.days(e.girisTarihi);
+    return g == null ? null : -g;
+  }
+  function kidemMetin(e){
+    var g = kidemGun(e);
+    if(g == null) return 'giriş tarihi yazılmamış';
+    if(g < 0) return 'girişi ileri tarihli · ' + F.date(e.girisTarihi);
+    var yil = Math.floor(g / 365), ay = Math.floor((g % 365) / 30);
+    return 'kıdem ~' + (yil ? yil + ' yıl ' : '') + ay + ' ay';
+  }
+
+  /* Seçenekler KAYITTA GEÇEN değerlerden üretilir: sözlüğün tamamını
+     listelemek hiçbir kaydı süzmeyen ölü seçenekler doğururdu
+     (app-proje.html · app-gorev.html ile aynı gerekçe ve aynı yordam —
+     üçüncü kopyası olduğu için ortak katmana adaydır, raporda bildirildi). */
+  function mevcut(alan, etiketle, sozluk){
+    var gecen = uniq(tumu.map(function(e){ return e[alan]; }));
+    if(sozluk && sozluk.length){
+      gecen = sozluk.filter(function(v){ return gecen.indexOf(v) !== -1; })
+                    .concat(gecen.filter(function(v){ return sozluk.indexOf(v) === -1; }));
+    }else{
+      gecen.sort(function(a, b){ return String(a).localeCompare(String(b), 'tr'); });
+    }
+    return gecen.map(function(v){
+      return { value:v, label:etiketle ? (etiketle(v) || v) : v };
+    });
+  }
+
+  /* ---- Sözlük ile kayıt arasındaki sessiz boşluklar ölçülür --------- */
+  var SOZLUKSUZ_DURUM = uniq(tumu.map(function(e){ return e.durum; }))
+    .filter(function(d){ return DURUMLAR.indexOf(d) === -1; });
+  var TABLOSUZ_DURUM  = DURUMLAR.filter(function(d){ return !ET[d]; });
+  var SOZLUKSUZ_TIP   = uniq(tumu.map(function(e){ return e.calismaTipi; }))
+    .filter(function(t){ return TIPLER.indexOf(t) === -1; });
+  var SOZLUKSUZ_ROL   = uniq(tumu.map(function(e){ return e.rol; }))
+    .filter(function(r){ return !(DB.roles || []).some(function(x){ return x.key === r; }); });
+
+  /* =================================================================
+     1. SAYFA BAŞLIĞI — `GV.list`ten ÖNCE (brief §2.4)
+     Liste satır sayısını `[data-listcount]` düğümüne yazar; o düğümü
+     `GV.pageHead` doğurur.
+     ================================================================= */
+  GV.pageHead({
+    eyebrow:'Ekip ve Kaynaklar',
+    title:'Personel',
+    sub:tumu.length + ' personel kaydı · yaşam döngüsü, kapasite ve özlük tek listede',
+    actions:[
+      canEkle
+        ? { label:'Yeni Personel', icon:'i-user-plus', cls:'btn-acc', href:'app-personel-form.html' }
+        : null,
+      /* Kapasite AYRI EKRAN DEĞİLDİR (brief §20.5): türetilmiş kapasite
+         "İş ve Kapasite" raporundadır ve o rapor yayındadır. */
+      canRapor
+        ? { label:'İş ve Kapasite Raporu', icon:'i-chart-bar', href:'app-rapor.html?r=is-kapasite' }
+        : null
+    ].filter(Boolean)
+  });
+
+  mount.innerHTML =
+    '<div id="prsUyari" class="u-mb-8"></div>' +
+    '<div id="prsListe"></div>' +
+    '<div id="prsBackend"></div>';
+
+  /* =================================================================
+     2. ÖLÇÜM ŞERİDİ — GÖRÜNEN kümeden sayılır
+     ----------------------------------------------------------------
+     Kapsam, sekme, arama ve filtre süzgeçlerini `GV.list` uyguluyor;
+     şerit onun `onRender` kancasından beslenir, ikinci bir süzgeç
+     yazılmaz (L-40). Ölçülemeyen şeye "0" yazılmaz (L-13).
+     ================================================================= */
+  function uyariCiz(gorunen){
+    var el = document.getElementById('prsUyari');
+    if(!el) return;
+
+    var ustSerit = '';
+    if(!izinDefteri || !zimmetDefteri || !surecDefteri){
+      var eksikDefter = [];
+      if(!izinDefteri)   eksikDefter.push('DB.leaves (izin)');
+      if(!zimmetDefteri) eksikDefter.push('DB.assignments (zimmet)');
+      if(!surecDefteri)  eksikDefter.push('DB.onboarding (giriş/çıkış süreci)');
+      ustSerit = GV.notice({ tone:'warn', icon:'i-alert',
+        title:'İK defterlerinin bir kısmı bu ekranda yüklü değil',
+        text:'Bulunamayan koleksiyon: ' + eksikDefter.join(' · ') +
+             ' (assets/data/hr.js). İlgili hücrelerde "0" değil "—" basıldı ve ' +
+             'sebebi yazıldı: defter bu ekranda hiç yüklü değil ile defter bu ' +
+             'kişiyi kapsamıyor AYRI şeylerdir; ilkini ikincisi gibi söylemek ' +
+             'sessizce yanlış beyandır.' });
+    }
+
+    var g = gorunen.length;
+    var atanabilirL = gorunen.filter(atanabilir);
+    var istihdamL   = gorunen.filter(istihdamda);
+    var cikisL      = gorunen.filter(cikista);
+    var disariL     = gorunen.filter(function(e){ return !istihdamda(e); });
+
+    /* KİŞİSEL VERİ KAPISININ EKRANDAKİ ÖLÇÜMÜ — kaç satırda özlük açık.
+       Kapının çalıştığını söylemek yetmez; kaç satırı kapattığı sayılır. */
+    var ozlukAcikN = gorunen.filter(function(e){ return GV.hr.ozlukGorebilir(e); }).length;
+
+    var parcalar = [];
+    parcalar.push('Görünen ' + g + ' personelin ' + atanabilirL.length +
+      ' tanesine yeni iş atanabilir, ' + istihdamL.length + ' tanesi bordroda (istihdam ' +
+      'ilişkisi sürüyor), ' + cikisL.length + ' tanesi çıkış sürecinde' +
+      (disariL.length ? ', ' + disariL.length + ' tanesinin istihdam ilişkisi yok' : '') +
+      '. Bu üç soru üç ayrı yordamdan geliyor (GV.hr.atanabilir · GV.hr.istihdamda · ' +
+      'durum kümeleri); tek bir "aktif mi" bayrağına sıkıştırılmadı — izinli bir ' +
+      'çalışanı bordrodan düşürmek ya da ayrılmakta olana yeni görev atamak tam ' +
+      'olarak o sıkıştırmanın sonucuydu (K-18).');
+
+    if(cikisL.length){
+      parcalar.push('Çıkış sürecindeki kayıt(lar): ' + cikisL.map(function(e){
+        return e.kod + ' · ' + e.ad + (e.cikisTarihi ? ' · çıkış ' + F.date(e.cikisTarihi) : ' · çıkış tarihi yazılmamış') +
+               (e.cikisNedenKodu ? ' · ' + nedenAd(e.cikisNedenKodu) : '');
+      }).join(' | ') + '. Geçiş tablosunda bu durumdan Aktif\'e dönüş KENARI YOKTUR: ' +
+      'yanlışlıkla çıkış sürecine alınan personel bu ekrandan geri döndürülemez ve ' +
+      'ekran böyle bir düğme vaat etmez.');
+    }
+
+    /* Kişisel veri kapısı — hangi rol neyi görüyor, sayıyla. */
+    parcalar.push('Kişisel veri kapısı: özlük kapsamınız "' + ozlukKapsam + '" ve görünen ' +
+      g + ' satırın ' + ozlukAcikN + ' tanesinde özlük alanları (doğum · kan grubu · acil ' +
+      'kişi · telefon · e-posta · eğitim · sertifika · sözleşme · mesai türü) AÇIK; ' +
+      'kalanında ••••••  basıldı ve o hücreler çıktıya da girmiyor. Maaş ekseni AYRI ' +
+      'bir kapıdır ve şu an ' + (canMaas ? 'AÇIK' : 'KAPALI') + '. Boş bırakmak ' +
+      '"veri yok" demek olurdu; oysa veri var ve görülemiyor.');
+
+    /* Alan doluluğu — brief §20.4 uyarıları ekranda da ölçülür. */
+    var uzmanlikli = gorunen.filter(function(e){ return !!e.uzmanlik; }).length;
+    var saatlikli  = gorunen.filter(function(e){ return e.saatlikUcret > 0; }).length;
+    var maasli     = gorunen.filter(function(e){ return e.maas > 0; }).length;
+    var yoneticili = gorunen.filter(function(e){ return !!e.yonetici; }).length;
+    parcalar.push('Alan doluluğu (görünen kümede): uzmanlık ' + uzmanlikli + '/' + g +
+      ' · yönetici bağı ' + yoneticili + '/' + g +
+      (canMaas ? ' · aylık maaş ' + maasli + '/' + g + ' · saatlik ücret ' + saatlikli + '/' + g : '') +
+      '. Saatlik ücret ile aylık maaş AYNI KAYITTA BİRLİKTE BULUNMAZ; boş kalan ' +
+      'hücreye "0 ₺" yazmak ücretsiz çalışan göstermek olurdu, "—" basılır ve sebebi ' +
+      'hücrenin altında yazılır.');
+
+    /* Doluluk alanı bir SAYAÇ DEĞİL, kayıtta yazılı plandır. */
+    parcalar.push('Doluluk yüzdesi personel kaydında YAZILI bir alandır; zaman ' +
+      'defterinden (DB.timelogs) türetilmemiştir. Türetilmiş kapasite ölçümü "İş ve ' +
+      'Kapasite" raporundadır — bu iki sayı aynı şey değildir ve bu ekran onları ' +
+      'birbirinin yerine kullanmaz.');
+
+    if(izinDefteri){
+      var bekleyenToplam = gorunen.reduce(function(s, e){
+        return s + bekleyenIzin(e.kod).reduce(function(x, l){ return x + (l.gun || 0); }, 0); }, 0);
+      var bakiyesiz = gorunen.filter(function(e){ return !e.izinBakiye; }).length;
+      parcalar.push('İzin defterinde görünen kümeye ait karara bağlanmamış ' +
+        bekleyenToplam + ' gün talep var; ' + bakiyesiz + ' kişinin bakiyesi sıfır. ' +
+        'Sıfır burada ölçülmüş bir değerdir (kayıt var, bakiye yok), "—" ile ' +
+        'karıştırılmaz.');
+    }
+    if(zimmetDefteri){
+      var zimmetli = gorunen.filter(function(e){ return acikZimmet(e.kod).length > 0; }).length;
+      parcalar.push('Zimmet defterinde ' + zimmetli + ' kişinin üzerinde açık zimmet ' +
+        'kaydı var. Ayrılışı tamamlama geçişi bu defteri kendi kapısıyla kontrol eder; ' +
+        'ekran ikinci bir kural yazmaz, kapı reddederse gerekçesini motordan alır.');
+    }
+
+    if(TABLOSUZ_DURUM.length)
+      parcalar.push('Sözlükte olup geçiş tablosunda karşılığı olmayan durum: ' +
+        TABLOSUZ_DURUM.join(', ') + '.');
+    if(SOZLUKSUZ_DURUM.length)
+      parcalar.push('Kayıtta olup DB.employeeStatuses sözlüğünde olmayan durum: ' +
+        SOZLUKSUZ_DURUM.join(', ') + '.');
+    if(SOZLUKSUZ_TIP.length)
+      parcalar.push('Kayıtta olup DB.workTypes sözlüğünde olmayan çalışma tipi: ' +
+        SOZLUKSUZ_TIP.join(', ') + '.');
+    if(SOZLUKSUZ_ROL.length)
+      parcalar.push('Kayıtta olup DB.roles sözlüğünde olmayan rol anahtarı: ' +
+        SOZLUKSUZ_ROL.join(', ') + '.');
+
+    el.innerHTML = ustSerit + GV.notice({
+      tone:cikisL.length ? 'warn' : 'info',
+      icon:cikisL.length ? 'i-logout' : 'i-users',
+      title:cikisL.length
+        ? cikisL.length + ' personel çıkış sürecinde'
+        : 'Bu görünümde çıkış sürecinde personel yok',
+      text:parcalar.join(' ') });
+  }
+
+  /* =================================================================
+     3. SEKMELER — durum dizisi değil, sözlükten TÜRETİLMİŞ kümeler
+     ----------------------------------------------------------------
+     Sayaçları `GV.list` basar. "Departmanım" yalnız oturumda departman
+     varsa eklenir: karşılığı olmayan bir sekme her zaman boş çıkardı.
+     ================================================================= */
+  var benimDep = (GV.session && GV.session.dep) || null;
+  var sekmeler = [
+    { key:'tumu',     label:'Tümü',              icon:'i-list',        filter:null },
+    { key:'atanabilir', label:'Atanabilir',      icon:'i-user-check',  filter:function(e){ return atanabilir(e); } },
+    { key:'bordro',   label:'İstihdamda',        icon:'i-users',       filter:function(e){ return istihdamda(e); } },
+    { key:'cikis',    label:'Çıkış sürecinde',   icon:'i-logout',      filter:function(e){ return cikista(e); } }
+  ];
+  if(benimDep){
+    sekmeler.push({ key:'depart', label:'Departmanım', icon:'i-building',
+      filter:function(e){ return e.dep === benimDep; } });
+  }
+
+  /* =================================================================
+     4. LİSTE
+     ================================================================= */
+  GV.list({
+    mount:'#prsListe', id:'personel', key:'kod',
+    source:function(){ return DB.employees; },
+    exportName:'personel', exportTitle:'Personel Listesi',
+    pageSize:10, views:['table','card'],
+    defaultSort:'ad', defaultDir:'asc',
+
+    /* ARŞİV EKSENİ YOK. Personel kaydında arşiv alanı bulunmuyor; kaydın
+       "geçmişe düşmesi" yaşam döngüsünün SON DURAĞIDIR ve zaten durum
+       ekseninde okunuyor; ayrıca bileşenin arşiv süzgeci kayıttaki eski
+       boolean alanı yoklar, o alan ise K-18 ile tuzağa çevrilmiştir.
+       Toggle'ı açık bırakmak hem olmayan bir ekseni varmış gibi gösterir
+       hem de tuzak sayacını her çizimde 16 kez artırırdı. */
+    archive:false,
+
+    /* Bu sayfada URL senkronu kullanan tek liste bu; bayrak açık kalır
+       (brief §18.9 · §20.5). Menüden gelen `?t=` bağlantıları çalışır. */
+
+    search:{ placeholder:'Ad, personel no, pozisyon, departman, uzmanlık veya teknoloji ara',
+             /* ⚠️ ÖZLÜK ALANI (tel · eposta · dogum · acilKisi · egitim) BU
+                LİSTEDE ARANMAZ — maskelenen bir alanda arama yapmak, maskeyi
+                dolaylı olarak açar. */
+             fields:['kod','ad','pozisyon','depAd','lokasyon','uzmanlik','durum',
+                     'calismaTipi','yetkinlik','teknoloji'],
+             extra:function(e){
+               return [rolAd(e.rol), (e.roller || []).map(rolAd).join(' '),
+                       kisiAd(e.yonetici), e.dep || ''].filter(Boolean).join(' ');
+             } },
+
+    /* SATIR KAPSAMI — brief §4.7. Alan adları ÖLÇÜLDÜ: `kod` (kaydın
+       kendisi) ve `dep` (DEP-*) 16/16 kayıtta yazılı.
+       · `kendi` → `kod`: bir personelin "kendi kaydı" onun kendi satırıdır.
+       · `departman` → `dep`.
+       · `proje` BİLDİRİLMEZ: personel kaydında proje alanı yoktur ve
+         oturumda da proje listesi yok; olmayan bir eşlemeyi bildirmek
+         süzgeci sessizce yanlış kurardı. Eşlenmemiş kapsamı bileşen kapsam
+         şeridinde kendisi söyler.
+       ⚠️ Bileşenin satır kapsamı `GV.perm.scope('gor')` eksenidir; ÖZLÜK
+       kapısı ayrı bir eksendir (`GV.perm.scope('personel')`) ve hücre
+       maskesiyle uygulanır. İkisi karıştırılmaz: bir rol satırı görebilir
+       ama o satırın özlüğünü göremeyebilir (ölçüldü: `muhasebe` maaşı görür,
+       özlüğü görmez). */
+    scopeField:{ kendi:'kod', departman:'dep' },
+
+    kpis:[
+      /* 1 — ATANABİLİR. Yeni iş verilebilir personel; `Aktif` dışındaki
+             hiçbir durum atanamaz (GV.hr.atanabilir). */
+      { label:'Atanabilir personel', icon:'i-user-check',
+        meta:function(base){
+          return GV.esc(base.filter(istihdamda).length + ' kişi bordroda · ' +
+            base.filter(cikista).length + ' kişi çıkış sürecinde · toplam ' +
+            base.length + ' kayıt kapsamda · atanabilir durum(lar): ' +
+            (ATANABILIR_D.join(' · ') || 'tabloda yok'));
+        },
+        calc:function(base){ return base.filter(atanabilir).length; } },
+
+      /* 2 — ORTALAMA DOLULUK. Kayıtta yazılı plan değeri; zaman
+             defterinden türetilmedi ve öyle söylenir. Ölçülemeyen kümede
+             `null` döner → bileşen "—" basar, 0 basmaz. */
+      { label:'Ortalama doluluk', icon:'i-gauge', format:F.pct,
+        meta:function(base){
+          var d = base.filter(function(e){ return e.doluluk != null; });
+          if(!d.length) return GV.esc('doluluk kaydı olan personel yok — ortalama ölçülemedi');
+          var yuksek = d.filter(function(e){ return e.doluluk >= 90; }).length;
+          var dusuk  = d.filter(function(e){ return e.doluluk < 50; }).length;
+          return GV.esc('%90 ve üstü ' + yuksek + ' kişi · %50 altı ' + dusuk + ' kişi · ' +
+            d.length + '/' + base.length + ' kayıtta doluluk yazılı · kayıttaki plan ' +
+            'değeridir, zaman defterinden türetilmedi');
+        },
+        calc:function(base){
+          var d = base.filter(function(e){ return e.doluluk != null; });
+          if(!d.length) return null;
+          return Math.round(d.reduce(function(s, e){ return s + e.doluluk; }, 0) / d.length);
+        } },
+
+      /* 3 — İZİN BAKİYESİ. Toplam gün; karara bağlanmamış talep ayrı
+             sayılır (talep bakiyeden henüz düşmedi). */
+      { label:'Toplam izin bakiyesi (gün)', icon:'i-calendar',
+        meta:function(base){
+          if(!izinDefteri)
+            return GV.esc('izin defteri (DB.leaves) bu ekranda yüklü değil — karara ' +
+              'bağlanmamış talep ölçülemedi; bakiye personel kaydından okundu');
+          var bek = base.reduce(function(s, e){
+            return s + bekleyenIzin(e.kod).reduce(function(x, l){ return x + (l.gun || 0); }, 0); }, 0);
+          var sifir = base.filter(function(e){ return !e.izinBakiye; }).length;
+          return GV.esc(bek + ' gün karara bağlanmamış talep var ve bakiyeden HENÜZ ' +
+            'düşmedi · ' + sifir + ' kişinin bakiyesi sıfır (ölçülmüş değer, "—" değil)');
+        },
+        calc:function(base){
+          return base.reduce(function(s, e){ return s + (e.izinBakiye || 0); }, 0); } },
+
+      /* 4 — AYLIK BRÜT MAAŞ. `perm:'maas'` yetkisizde MASKELER; sıfır
+             basmaz (UID-11). Meta de maskelenir — bileşen gizli KPI'da
+             meta basmaz, yani sayı dolaylı olarak sızmaz. */
+      { label:'Aylık brüt maaş toplamı', icon:'i-wallet', format:F.moneyK, perm:'maas',
+        meta:function(base){
+          var m = base.filter(function(e){ return e.maas > 0; });
+          var s = base.filter(function(e){ return e.saatlikUcret > 0; });
+          return GV.esc(m.length + '/' + base.length + ' kayıt aylık maaş ekseninde · ' +
+            s.length + ' kayıt saatlik ücret ekseninde ve bu toplama GİRMEDİ (iki eksen ' +
+            'toplanamaz) · BRÜT maaştır, işveren maliyeti değildir');
+        },
+        calc:function(base){
+          return base.reduce(function(s, e){ return s + (e.maas > 0 ? e.maas : 0); }, 0); } }
+    ],
+
+    tabs:sekmeler,
+
+    columns:[
+      GV.cols.kod('kod', 'Personel no', { width:'11%', locked:true,
+        href:function(e){ return 'app-personel-detay.html?id=' + e.kod; },
+        sub:function(e){ return GV.esc(e.lokasyon || 'lokasyon yazılmamış'); } }),
+
+      /* AD / POZİSYON — `GV.user` avatarı ve adı kayıttan çözer. */
+      { key:'ad', label:'Ad / pozisyon', width:'20%', cellClass:'cell-wrap', locked:true,
+        sortValue:function(e){ return e.ad || null; },
+        exportValue:function(e){
+          return (e.ad || '') + (e.pozisyon ? ' · ' + e.pozisyon : ' · pozisyon yazılmamış'); },
+        render:function(e){
+          return GV.user(e.kod, { sm:true }) +
+            GV.cell.sub(GV.esc(e.pozisyon || 'pozisyon yazılmamış') +
+              (e.yonetici ? ' · yönetici: ' + GV.esc(kisiAd(e.yonetici)) : ' · yönetici bağı yok')); } },
+
+      { key:'depAd', label:'Departman', width:'13%', cellClass:'cell-wrap',
+        sortValue:function(e){ return e.depAd || e.dep || null; },
+        exportValue:function(e){ return (e.depAd || '') + (e.dep ? ' (' + e.dep + ')' : ''); },
+        render:function(e){
+          if(!e.dep && !e.depAd) return GV.cell.faint('—') + GV.cell.sub('departman bağı yok');
+          var d = DB.dep ? DB.dep(e.dep) : null;
+          return '<span class="cell-main">' + GV.esc(e.depAd || (d ? d.ad : e.dep)) + '</span>' +
+            GV.cell.sub(GV.esc(e.dep + (d && d.ustDepartman ? ' · ' + d.ustDepartman : ''))); } },
+
+      { key:'rol', label:'Rol', width:'12%', cellClass:'cell-wrap',
+        sortValue:function(e){ return rolAd(e.rol) || null; },
+        exportValue:function(e){ return rolAd(e.rol); },
+        render:function(e){
+          if(!e.rol) return GV.cell.faint('—') + GV.cell.sub('rol atanmamış');
+          var ek = (e.roller || []).filter(function(r){ return r !== e.rol; });
+          return '<span class="cell-main">' + GV.esc(rolAd(e.rol)) + '</span>' +
+            GV.cell.sub(ek.length
+              ? GV.esc('ek rol: ' + ek.map(rolAd).join(' · '))
+              : 'tek rol'); } },
+
+      /* DURUM — yaşam döngüsünün TEK ekseni (K-18). Rozet tonu sözlükten
+         gelir; ton sözlüğünde karşılığı olmayan durumlar nötr basılır ve bu
+         bir ortak katman eksiğidir (raporda bildirildi), ekran kendi ton
+         haritasını kurmaz. */
+      GV.cols.durum('durum', 'Durum', { width:'10%' }),
+
+      GV.cols.date('girisTarihi', 'Giriş tarihi', { plain:true, width:'11%',
+        bosMetin:'giriş tarihi yok',
+        bosSub:function(){ return 'kayıtta giriş tarihi yazılmamış'; },
+        sub:function(e){ return GV.esc(kidemMetin(e)); } }),
+
+      GV.cols.pct('doluluk', 'Doluluk', { bar:true, width:'10%' }),
+
+      GV.cols.num('izinBakiye', 'İzin bakiyesi (gün)', {
+        sub:function(e){
+          if(!izinDefteri) return 'izin defteri bu ekranda yüklü değil';
+          var b = bekleyenIzin(e.kod);
+          if(!b.length) return 'karara bağlanmamış talep yok';
+          var gun = b.reduce(function(s, l){ return s + (l.gun || 0); }, 0);
+          return '<span class="u-warn">' +
+            GV.esc(gun + ' gün karara bağlanmadı (' + b.length + ' talep)') + '</span>'; } }),
+
+      /* MAAŞ — kişisel veri kapısının en dar halkası. `perm:'maas'`
+         yetkisizde hücreyi maskeler ve çıktıdan düşürür.
+         ⚠️ `maas:0` bir DEĞER DEĞİL, "bu kayıt aylık maaş ekseninde değil"
+         demektir (ölçüldü: EMP-015 saatlik ücret sözleşmesi). `deger`
+         kapısı 0'ı `null`a çevirir ki hücre "₺0" değil "—" bassın. */
+      GV.cols.money('maas', 'Aylık brüt maaş', { perm:'maas', width:'12%',
+        deger:function(e){ return e.maas > 0 ? e.maas : null; },
+        exportValue:function(e){
+          return e.maas > 0 ? e.maas
+            : (e.saatlikUcret > 0 ? 'aylık maaş yok — saatlik ücret ekseninde'
+                                  : 'ücret kaydı yok'); },
+        sub:function(e){
+          if(e.maas > 0) return 'brüt · işveren maliyeti değil';
+          return e.saatlikUcret > 0
+            ? 'aylık maaş yok · saatlik ücret ekseninde'
+            : 'ücret kaydı yok'; } }),
+
+      { key:'calismaTipi', label:'Çalışma tipi', width:'11%', cellClass:'cell-wrap',
+        sortValue:function(e){
+          var i = TIPLER.indexOf(e.calismaTipi);
+          return i === -1 ? null : i; },
+        exportValue:function(e){ return e.calismaTipi || ''; },
+        /* İSTİHDAM İLİŞKİSİ ekseni (`DB.workTypes`). Mesai ekseni
+           (`calismaTuru`) BAŞKA BİR ALANDIR ve özlük kapısının arkasındadır;
+           ikisi ayrı kolonlarda durur. Dış kaynak olup olmadığı ortak
+           yordamdan sorulur, ekran kendi kuralını yazmaz. */
+        render:function(e){
+          if(!e.calismaTipi) return GV.cell.faint('—') + GV.cell.sub('çalışma tipi yazılmamış');
+          return '<span class="u-sm">' + GV.esc(e.calismaTipi) + '</span>' +
+            GV.cell.sub(GV.hr.disKaynak(e.kod)
+              ? 'dış kaynak · proje maliyetinde personel kalemine yazılmaz'
+              : 'kadrolu istihdam'); } },
+
+      /* ---- Varsayılan GİZLİ kolonlar — kolon yöneticisinden açılır ---- */
+
+      /* SAATLİK ÜCRET — 16 kaydın 1'inde dolu. Boşta "0 ₺" değil "—" ve
+         sebebi basılır; sıfır ücret iddiası ile ölçülmemiş ücret ayrı
+         şeylerdir. Maaş kapısının arkasında. */
+      GV.cols.money('saatlikUcret', 'Saatlik ücret', { perm:'maas', visible:false,
+        deger:function(e){ return e.saatlikUcret > 0 ? e.saatlikUcret : null; },
+        exportValue:function(e){
+          return e.saatlikUcret > 0 ? e.saatlikUcret
+            : 'saatlik ücret yazılmamış — kayıt aylık maaş ekseninde'; },
+        sub:function(e){
+          return e.saatlikUcret > 0
+            ? 'sözleşmeli saat ücreti · şirkete iç maliyet ile aynı şey değildir'
+            : 'kayıt aylık maaş ekseninde · saatlik ücret yazılmaz'; } }),
+
+      /* ---- ÖZLÜK KOLONLARI — SATIR BAZLI kapı (`mask`) ---------------
+         `perm` değil `mask` kullanılır: kapı role değil SATIRA bakar
+         (`depmudur` yalnız kendi departmanını, herkes kendi kaydını görür).
+         Maskelenen hücre çıktıya da girmez. */
+
+      { key:'eposta', label:'İletişim', visible:false, cellClass:'cell-wrap',
+        mask:function(e){ return !GV.hr.ozlukGorebilir(e); },
+        sortValue:function(e){ return e.eposta || null; },
+        exportValue:function(e){ return (e.eposta || '') + (e.tel ? ' · ' + e.tel : ''); },
+        render:function(e){
+          if(!e.eposta && !e.tel) return GV.cell.faint('—') + GV.cell.sub('iletişim kaydı yok');
+          return '<span class="cell-main">' + GV.esc(e.eposta || '—') + '</span>' +
+            GV.cell.sub(GV.esc(e.tel || 'telefon yazılmamış')); } },
+
+      { key:'calismaTuru', label:'Mesai / sözleşme', visible:false, cellClass:'cell-wrap',
+        mask:function(e){ return !GV.hr.ozlukGorebilir(e); },
+        sortValue:function(e){ return e.calismaTuru || null; },
+        exportValue:function(e){ return (e.calismaTuru || '') + (e.sozlesme ? ' · ' + e.sozlesme : ''); },
+        render:function(e){
+          if(!e.calismaTuru && !e.sozlesme)
+            return GV.cell.faint('—') + GV.cell.sub('mesai ve sözleşme yazılmamış');
+          return '<span class="u-sm">' + GV.esc(e.calismaTuru || 'mesai türü yazılmamış') + '</span>' +
+            GV.cell.sub(GV.esc(e.sozlesme || 'sözleşme türü yazılmamış')); } },
+
+      GV.cols.date('dogum', 'Doğum tarihi', { plain:true, visible:false,
+        mask:function(e){ return !GV.hr.ozlukGorebilir(e); },
+        bosMetin:'—', bosSub:function(){ return 'doğum tarihi yazılmamış'; } }),
+
+      { key:'kanGrubu', label:'Sağlık / acil durum', visible:false, cellClass:'cell-wrap',
+        mask:function(e){ return !GV.hr.ozlukGorebilir(e); },
+        sortValue:function(e){ return e.kanGrubu || null; },
+        exportValue:function(e){ return (e.kanGrubu || '') + (e.acilKisi ? ' · ' + e.acilKisi : ''); },
+        render:function(e){
+          /* Kayıtta kan grubu yerine "—" yazılı olabiliyor: bu bir DEĞER
+             değil, "bilgi verilmemiş" demektir; öyle söylenir. */
+          var kg = (e.kanGrubu && e.kanGrubu !== '—') ? e.kanGrubu : null;
+          if(!kg && !e.acilKisi) return GV.cell.faint('—') + GV.cell.sub('sağlık ve acil durum kaydı yok');
+          return '<span class="u-sm">' + GV.esc(kg || 'kan grubu bildirilmemiş') + '</span>' +
+            GV.cell.sub(GV.esc(e.acilKisi || 'acil durumda aranacak kişi yazılmamış')); } },
+
+      { key:'egitim', label:'Eğitim / sertifika', visible:false, cellClass:'cell-wrap',
+        mask:function(e){ return !GV.hr.ozlukGorebilir(e); },
+        sortValue:function(e){ return e.egitim || null; },
+        exportValue:function(e){
+          return (e.egitim || '') + ((e.sertifika || []).length ? ' · ' + e.sertifika.join(' · ') : ''); },
+        render:function(e){
+          if(!e.egitim && !(e.sertifika || []).length)
+            return GV.cell.faint('—') + GV.cell.sub('eğitim kaydı yok');
+          return '<span class="cell-main">' + GV.esc(e.egitim || 'eğitim yazılmamış') + '</span>' +
+            GV.cell.sub((e.sertifika || []).length
+              ? GV.esc(e.sertifika.join(' · '))
+              : 'sertifika kaydı yok'); } },
+
+      /* ---- Genel (kapısız) gizli kolonlar ---------------------------- */
+
+      { key:'uzmanlik', label:'Uzmanlık / yetkinlik', visible:false, cellClass:'cell-wrap',
+        sortValue:function(e){ return e.uzmanlik || null; },
+        exportValue:function(e){
+          return (e.uzmanlik || '') + ((e.yetkinlik || []).length ? ' · ' + e.yetkinlik.join(' · ') : ''); },
+        render:function(e){
+          var y = e.yetkinlik || [];
+          if(!e.uzmanlik)
+            return GV.cell.faint('—') +
+              GV.cell.sub(y.length
+                ? GV.esc('uzmanlık alanı yazılmamış · yetkinlik: ' + y.join(' · '))
+                : 'uzmanlık ve yetkinlik kaydı yok');
+          return '<span class="cell-main">' + GV.esc(e.uzmanlik) + '</span>' +
+            GV.cell.sub(y.length ? GV.esc(y.join(' · ')) : 'yetkinlik kaydı yok'); } },
+
+      { key:'teknoloji', label:'Teknoloji', visible:false, cellClass:'cell-wrap',
+        sortValue:function(e){ return (e.teknoloji || []).join(', ') || null; },
+        exportValue:function(e){ return (e.teknoloji || []).join(' · '); },
+        render:function(e){
+          var t = e.teknoloji || [];
+          return t.length
+            ? '<span class="u-sm">' + GV.esc(t.join(' · ')) + '</span>'
+            : GV.cell.faint('—') + GV.cell.sub('teknoloji kaydı yok'); } },
+
+      GV.cols.kisi('yonetici', 'Yönetici', { visible:false,
+        bosMetin:'yönetici bağı yok' }),
+
+      { key:'lokasyon', label:'Lokasyon', visible:false, cellClass:'cell-wrap',
+        exportValue:function(e){ return e.lokasyon || ''; },
+        render:function(e){ return e.lokasyon
+          ? '<span class="u-sm">' + GV.esc(e.lokasyon) + '</span>'
+          : GV.cell.faint('—') + GV.cell.sub('lokasyon yazılmamış'); } },
+
+      /* ÇIKIŞ — 16 kaydın 1'inde dolu. Boş olması "çıkış yok" değil "çıkış
+         süreci başlamadı" demektir; ayrılışı tamamlama geçişi bu iki alanı
+         zorunlu tutar. */
+      { key:'cikisTarihi', label:'Çıkış', visible:false, cellClass:'center',
+        sortValue:function(e){ return e.cikisTarihi || null; },
+        exportValue:function(e){
+          return e.cikisTarihi
+            ? e.cikisTarihi + (e.cikisNedenKodu ? ' · ' + nedenAd(e.cikisNedenKodu) : '')
+            : (cikista(e) ? 'çıkış süreci başladı, tarih girilmedi' : 'çıkış süreci başlamadı'); },
+        render:function(e){
+          if(!e.cikisTarihi)
+            return GV.cell.faint('—') + GV.cell.sub(cikista(e)
+              ? '<span class="u-warn">çıkış süreci başladı, tarih girilmedi</span>'
+              : 'çıkış süreci başlamadı');
+          return '<span class="cell-date">' + GV.esc(F.date(e.cikisTarihi)) + '</span>' +
+            GV.cell.sub(GV.esc(e.cikisNedenKodu
+              ? nedenAd(e.cikisNedenKodu)
+              : 'çıkış neden kodu girilmedi')); } }
+    ],
+
+    filters:[
+      /* Durum SÖZLÜĞÜN TAMAMINDAN gelir: yaşam döngüsü ekseni, bugün kaydı
+         olmayan durumu da göstermek bir ölçümdür (akışta o durum vardır). */
+      { key:'durum', label:'Yaşam döngüsü durumu', type:'multi',
+        options:DURUMLAR.map(function(d){ return { value:d, label:d }; }) },
+      { key:'dep', label:'Departman', type:'select',
+        options:mevcut('dep', function(v){
+          var e = tumu.filter(function(x){ return x.dep === v; })[0];
+          return e ? e.depAd : v; }) },
+      { key:'rol', label:'Rol', type:'multi', options:mevcut('rol', rolAd) },
+      { key:'calismaTipi', label:'Çalışma tipi', type:'multi',
+        options:mevcut('calismaTipi', null, TIPLER) },
+      { key:'lokasyon', label:'Lokasyon', type:'multi', options:mevcut('lokasyon') },
+      { key:'girisTarihi', label:'Giriş tarihi', type:'daterange' },
+      { key:'dolulukMin', label:'En az doluluk', type:'percent',
+        test:function(e, v){ return e.doluluk != null && e.doluluk >= Number(v); } },
+      { key:'dolulukMax', label:'En çok doluluk', type:'percent',
+        test:function(e, v){ return e.doluluk != null && e.doluluk <= Number(v); } },
+      /* Atama uygunluğu — durum dizisi değil, yordamın kendisi. */
+      { key:'atama', label:'Atama uygunluğu', type:'select',
+        options:[{ value:'atanabilir', label:'Yeni iş atanabilir' },
+                 { value:'atanamaz',   label:'Atanamaz (izinli · pasif · çıkışta · dışarıda)' },
+                 { value:'bordro',     label:'Bordroda (istihdam ilişkisi sürüyor)' },
+                 { value:'disarida',   label:'İstihdam ilişkisi yok' }],
+        test:function(e, v){
+          if(v === 'atanabilir') return atanabilir(e);
+          if(v === 'atanamaz')   return !atanabilir(e);
+          if(v === 'bordro')     return istihdamda(e);
+          return !istihdamda(e); } },
+      { key:'izin', label:'İzin bakiyesi', type:'select',
+        options:[{ value:'var',      label:'Bakiyesi olanlar' },
+                 { value:'yok',      label:'Bakiyesi sıfır olanlar' },
+                 { value:'bekleyen', label:'Karara bağlanmamış talebi olanlar' }],
+        test:function(e, v){
+          if(v === 'var') return (e.izinBakiye || 0) > 0;
+          if(v === 'yok') return !e.izinBakiye;
+          /* Defter yüklü değilse bu seçenek hiçbir kaydı süzmez ve bu
+             durum şeritte zaten yazılı; sessizce "hiç talep yok" denmez. */
+          return izinDefteri && bekleyenIzin(e.kod).length > 0; } }
+    ].concat(canMaas ? [
+      /* Para süzgeci yalnız maaş kapısı açık olan rolde basılır: yetkisiz
+         rolde tutar zaten maskeli ve "en az X ₺" süzgeci maskelenen değeri
+         dolaylı olarak açığa çıkarırdı (UID-11 ile aynı gerekçe).
+         Bileşen `filters[]` için bir `perm` kapısı taşımıyor (V2-31), o
+         yüzden kapı burada ekran tarafında kuruluyor. */
+      { key:'maasMin', label:'En az aylık brüt maaş', type:'money', currency:'₺',
+        test:function(e, v){ return (e.maas || 0) >= Number(v); } }
+    ] : []),
+
+    /* İstihdam ilişkisi olmayan kayıt SOLUK basılır. Çıkış sürecindeki
+       kayıt soluk BASILMAZ: hâlâ bordrodadır, işi ve zimmeti sürüyordur —
+       geçmişe düşmüş gibi göstermek yanlış olurdu. */
+    rowClass:function(e){ return istihdamda(e) ? '' : 'is-passive'; },
+
+    card:function(e){
+      return '<div class="gv-rcard-top"><div>' +
+          '<span class="cell-main">' + GV.esc(e.ad) + '</span>' +
+          '<div class="cell-code">' + GV.esc(e.kod + ' · ' + (e.pozisyon || 'pozisyon yazılmamış')) + '</div></div>' +
+          GV.badge(e.durum) + '</div>' +
+        '<div class="gv-rcard-meta">' +
+          '<span>' + GV.esc(e.depAd || 'departman bağı yok') + '</span>' +
+          '<span>' + GV.esc(rolAd(e.rol) || 'rol atanmamış') + '</span>' +
+          '<span>' + GV.esc(e.lokasyon || 'lokasyon yazılmamış') + '</span>' +
+        '</div>' +
+        '<div class="gv-rcard-foot">' +
+          GV.progress(e.doluluk) +
+          '<span class="u-sm u-muted">' +
+            GV.esc((e.calismaTipi || 'çalışma tipi yok') + ' · ' +
+                   (e.girisTarihi ? F.dateShort(e.girisTarihi) + ' · ' + kidemMetin(e)
+                                  : 'giriş tarihi yok')) + '</span>' +
+        '</div>';
+    },
+
+    /* 980px altında tablo yerine bu markup basılır; `GV.cell.mrow` ızgarayı
+       kendi kurar ve sarar — 390px'te yatay taşma yok.
+       ⚠️ MASKE BURADA EKRANIN İŞİDİR: bileşen yalnız TABLO hücresini
+       maskeler, mobil satırın markup'ını ekran yazdığı için kapı da ekran
+       tarafından uygulanır. Maske dizesi ortak katmandan alınır
+       (`GV.perm.mask`), ekran kendi işaretini uydurmaz. */
+    mobile:function(e){
+      var maasHtml = canMaas
+        ? (e.maas > 0 ? GV.esc(F.money(e.maas)) : GV.esc('aylık maaş yok'))
+        : '<span class="cell-mask">' + GV.esc(GV.perm.mask('', 'maas')) + '</span>';
+      return GV.cell.mrow(
+        '<span class="cell-main">' + GV.esc(e.ad) + '</span>' + GV.badge(e.durum),
+        GV.esc(e.kod + ' · ' + (e.pozisyon || 'pozisyon yazılmamış')),
+        [ GV.ico('i-building','ic-sm') + GV.esc(e.depAd || 'departman yok'),
+          GV.ico('i-shield','ic-sm') + GV.esc(rolAd(e.rol) || 'rol yok'),
+          GV.ico('i-gauge','ic-sm') + GV.esc(e.doluluk == null ? 'doluluk yok' : '%' + e.doluluk),
+          GV.ico('i-calendar','ic-sm') +
+            GV.esc(e.girisTarihi ? F.dateShort(e.girisTarihi) : 'giriş tarihi yok'),
+          GV.ico('i-wallet','ic-sm') + maasHtml ],
+        (atanabilir(e) ? '' : GV.badge('atanamaz', 'is-neutral')) +
+          (cikista(e)
+            ? GV.badge(e.cikisTarihi ? 'çıkış ' + F.dateShort(e.cikisTarihi) : 'çıkış tarihi girilmedi', 'is-warn')
+            : '')
+      );
+    },
+
+    /* SATIR AKSİYONLARI — yalnız YAZABİLDİĞİM aksiyonlar; ölü buton yok. */
+    rowActions:[
+      { key:'ac', icon:'i-external', label:'Personel kartını aç',
+        href:function(e){ return 'app-personel-detay.html?id=' + e.kod; } },
+
+      /* Yaşam döngüsü geçişleri. Hedefleri `GV.flow.adimlar('employee', …)`
+         üretir; ekran kendi durum listesini YAZMAZ. Adım yoksa (son durak)
+         aksiyon hiç basılmaz — boş bir pencere açan düğme ölü buton sayılır. */
+      { key:'yasam', icon:'i-refresh', label:'Yaşam döngüsü — durumu değiştir',
+        show:function(e){ return (GV.flow.adimlar('employee', e.kod) || []).length > 0; },
+        run:function(e){ yasamAc(e); } }
+    ],
+
+    /* Toplu işlemde yalnız çıktı var ve yordamı BİLEŞENDE. Toplu durum
+       değişimi YAZILMADI: personel geçişleri gerekçe, neden kodu ve kapı
+       (evrak · zimmet) isteyen akışlardır; toplu uygulamak "12 kayıt
+       güncellendi" deyip yarısının reddedildiğini yutmak olurdu (UID-27). */
+    bulk:[
+      { key:'disa', label:'Dışa aktar', icon:'i-download', export:true }
+    ],
+
+    emptyState:{ icon:'i-users', title:'Bu görünümde personel yok',
+      desc:'Sekmeyi ya da filtreleri değiştirebilirsiniz. Kapsamınız departman ya da ' +
+           'kendi kaydınızla sınırlıysa liste üstündeki kapsam şeridi bunu söyler.' },
+
+    onRender:function(gorunen){ uyariCiz(gorunen); }
+  });
+
+  /* =================================================================
+     5. YAŞAM DÖNGÜSÜ — geçiş penceresi
+     ----------------------------------------------------------------
+     TEK MUTASYON NOKTASI `GV.flow.gec('employee', …)`. Ekran `e.durum = …`
+     YAZMAZ. Yapılabilir hedefleri `GV.flow.adimlar` verir; yetki, zorunlu
+     alan ve gerekçe kuralı motordadır, hata metni `GV.flowHata`dan gelir.
+     ================================================================= */
+  function yetkiKumesi(durum){ return (kural(durum).yetki || []); }
+
+  function adimHtml(e){
+    var adimlar = GV.flow.adimlar('employee', e.kod) || [];
+    if(!adimlar.length){
+      return GV.notice({ tone:'neutral', icon:'i-info',
+        title:'Yapılabilecek geçiş yok',
+        text:'"' + e.durum + '" geçiş tablosunda son duraktır; çıkış listesi boş.' });
+    }
+    return '<div class="lh-acts">' + adimlar.map(function(a){
+      var engel = !a.izin
+        ? 'Bu geçiş için yetkiniz yok — gereken: ' + (yetkiKumesi(e.durum).join(', ') || 'tanımsız')
+        : (a.eksik && a.eksik.length ? 'Eksik alan: ' + a.eksik.join(', ') : '');
+      return '<button type="button" class="btn ' + (a.tone || 'btn-line') + ' btn-sm"' +
+        ' data-hedef="' + GV.esc(a.hedef) + '" data-kod="' + GV.esc(e.kod) + '"' +
+        (engel ? ' disabled aria-disabled="true" title="' + GV.esc(engel) + '"' : '') + '>' +
+        GV.esc(a.etiket || a.hedef) + '</button>';
+    }).join('') + '</div>';
+  }
+
+  function yasamAc(e){
+    var adimlar = GV.flow.adimlar('employee', e.kod) || [];
+    var eksik = adimlar.reduce(function(acc, a){
+      (a.eksik || []).forEach(function(x){ if(acc.indexOf(x) === -1) acc.push(x); });
+      return acc; }, []);
+
+    /* Eksik alanı BU EKRANDAN doldurma yolu yok: ortak eylem penceresinde
+       serbest alan yuvası bulunmuyor (brief §17.8 · V2-01). Sahte bir alan
+       uydurmak yerine engel açıkça yazılır. */
+    var eksikNot = eksik.length
+      ? GV.notice({ tone:'warn', icon:'i-alert',
+          title:'Bazı geçişler zorunlu alan nedeniyle kapalı',
+          text:'"' + e.durum + '" durumundan çıkmak için şu alan(lar) dolu olmalı: ' +
+               eksik.join(', ') + '. Bu alanlar personel kaydına aittir ve bu listeden ' +
+               'doldurulamaz; personel kartından girilir.' })
+      : '';
+
+    /* Geri dönüşü olmayan kenar ÖNCEDEN söylenir — düğme olarak vaat
+       edilmeyen şey, yazıyla da vaat edilmez. */
+    var tekYon = cikista(e)
+      ? GV.notice({ tone:'warn', icon:'i-lock',
+          title:'Çıkış sürecinden geri dönüş yok',
+          text:'Geçiş tablosunda bu durumdan tekrar çalışır duruma dönen bir kenar ' +
+               'YOKTUR. Yanlışlıkla çıkış sürecine alınan personel bu ekrandan geri ' +
+               'alınamaz; kayıt yeniden açılmaz.' })
+      : '';
+
+    var zimmetler = acikZimmet(e.kod);
+    var bekleyen  = bekleyenIzin(e.kod);
+    var surecList = surecler(e.kod);
+
+    GV.drawer({
+      title:'Yaşam döngüsü — ' + e.kod,
+      onMount:function(govde){
+        govde.innerHTML =
+          '<section class="gv-card"><div class="gc-head">' +
+            '<h3 class="gc-title">' + GV.ico('i-user') + GV.esc(e.ad) + '</h3>' +
+            '<span class="gc-meta">' + GV.esc(e.pozisyon || 'pozisyon yazılmamış') + '</span></div>' +
+            '<div class="gc-body">' + GV.dl([
+              ['Durum', GV.badge(e.durum)],
+              ['Departman', GV.esc(e.depAd || e.dep || '')],
+              ['Rol', GV.esc(rolAd(e.rol))],
+              ['Yeni iş atanabilir mi', atanabilir(e)
+                ? 'Evet' + GV.cell.sub('durum atama kümesinde')
+                : 'Hayır' + GV.cell.sub(GV.esc('atanabilir durum(lar): ' +
+                    (ATANABILIR_D.join(' · ') || 'tabloda yok')))],
+              ['İstihdam ilişkisi', istihdamda(e)
+                ? 'Sürüyor' + GV.cell.sub('bordro kümesinde')
+                : 'Yok' + GV.cell.sub('bordro kümesi dışında')],
+              ['Açık zimmet', !zimmetDefteri
+                ? 'Ölçülemedi' + GV.cell.sub('zimmet defteri bu ekranda yüklü değil')
+                : (zimmetler.length
+                    ? zimmetler.length + ' kayıt' +
+                      GV.cell.sub(GV.esc(zimmetler.map(function(z){ return z.kod; }).join(' · ')) +
+                        ' · ayrılışı tamamlama kapısı bu defteri kontrol eder')
+                    : 'Yok' + GV.cell.sub('üzerinde açık zimmet kaydı bulunmuyor'))],
+              ['Karara bağlanmamış izin', !izinDefteri
+                ? 'Ölçülemedi' + GV.cell.sub('izin defteri bu ekranda yüklü değil')
+                : (bekleyen.length
+                    ? bekleyen.reduce(function(s, l){ return s + (l.gun || 0); }, 0) + ' gün' +
+                      GV.cell.sub(GV.esc(bekleyen.map(function(l){ return l.kod; }).join(' · ')))
+                    : null)],
+              ['Çıkış tarihi', e.cikisTarihi ? GV.esc(F.date(e.cikisTarihi)) : null],
+              ['Çıkış nedeni', e.cikisNedenKodu
+                ? GV.esc(nedenAd(e.cikisNedenKodu)) + GV.cell.sub(GV.esc(e.cikisNedenKodu)) : null]
+            ], { skipEmpty:true }) +
+            (surecList.length
+              ? '<ul class="odl-gap">' + surecList.map(function(o){
+                  var s = surecOzet(o);
+                  return '<li><span class="odl-gap-kod">' + GV.esc(o.kod) + '</span>' +
+                    '<span>' + GV.esc(o.tur + ' süreci · ' + s.tamam + '/' + s.toplam +
+                      ' adım tamam' + (s.eksik.length ? ' · bekleyen: ' + s.eksik.join(', ') : '')) +
+                    '</span><span class="odl-gap-bolum">' + GV.esc(o.durum || '') + '</span></li>';
+                }).join('') + '</ul>'
+              : '') +
+            '</div></section>' +
+
+          '<section class="gv-card u-mt-8"><div class="gc-head">' +
+            '<h3 class="gc-title">' + GV.ico('i-refresh') + 'Yapılabilir geçişler</h3>' +
+            '<span class="u-faint u-sm">' + GV.esc(e.durum) + '</span></div>' +
+            '<div class="gc-body">' + tekYon + eksikNot + adimHtml(e) + '</div></section>';
+
+        govde.addEventListener('click', function(ev){
+          var b = ev.target.closest('[data-hedef]');
+          if(!b || b.disabled) return;
+          var kayitEl = (DB.employees || []).filter(function(x){ return x.kod === b.dataset.kod; })[0];
+          if(kayitEl) gecisAc(kayitEl, b.dataset.hedef);
+        });
+      }
+    });
+  }
+
+  function gecisAc(e, hedef){
+    var a = (GV.flow.adimlar('employee', e.kod) || [])
+              .filter(function(x){ return x.hedef === hedef; })[0];
+    if(!a) return;
+
+    var cikisaGiris   = CIKIS.indexOf(hedef) !== -1;
+    var sonDurak      = TERMINAL.indexOf(hedef) !== -1;
+    var zimmetler     = acikZimmet(e.kod);
+
+    var sonuc = 'Bu personel kaydı "' + hedef + '" durumuna geçecek.';
+    if(cikisaGiris)
+      sonuc += ' Seçtiğiniz neden kodu personel kartındaki çıkış neden alanına yazılır. ' +
+               'ÇIKIŞ TARİHİ bu pencereden girilemez — ortak eylem penceresinde serbest ' +
+               'alan yuvası yok (V2-01) ve uydurma bir tarih yazılmaz; alan personel ' +
+               'kartından doldurulur, ayrılışı tamamlama adımı o alan dolmadan açılmaz.';
+    if(sonDurak)
+      sonuc += ' Bu son duraktır: geçiş tablosunda buradan çıkan kenar yoktur.';
+    if(sonDurak && zimmetler.length)
+      sonuc += ' Üzerinde ' + zimmetler.length + ' açık zimmet görünüyor; ayrılış kapısı ' +
+               'bunu kendi kontrol eder ve gerekirse geçişi reddeder.';
+
+    var etkilenen = [];
+    zimmetler.forEach(function(z){ etkilenen.push(z.kod + ' zimmet kaydı'); });
+    bekleyenIzin(e.kod).forEach(function(l){ etkilenen.push(l.kod + ' izin talebi (karara bağlanmadı)'); });
+
+    GV.action({
+      eylem:a.etiket || hedef,
+      tone:a.tone === 'btn-ok' ? 'ok'
+         : a.tone === 'btn-danger-line' ? 'danger'
+         : a.tone === 'btn-line' ? 'warn' : 'accent',
+      kayit:{ kod:e.kod, baslik:e.ad + ' · ' + (e.pozisyon || '') },
+      sonuc:sonuc,
+      /* Gerekçe kuralını tablo söyler (`girisGerekce`/`gerekce`), ekran
+         kendi listesini tutmaz — `adimlar` bunu zaten bildiriyor. */
+      gerekce:!!a.gerekce,
+      /* Neden kodu listesi yalnız ÇIKIŞ geçişinde daralır (`tur:'cikis'`);
+         diğer geçişlerde sözlüğün tamamı basılır çünkü askıya alma için
+         ayrı bir neden türü TANIMLI DEĞİL — olmayan bir türü uydurmak
+         yerine tam liste gösterilir. */
+      nedenTuru:cikisaGiris ? 'cikis' : null,
+      ek:!!a.gerekce,
+      etkilenen:etkilenen,
+      geriDonusYok:cikisaGiris || sonDurak,
+      run:function(v){
+        /* Çıkış neden kodu personel kartında KALICI alandır (rapor
+           edilebilir olsun diye); geçişle birlikte `ek` kanalından yazılır.
+           Gerekçe metni geçiş kaydında durur — ikisi ayrı yerdedir. */
+        var ek = (cikisaGiris && v.neden) ? { cikisNedenKodu:v.neden } : null;
+        var r = GV.flow.gec('employee', e.kod, hedef, ek, { neden:v.neden || null, not:v.not || null });
+        if(!r || r.ok === false) return { ok:false, mesaj:GV.flowHata(r) };
+        GV.refresh();
+        return { mesaj:e.kod + ' · ' + r.eski + ' → ' + r.yeni };
+      }
+    });
+  }
+
+  /* =================================================================
+     6. BACKEND PAYI — brief §20.6, tablo KOPYALANIR
+     ----------------------------------------------------------------
+     `BE-P2` (timesheet) ve `BE-K2` (zimmet e-imzası) bu ekranda YAZILMAZ:
+     ilki zaman ekranına, ikincisi varlık ekranına aittir ve ilgisiz madde
+     beyan etmek beyanı gürültüye çevirir.
+     ================================================================= */
+  document.getElementById('prsBackend').innerHTML =
+    '<section class="gv-card u-mt-8"><div class="gc-head">' +
+      '<h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+      '<span class="u-faint u-sm">4 madde</span></div>' +
+      '<div class="gc-body">' +
+        '<ul class="odl-gap">' +
+          '<li><span class="odl-gap-kod">BE-P1</span>' +
+            '<span>Durum geçişi sunucuda yeniden doğrulanmaz; yetki ve zorunlu alan ' +
+              'kontrolü istemcide koşar</span>' +
+            '<span class="odl-gap-bolum">§9</span></li>' +
+          '<li><span class="odl-gap-kod">BE-K1</span>' +
+            '<span>Kişisel veri kapısı yalnız arayüzdedir; gerçek sistemde özlük ve maaş ' +
+              'alanları <b>sunucuda</b> yetkiye göre filtrelenmelidir — maskelenmiş alan ' +
+              'istemciye hiç gitmemelidir</span>' +
+            '<span class="odl-gap-bolum">§9</span></li>' +
+          '<li><span class="odl-gap-kod">BE-S4</span>' +
+            '<span>Belge yükleme gerçek depoya yazmaz; dosya adı ve boyutu bellekte ' +
+              'tutulur</span>' +
+            '<span class="odl-gap-bolum">§9</span></li>' +
+          '<li><span class="odl-gap-kod">BE-S5</span>' +
+            '<span>Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır</span>' +
+            '<span class="odl-gap-bolum">§9 audit_event</span></li>' +
+        '</ul>' +
+        '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+          '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+        '<p class="u-faint u-sm">BE-K1 bu ekranda doğrudan görünür: özlük ve maaş ' +
+          'hücreleri maskelense de kayıtların TAMAMI tarayıcıya iniyor. Maske bir ' +
+          'görüntü kapısıdır, veri kapısı değildir; gerçek sistemde bu alanlar ' +
+          'yanıttan hiç çıkmamalıdır. BE-S4 ise geçiş penceresindeki kanıt/evrak ' +
+          'alanında görünür: seçilen dosya hiçbir yere yüklenmez.</p>' +
+      '</div>' +
+    '</section>';
+});
+</script>
+</body>
+</html>
