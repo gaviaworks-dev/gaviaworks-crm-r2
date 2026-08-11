@@ -101,14 +101,18 @@ window.DB = window.DB || {};
 
     /* 1) Her müşteri kaydı bir hesaptır. Kimlik KORUNUR — yeni kod üretilmez. */
     musteriler.forEach(function(c){
+      /* Ham göç değeri YEREL kalır: kayda yazılmaz, yalnız `evreKaynak`
+         metnine girer. Böylece izlenebilirlik korunur ama canlı okunabilen
+         bayat bir alan doğmaz (K-21). */
+      var hamDurum = c.durum;   /* bayat-alan:goc-kaynagi — türetmenin TEK okuması */
       var h = {
         kod:            c.kod,                  /* kimlik değişmez (§5.3) */
         legacy_id:      c.kod,
         legacy_kaynak:  'DB.customers',
         unvan:          c.unvan,
         kisa:           c.kisa,
-        evre:           MUSTERI_DURUM[c.durum] || null,
-        evreKaynak:     'customers.durum=' + c.durum,
+        evre:           MUSTERI_DURUM[hamDurum] || null,
+        evreKaynak:     'göç: customers.durum=' + hamDurum,
         tip:            c.tip || null,
         sektor:         c.sektor || null,
         sorumlu:        c.sorumlu || null,
@@ -116,7 +120,15 @@ window.DB = window.DB || {};
         eposta:         c.eposta || null,
         vergiNo:        c.vergiNo || null,
         risk:           c.risk || null,
-        durum:          c.durum,                /* eski eksen metadata olarak korunur */
+        /* ⚠️ `durum` ALANI TAŞINMIYOR (K-21 · ADR-R2-18).
+           Eskiden burada `durum: c.durum` vardı ve "eski eksen metadata olarak
+           korunur" diye yazılıydı. Ölçüldü: bu alan hesap kaydına ÖLÜ DOĞUYOR.
+           `GV.lifecycle.gec` evreyi değiştirdiğinde `durum` OLDUĞU GİBİ kalıyor,
+           yani ilk saniyeden sonra kaydın kendi içinde iki cevabı oluyor.
+           R1'deki çift KDV hatası tam bu sınıftandı: alt zincir yanlış çapaya
+           göre TUTARLIYDI ve hiçbir eksen çelişki göremiyordu.
+           Göç izi kaybolmuyor — `evreKaynak` ham değeri zaten metin olarak
+           taşıyor ve `legacy_id` kaynağa bağlıyor. */
         sonIletisim:    c.sonIletisim || null,
         aktifProje:     c.aktifProje != null ? c.aktifProje : null,
         toplamCiro:     c.toplamCiro != null ? c.toplamCiro : null,
@@ -141,7 +153,10 @@ window.DB = window.DB || {};
         var onceki = h.evre;
         h.evre = ileriOlan(h.evre, leadEvre);
         h.leadKodlari.push(l.kod);
-        h.evreKaynak = 'customers.durum=' + h.durum + ' + ' + l.kod + '.asama=' + l.asama +
+        /* ⚠️ Burada `h.durum` okunuyordu — kaldırılan bayat alan.
+           Göç değeri artık `evreKaynak` metninin kendisinde duruyor;
+           satır ona EKLENİR, ikinci kez kaynaktan okunmaz. */
+        h.evreKaynak = h.evreKaynak + ' + ' + l.kod + '.asama=' + l.asama +
                        (h.evre !== onceki ? ' → ilerletildi' : '');
         if(!h.ihtiyac && l.ozet) h.ihtiyac = l.ozet;
         return;
@@ -164,7 +179,6 @@ window.DB = window.DB || {};
         eposta:         l.eposta || null,
         vergiNo:        null,                  /* lead'de vergi no YOK */
         risk:           null,
-        durum:          null,
         sonIletisim:    l.sonIletisim || null,
         /* Ticari sayaçlar lead'de YOK — sıfır yazmak yanlış beyandır,
            null bırakılır ve ekran "—" basar (R1 dersi L-08 · L-13). */
@@ -217,6 +231,54 @@ window.DB = window.DB || {};
      döner — sessizce yanlış sayı üretmez. */
   DB.accounts = (DB.customers && DB.leads) ? tureti() : [];
   DB.opportunities = (DB.leads) ? firsatlar() : [];
+
+  /* ===================================================================
+     BAYAT ALAN TUZAĞI — K-21 · ADR-R2-18
+     -------------------------------------------------------------------
+     `DB.customers[].durum` göçün KAYNAĞIDIR ve türetme bittiği anda ÖLÜR:
+     yaşam evresi artık `DB.accounts[].evre` üzerinde yaşıyor ve
+     `GV.lifecycle.gec` yalnız onu değiştiriyor. Kaynak alan olduğu yerde
+     kalırsa, bir sonraki turda birileri onu okur ve **eski cevabı alır**.
+
+     Alanı sessizce silmek yetmez: `undefined` okuyan kod da sessizce yanlış
+     çalışır. Bu yüzden alan bir TUZAĞA çevrilir:
+       · okunduğunda   → sayaca yazılır, `undefined` döner
+       · yazıldığında  → sayaca yazılır, değer TUTULMAZ
+       · `enumerable:false` → `Object.keys` / `JSON.stringify` tuzağa basmaz,
+         yani serileştirme yanlış alarm üretmez (L-26: araç fazla saymasın)
+
+     Sayaç `DB.bayat` altında durur; `tasks/qa/bayat-alan.js` ve tarayıcı
+     ekseni onu okur. Tek bir okuma kalırsa eksen kırmızı yanar.
+
+     GEREKÇE (K-21): R1'deki çift KDV hatası tam bu sınıftandı — alt zincir
+     yanlış çapaya göre kendi içinde TUTARLIYDI, dolayısıyla hiçbir eksen
+     çelişki göremiyordu. Bayat çapayı ölçülebilir kılmak, o hatanın tek
+     panzehiri.
+     =================================================================== */
+  DB.bayat = { okuma:[], yazma:[], sayac:0 };
+
+  function bayatKapat(kayit, alan, sebep){
+    if(!Object.getOwnPropertyDescriptor(kayit, alan)) return;
+    delete kayit[alan];
+    Object.defineProperty(kayit, alan, {
+      configurable:true,
+      enumerable:false,
+      get:function(){
+        DB.bayat.okuma.push({ alan:alan, kod:kayit.kod, sebep:sebep });
+        DB.bayat.sayac++;
+        return undefined;
+      },
+      set:function(){
+        DB.bayat.yazma.push({ alan:alan, kod:kayit.kod, sebep:sebep });
+        DB.bayat.sayac++;
+      }
+    });
+  }
+
+  (DB.customers || []).forEach(function(c){
+    bayatKapat(c, 'durum',
+      'yaşam evresi DB.accounts[].evre üzerinde yaşar — GV.lifecycle kullanın');
+  });
 
   /* Ekranların ve ölçüm betiğinin ortak kapısı — evre sayımı TEK yerde. */
   DB.accountsByStage = function(){
