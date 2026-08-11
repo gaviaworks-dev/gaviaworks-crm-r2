@@ -493,3 +493,200 @@ body.ops-odak .ops-sag{ background:var(--paper); }
 .qn-kapak p{ margin:var(--sp-6) 0 var(--sp-7); font-size:var(--fs-xs); line-height:var(--lh-base); }
 .qn-yukleniyor{ text-align:center; color:var(--muted); padding:var(--sp-13) var(--sp-7); }
 .qn-yukleniyor p{ margin:var(--sp-6) 0 0; font-size:var(--fs-sm); }
+
+/* =====================================================================
+   6. RAPOR TEK YÜZEYİ — şartname §7.1 · §7.3
+
+   ⚠️ §7.3'ün tipografi tavanları BURADA piksel olarak yazılıdır ve
+   `tasks/qa/rapor-tavan.js` bunları getComputedStyle ile ölçer. Token
+   kullanmak yerine tavanın kendisini yazmak bilinçlidir: şartname
+   "en fazla 28 px" diyor, "en fazla --fs-2xl" demiyor. Tavan bir SÖZLEŞMEDİR
+   ve token yeniden tanımlanınca sessizce kaymamalıdır.
+
+   Rapor içi sol menü YOKTUR — `.gv-rp-nav` bu dosyada hiç geçmez.
+   ===================================================================== */
+
+/* --- 1. Çıktı eylemleri --- */
+.rp-cikti{
+  display:flex; justify-content:flex-end; gap:var(--sp-4);
+  flex-wrap:wrap; margin-bottom:var(--sp-7);
+}
+
+/* --- 2. Tek satır ortak filtre --- */
+.rp-filtre{
+  display:flex; align-items:flex-end; gap:var(--sp-6); flex-wrap:wrap;
+  padding:var(--sp-7); margin-bottom:var(--sp-7);
+  background:var(--paper); border:1px solid var(--line);
+  border-radius:var(--r-md); box-shadow:var(--sh-xs);
+}
+.rp-f{ display:flex; flex-direction:column; gap:var(--sp-2); min-width:0; }
+.rp-f > span{
+  font-size:11px; color:var(--muted); font-weight:var(--fw-600);
+  letter-spacing:var(--ls-caps); text-transform:uppercase;
+}
+.rp-f .inp{ height:var(--h-sm); font-size:var(--fs-sm); min-width:calc(var(--sp-17) * 0.9); }
+
+/* --- 3. Yatay rapor seçimi (sol menü DEĞİL) --- */
+.rp-secim{
+  display:flex; gap:var(--sp-4); flex-wrap:wrap;
+  margin-bottom:var(--sp-9);
+  border-bottom:1px solid var(--line); padding-bottom:var(--sp-6);
+}
+.rp-sec{
+  display:inline-flex; align-items:center; gap:var(--sp-3);
+  padding:var(--sp-4) var(--sp-7);
+  border:1px solid var(--line-2); border-radius:var(--r-pill);
+  background:var(--paper); color:var(--ink-2); cursor:pointer;
+  font-family:var(--font); font-size:var(--fs-sm); font-weight:var(--fw-600);
+  white-space:nowrap;
+}
+.rp-sec:hover{ border-color:var(--acc); color:var(--acc-deep); }
+.rp-sec.is-on{ background:var(--acc); border-color:var(--acc); color:var(--acc-ink); }
+
+/* --- Rapor başlığı: TAVAN 20px (§7.3) --- */
+.rp-baslik{ font-size:20px; font-weight:var(--fw-800); color:var(--ink);
+            letter-spacing:var(--ls-tight); margin:0 0 var(--sp-3); }
+.rp-ozet{ font-size:var(--fs-sm); color:var(--muted); margin:0 0 var(--sp-8); }
+
+/* --- 4. KPI: değer TAVAN 22–24px (§7.3) --- */
+.rp-kpi{
+  display:grid; grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:var(--sp-7); margin-bottom:var(--sp-9);
+}
+.rp-kpi-k{
+  padding:var(--sp-7); min-width:0;
+  background:var(--paper); border:1px solid var(--line);
+  border-radius:var(--r-md); box-shadow:var(--sh-xs);
+}
+.rp-kpi-lbl{ font-size:var(--fs-2xs); color:var(--muted); font-weight:var(--fw-600);
+             letter-spacing:var(--ls-caps); text-transform:uppercase; }
+.rp-kpi-val{
+  font-family:var(--font-num); font-size:23px; font-weight:var(--fw-800);
+  color:var(--ink); letter-spacing:var(--ls-tight); line-height:var(--lh-tight);
+  margin-top:var(--sp-3);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.rp-kpi-alt{ font-size:11px; color:var(--muted); margin-top:var(--sp-2); }
+.rp-kpi-k.is-ok     .rp-kpi-val{ color:var(--ok); }
+.rp-kpi-k.is-warn   .rp-kpi-val{ color:var(--warn); }
+.rp-kpi-k.is-danger .rp-kpi-val{ color:var(--danger); }
+
+/* --- 5. Grafikler: 1200px üstü iki kolon, altı tek kolon (§7.3) --- */
+.rp-grafikler{ display:grid; grid-template-columns:minmax(0,1fr); gap:var(--sp-7);
+               margin-bottom:var(--sp-9); }
+.rp-grafikler:empty{ display:none; margin:0; }
+@media (min-width:1200px){
+  .rp-grafikler{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  /* Tek grafik varsa kolonu kaplamaz, yarıda kalır — §7.2'nin "tek grafik"
+     hükmü genişlik değil ADET hükmüdür. */
+  .rp-grafikler > .rp-grafik:only-child{ grid-column:1 / 2; }
+}
+.rp-grafik{
+  margin:0; padding:var(--sp-7);
+  background:var(--paper); border:1px solid var(--line);
+  border-radius:var(--r-md); box-shadow:var(--sh-xs);
+  /* §7.3 — kontrolsüz büyümeyi kesen iki kural */
+  min-width:0; overflow:hidden;
+}
+/* --- Grafik başlığı: TAVAN 14px (§7.3) --- */
+.rp-grafik-bas{ font-size:14px; font-weight:var(--fw-700); color:var(--ink);
+                margin-bottom:var(--sp-6); }
+/* --- Grafik yüksekliği: 260–300px (§7.3) --- */
+.rp-grafik-ic{ min-width:0; overflow:hidden; height:280px; }
+.rp-grafik-ic > svg{ width:100%; height:100%; display:block; }
+.rp-grafik-alt{ font-size:11px; color:var(--faint); margin-top:var(--sp-5); }
+
+/* --- Eksen ve etiket: 11–12px (§7.3) --- */
+.rp-grafik-ic .lbl,
+.rp-grafik-ic .val{ font-size:11px; }
+
+/* --- 6. Detay tablosu --- */
+.rp-tablo-sar{
+  background:var(--paper); border:1px solid var(--line);
+  border-radius:var(--r-md); box-shadow:var(--sh-xs); overflow:hidden;
+}
+.rp-tablo-bas{ font-size:14px; font-weight:var(--fw-700); color:var(--ink);
+               margin:0; padding:var(--sp-7) var(--card-pad);
+               border-bottom:1px solid var(--line); }
+/* Tablo GEREKTİĞİNDE kendi kapsayıcısında kayar — sayfa kaymaz (§7.3) */
+.rp-tablo-kaydir{ overflow-x:auto; max-width:100%; }
+.rp-tablo{ width:100%; border-collapse:collapse; font-size:var(--fs-sm); }
+.rp-tablo th, .rp-tablo td{
+  padding:var(--sp-5) var(--sp-7); text-align:left;
+  border-bottom:1px solid var(--line); white-space:nowrap;
+}
+.rp-tablo th{ font-size:11px; color:var(--muted); font-weight:var(--fw-700);
+              letter-spacing:var(--ls-caps); text-transform:uppercase; }
+.rp-tablo td.num, .rp-tablo th.num{ text-align:right; font-family:var(--font-num); }
+.rp-tablo tbody tr:last-child td{ border-bottom:0; }
+.rp-tablo tbody tr:hover{ background:var(--bg-sunk); }
+
+/* --- Ayrıntılı analiz kataloğu — yalnız yönetici --- */
+.rp-katalog{ margin-top:var(--sp-9); border:1px solid var(--line);
+             border-radius:var(--r-md); background:var(--bg-sunk); }
+.rp-katalog > summary{
+  display:flex; align-items:center; gap:var(--sp-4); cursor:pointer;
+  padding:var(--sp-7); font-size:var(--fs-sm); font-weight:var(--fw-600);
+  color:var(--ink-2); list-style:none;
+}
+.rp-katalog > summary::-webkit-details-marker{ display:none; }
+.rp-katalog-rol{ font-size:11px; color:var(--warn); font-weight:var(--fw-700); }
+.rp-katalog-ic{ padding:0 var(--sp-7) var(--sp-7); }
+.rp-katalog-tablo{ max-height:calc(var(--sp-17) * 3); overflow:auto;
+                   border:1px solid var(--line); border-radius:var(--r-sm);
+                   background:var(--paper); margin:var(--sp-6) 0; }
+
+.rp-backend{
+  margin:var(--sp-9) 0 0; padding:var(--sp-7);
+  background:var(--warn-tint); border:1px solid var(--warn);
+  border-radius:var(--r-md);
+  font-size:var(--fs-2xs); color:var(--ink-2); line-height:var(--lh-base);
+}
+
+/* --- Baskı künyesi: ekranda gizli, baskıda görünür (§7.4) --- */
+.rp-kunye{ display:none; }
+
+/* =====================================================================
+   BASKI — §7.4 "Baskıda uygulama navigasyonu, filtre kontrolleri ve
+   butonlar görünmemelidir."
+   ===================================================================== */
+@media print{
+  .gv-rail, .gv-menu, .gv-divider, .gv-top, .gv-crumb, .gv-skip,
+  .rp-cikti, .rp-filtre, .rp-secim, .rp-katalog, .gv-flash,
+  .ph-actions, .gv-me-menu, .gv-tip{ display:none !important; }
+
+  body{ background:#fff; }
+  .gv-app{ display:block; }
+  .gv-main{ padding:0; overflow:visible; }
+  .gv-page{ max-width:none; padding:0; }
+
+  .rp-kunye{ display:block; margin-bottom:12pt; padding-bottom:8pt;
+             border-bottom:1pt solid #999; }
+  .rp-kunye-bas{ font-size:13pt; font-weight:800; }
+  .rp-kunye-sat{ font-size:9pt; color:#444; margin-top:2pt; }
+
+  .rp-kpi{ grid-template-columns:repeat(4,1fr); gap:6pt; }
+  .rp-kpi-k, .rp-grafik, .rp-tablo-sar{ box-shadow:none; border:1pt solid #ccc;
+                                        break-inside:avoid; }
+  .rp-grafikler{ grid-template-columns:1fr; }
+  .rp-tablo-kaydir{ overflow:visible; }
+  .rp-backend{ border:1pt solid #999; background:#f6f6f6; }
+
+  /* Sayfa numarası — §7.4 */
+  @page{ margin:14mm 12mm 16mm; size:A4; }
+}
+
+@media (max-width:900px){
+  .rp-kpi{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media (max-width:520px){
+  .rp-filtre{ flex-direction:column; align-items:stretch; }
+  .rp-f .inp{ min-width:0; width:100%; }
+}
+
+/* Şartname sapması beyanı — gizlenmez (karar K-10) */
+.ops-sapma{
+  margin:0; padding:var(--sp-5) var(--card-pad) var(--sp-8);
+  font-size:var(--fs-2xs); color:var(--ink-2); line-height:var(--lh-base);
+  background:var(--warn-tint); border-top:1px solid var(--warn);
+}

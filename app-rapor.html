@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Raporlar — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="rapor" data-screen="rapor">
+<div id="raporMount"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/hr.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/data/reports.js"></script>
+<script src="assets/data/rapor-eslesme.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script src="assets/js/rapor.js"></script>
+<script>
+/* =====================================================================
+   RAPORLAR — TEK YÜZEY · şartname §7
+
+   Altı varsayılan rapor §7.1'in içerik tablosuna göre kuruldu. Her rakam
+   mevcut kayıttan TÜRETİLİR; hiçbir sayı sabit yazılmadı.
+
+   ⚠️ İKİNCİ BİR PARA KAYNAĞI YOK. Fatura bakiyesi yalnız `GV.fin.balance`
+   üzerinden okunur; bu ekran kendi toplamını hesaplamaz.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F = GV.fmt, C = GV.chart, K = GV.rapor.kisa;
+  var canFinans = GV.perm.can('finans');
+  var T = DB.today;
+
+  /* ---- Dönem penceresi — tek tanım, altı rapor da bunu kullanır ---- */
+  function baslangic(donem){
+    var d = new Date(T + 'T00:00:00');
+    if(donem === '3ay')  d.setMonth(d.getMonth() - 3);
+    else if(donem === '6ay')  d.setMonth(d.getMonth() - 6);
+    else if(donem === 'yil')  { d.setMonth(0); d.setDate(1); }
+    else d.setMonth(d.getMonth() - 12);
+    return d.toISOString().slice(0, 10);
+  }
+  function icinde(tarih, f){
+    if(!tarih) return false;
+    return String(tarih).slice(0,10) >= baslangic(f.donem);
+  }
+  /* Kapsam = proje; sorumlu = personel. Filtresi olmayan rapor bu
+     yordamları çağırmaz — zorla uydurulmuş bir eksen bağlanmaz. */
+  function kapsamda(kayit, f){
+    if(!f.kapsam) return true;
+    return kayit.proje === f.kapsam;
+  }
+  function sorumluda(kayit, f, alan){
+    if(!f.sorumlu) return true;
+    return kayit[alan || 'sorumlu'] === f.sorumlu;
+  }
+
+  /* Son 12 ayın etiketleri — aylık eksen (§7.2) */
+  function aylar(n){
+    var out = [], d = new Date(T + 'T00:00:00');
+    d.setDate(1);
+    for(var i = n - 1; i >= 0; i--){
+      var x = new Date(d); x.setMonth(d.getMonth() - i);
+      out.push(x.toISOString().slice(0, 7));
+    }
+    return out;
+  }
+  var AY_AD = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
+  function ayEtiket(ym){ return AY_AD[+ym.slice(5,7) - 1] + ' ' + ym.slice(2,4); }
+
+  function maskeli(v){ return canFinans ? v : '••••••'; }
+
+  /* ================================================================
+     1 · SATIŞ ÖZETİ — aday/fırsat kaynağı, dönüşüm, teklif sonucu
+     ================================================================ */
+  function satisOzeti(f){
+    var firsat = (DB.opportunities || []).filter(function(o){
+      return sorumluda(o, f) && icinde(o.kapanisTahmini || o.sonrakiTarih || T, f);
+    });
+    var kazan = firsat.filter(function(o){ return o.asama === 'Kazanıldı'; });
+    var kayip = firsat.filter(function(o){ return o.asama === 'Kaybedildi'; });
+    var kapali = kazan.length + kayip.length;
+    var teklif = (DB.quotes || []).filter(function(q){ return icinde(q.tarih, f); });
+
+    /* Huni — fırsat aşama dağılımı. Etiketler kısaltılır, tam metin
+       `<title>` içinde (Chart.bar her sütuna title basıyor). */
+    var asamalar = {};
+    firsat.forEach(function(o){ asamalar[o.asama] = (asamalar[o.asama] || 0) + 1; });
+    var huni = Object.keys(asamalar).map(function(a){
+      return { label:K(a, 12), value:asamalar[a] };
+    }).sort(function(a,b){ return b.value - a.value; });
+
+    /* Aylık trend — fırsat sayısı, açılış ayına göre (lead talep tarihi) */
+    var ay = aylar(12);
+    var sayac = ay.map(function(m){
+      return (DB.leads || []).filter(function(l){
+        return String(l.talepTarihi || '').slice(0,7) === m; }).length;
+    });
+
+    return {
+      kpis:[
+        { lbl:'Toplam fırsat', val:F.num(firsat.length) },
+        { lbl:'Kazanılan', val:F.num(kazan.length), tone:'ok' },
+        { lbl:'Kaybedilen', val:F.num(kayip.length), tone:kayip.length ? 'danger' : '' },
+        { lbl:'Dönüşüm oranı', val:kapali ? Math.round(kazan.length / kapali * 100) + '%' : '—',
+          alt:kapali ? kazan.length + ' / ' + kapali + ' kapanan' : 'kapanan fırsat yok',
+          ipucu:'Kazanılan ÷ (kazanılan + kaybedilen). Açık fırsatlar paydaya girmez.' }
+      ],
+      grafikler:[
+        { baslik:'Fırsat hunisi — aşama dağılımı',
+          html:C.bar(huni, { height:280, label:'Fırsat aşama dağılımı' }),
+          aciklama:'Kaynak: DB.opportunities (' + firsat.length + ' kayıt)' },
+        { baslik:'Aylık aday girişi — son 12 ay',
+          html:C.line([{ ad:'Aday', values:sayac }], ay.map(ayEtiket), { height:280, label:'Aylık aday girişi' }),
+          aciklama:'Kaynak: DB.leads.talepTarihi' }
+      ],
+      tablo:{
+        baslik:'Teklif sonuçları',
+        kolonlar:[{ lbl:'Teklif' }, { lbl:'Müşteri' }, { lbl:'Tutar', num:true },
+                  { lbl:'Durum' }, { lbl:'Tarih' }],
+        satirlar:teklif.map(function(q){
+          return [
+            { v:q.kod },
+            { v:q.firma, ipucu:q.firma },
+            { v:canFinans ? F.money(q.toplam) : '••••••', disa:canFinans ? q.toplam : '' },
+            { html:GV.badge(q.durum), disa:q.durum },
+            { v:F.date(q.tarih) }
+          ];
+        })
+      }
+    };
+  }
+
+  /* ================================================================
+     2 · MÜŞTERİ SAĞLIĞI — aktivite, destek, risk, yenileme
+     ================================================================ */
+  function musteriSagligi(f){
+    var hesap = (DB.accounts || []).filter(function(h){ return sorumluda(h, f); });
+    var musteri = hesap.filter(function(h){ return h.evre === 'MUSTERI'; });
+    var riskli = hesap.filter(function(h){ return h.risk === 'Yüksek'; });
+    var memn = musteri.filter(function(h){ return h.memnuniyet != null; });
+    var ortMemn = memn.length
+      ? (memn.reduce(function(s,h){ return s + h.memnuniyet; }, 0) / memn.length) : null;
+
+    /* Segment — yaşam evresi dağılımı. Sözlük `lifecycle.js`te, ekran
+       kendi listesini yazmaz. */
+    var seg = DB.lifecycleOrder.map(function(k){
+      return { label:K(DB.lifecycleStages[k].ad, 12),
+               value:hesap.filter(function(h){ return h.evre === k; }).length,
+               tone:k === 'KAYIP' ? 'danger' : k === 'MUSTERI' ? 'ok' : '' };
+    }).filter(function(x){ return x.value > 0; });
+
+    return {
+      kpis:[
+        { lbl:'Toplam hesap', val:F.num(hesap.length) },
+        { lbl:'Aktif müşteri', val:F.num(musteri.length), tone:'ok' },
+        { lbl:'Yüksek riskli', val:F.num(riskli.length), tone:riskli.length ? 'danger' : '' },
+        { lbl:'Ortalama memnuniyet',
+          val:ortMemn != null ? ortMemn.toFixed(1) + ' / 5' : '—',
+          alt:ortMemn != null ? memn.length + ' hesapta ölçülü' : 'ölçüm yok',
+          ipucu:'Memnuniyeti olmayan hesap ortalamaya girmez — sıfır sayılmaz.' }
+      ],
+      grafikler:[
+        { baslik:'Segment — yaşam evresi dağılımı',
+          html:C.bar(seg, { height:280, label:'Yaşam evresi dağılımı' }),
+          aciklama:'Kaynak: DB.accounts (lifecycle.js türetmesi)' }
+      ],
+      tablo:{
+        baslik:'Riskli ve pasif müşteriler',
+        kolonlar:[{ lbl:'Müşteri' }, { lbl:'Evre' }, { lbl:'Risk' },
+                  { lbl:'Açık destek', num:true }, { lbl:'Son iletişim' }],
+        satirlar:hesap.filter(function(h){
+          return h.risk === 'Yüksek' || h.evre === 'PASIF' || h.evre === 'KAYIP';
+        }).map(function(h){
+          var acik = (DB.tickets || []).filter(function(t){
+            return t.musteri === h.kod && (DB.ticketClosedStatuses || []).indexOf(t.durum) === -1;
+          }).length;
+          return [
+            { v:h.unvan, ipucu:h.unvan },
+            { html:GV.badge((DB.lifecycleStages[h.evre] || {}).ad || '—'), disa:(DB.lifecycleStages[h.evre] || {}).ad },
+            { v:h.risk || '—' },
+            { v:acik },
+            { v:h.sonIletisim ? F.date(h.sonIletisim) : '—' }
+          ];
+        })
+      }
+    };
+  }
+
+  /* ================================================================
+     3 · PROJE TESLİMATI — sağlık, ilerleme, süre, kalite
+     ================================================================ */
+  function projeTeslimati(f){
+    var pr = (DB.projects || []).filter(function(p){
+      return (!f.kapsam || p.kod === f.kapsam) && (!f.sorumlu || p.pm === f.sorumlu);
+    });
+    var acik = pr.filter(function(p){ return GV.proje.acik(p); });
+    var geciken = acik.filter(function(p){ return GV.proje.geciken(p); });
+    var ort = acik.length
+      ? Math.round(acik.reduce(function(s,p){ return s + (p.ilerleme || 0); }, 0) / acik.length) : null;
+    var acikHata = (DB.bugs || []).filter(function(b){ return b.durum !== 'Kapandı'; }).length;
+
+    /* Plan / gerçekleşen — iki seri tek grafikte (Chart.bar value2) */
+    var pg = acik.slice(0, 8).map(function(p){
+      var s = GV.proje.sure(p.kod);
+      return { label:K(p.ad, 10), value:s.planlanan || 0, value2:s.gerceklesen || 0 };
+    });
+
+    return {
+      kpis:[
+        { lbl:'Açık proje', val:F.num(acik.length) },
+        { lbl:'Geciken', val:F.num(geciken.length), tone:geciken.length ? 'danger' : '' },
+        { lbl:'Ortalama ilerleme', val:ort != null ? ort + '%' : '—' },
+        { lbl:'Açık hata', val:F.num(acikHata), tone:acikHata ? 'warn' : '',
+          ipucu:'Kalite ekseni — kapanmamış hata kaydı sayısı' }
+      ],
+      grafikler:[
+        { baslik:'Planlanan ve gerçekleşen süre (saat)',
+          html:C.bar(pg, { height:280, label:'Planlanan ve gerçekleşen süre' }),
+          aciklama:'Kaynak: GV.proje.sure — gerçekleşen = onaylı zaman kaydı toplamı' }
+      ],
+      tablo:{
+        baslik:'Geciken projeler',
+        kolonlar:[{ lbl:'Proje' }, { lbl:'Müşteri' }, { lbl:'Durum' },
+                  { lbl:'İlerleme', num:true }, { lbl:'Planlanan bitiş' }],
+        satirlar:geciken.map(function(p){
+          return [
+            { v:p.ad, ipucu:p.ad },
+            { v:p.musteriAd || '—' },
+            { html:GV.badge(p.durum), disa:p.durum },
+            { v:(p.ilerleme || 0) + '%' },
+            { v:p.planlananBitis ? F.date(p.planlananBitis) : '—' }
+          ];
+        })
+      }
+    };
+  }
+
+  /* ================================================================
+     4 · İŞ VE KAPASİTE — görev, zaman, kapasite, gecikme
+     ================================================================ */
+  function isKapasite(f){
+    var kapali = ['Tamamlandı','İptal edildi','Arşivlendi'];
+    var gorev = (DB.tasks || []).filter(function(g){
+      return kapasiteKapsam(g, f);
+    });
+    function kapasiteKapsam(g, ff){
+      if(ff.kapsam && g.proje !== ff.kapsam) return false;
+      if(ff.sorumlu && g.sorumlu !== ff.sorumlu) return false;
+      return true;
+    }
+    var acik = gorev.filter(function(g){ return kapali.indexOf(g.durum) === -1; });
+    var geciken = acik.filter(function(g){ return g.termin && g.termin < T; });
+
+    var kayit = (DB.timelogs || []).filter(function(l){
+      return l.onay === 'Onaylandı' && icinde(l.tarih, f) &&
+             (!f.sorumlu || l.personel === f.sorumlu) &&
+             (!f.kapsam || l.proje === f.kapsam);
+    });
+    var saat = kayit.reduce(function(s,l){ return s + (l.sure || 0); }, 0);
+
+    /* İş yükü — kişi başına açık görev. En yüklü sekiz kişi. */
+    var yuk = {};
+    acik.forEach(function(g){ if(g.sorumlu) yuk[g.sorumlu] = (yuk[g.sorumlu] || 0) + 1; });
+    var isYuku = Object.keys(yuk).map(function(e){
+      return { label:K(DB.empName(e) || e, 10), value:yuk[e],
+               tone:yuk[e] >= 5 ? 'danger' : '' };
+    }).sort(function(a,b){ return b.value - a.value; }).slice(0, 8);
+
+    var kisiSayi = Object.keys(yuk).length;
+
+    return {
+      kpis:[
+        { lbl:'Açık görev', val:F.num(acik.length) },
+        { lbl:'Geciken', val:F.num(geciken.length), tone:geciken.length ? 'danger' : '' },
+        { lbl:'Onaylı saat', val:F.num(Math.round(saat)),
+          alt:kayit.length + ' zaman kaydı',
+          ipucu:'Yalnız onaylanmış zaman kayıtları — onaysız kayıt sayılmaz' },
+        { lbl:'Kişi başı açık iş',
+          val:kisiSayi ? (acik.length / kisiSayi).toFixed(1) : '—',
+          alt:kisiSayi ? kisiSayi + ' kişiye dağılmış' : 'atanmış iş yok' }
+      ],
+      grafikler:[
+        { baslik:'İş yükü — kişi başına açık görev',
+          html:C.bar(isYuku, { height:280, label:'Kişi başına açık görev' }),
+          aciklama:'Kaynak: DB.tasks · en yüklü ' + isYuku.length + ' kişi' }
+      ],
+      tablo:{
+        baslik:'Geciken işler',
+        kolonlar:[{ lbl:'Görev' }, { lbl:'Sorumlu' }, { lbl:'Durum' },
+                  { lbl:'Öncelik' }, { lbl:'Termin' }],
+        satirlar:geciken.map(function(g){
+          return [
+            { v:g.baslik, ipucu:g.baslik },
+            { v:g.sorumlu ? DB.empName(g.sorumlu) : '—' },
+            { html:GV.badge(g.durum), disa:g.durum },
+            { html:GV.pri(g.oncelik), disa:g.oncelik },
+            { v:F.date(g.termin) }
+          ];
+        })
+      }
+    };
+  }
+
+  /* ================================================================
+     5 · NAKİT VE TAHSİLAT — şartname §7.2 BİREBİR
+
+     "KPI: Toplam fatura · Tahsil edilen · Açık bakiye · Tahsilat oranı
+      TEK grafik: Son 12 ay için fatura ve tahsilat; iki seri, ortak eksen
+      TEK tablo: Müşteri, fatura, tahsilat, açık bakiye, son vade"
+
+     "Grafikte müşteri isimleri yerine AYLIK EKSEN kullanılmalı; müşteri
+      karşılaştırması TABLODA yapılmalıdır."
+
+     ⚠️ Tüm bakiye `GV.fin.balance` üzerinden okunur — ikinci bir kaynak yok.
+     ================================================================ */
+  function nakitTahsilat(f){
+    var fat = (DB.invoices || []).filter(function(i){
+      return icinde(i.tarih, f) && (!f.kapsam || i.proje === f.kapsam);
+    });
+    var brut = 0, tahsil = 0, acik = 0;
+    fat.forEach(function(i){
+      var b = GV.fin.balance(i.kod);
+      if(!b) return;
+      brut += b.brut; tahsil += b.tahsil; acik += b.acik;
+    });
+    var oran = brut ? Math.round(tahsil / brut * 100) : null;
+
+    /* TEK grafik — son 12 ay, iki seri, AYLIK eksen (müşteri adı YOK) */
+    var ay = aylar(12);
+    var fatAy = ay.map(function(m){
+      return (DB.invoices || []).filter(function(i){ return String(i.tarih).slice(0,7) === m; })
+        .reduce(function(s,i){ return s + (i.toplam || 0); }, 0);
+    });
+    var tahAy = ay.map(function(m){
+      return (DB.paymentAllocations || []).filter(function(a){ return String(a.tarih).slice(0,7) === m; })
+        .reduce(function(s,a){ return s + (a.tutar || 0); }, 0);
+    });
+
+    /* TEK tablo — müşteri kırılımı; karşılaştırma burada yapılır */
+    var perMus = {};
+    fat.forEach(function(i){
+      var b = GV.fin.balance(i.kod); if(!b) return;
+      var m = perMus[i.musteri] || (perMus[i.musteri] = {
+        ad:i.musteriAd || i.musteri, fatura:0, tahsil:0, acik:0, sonVade:null });
+      m.fatura += b.brut; m.tahsil += b.tahsil; m.acik += b.acik;
+      if(i.vade && (!m.sonVade || i.vade > m.sonVade)) m.sonVade = i.vade;
+    });
+
+    return {
+      kpis:[
+        { lbl:'Toplam fatura', val:maskeli(F.money(brut)), gizli:!canFinans },
+        { lbl:'Tahsil edilen', val:maskeli(F.money(tahsil)), gizli:!canFinans, tone:'ok' },
+        { lbl:'Açık bakiye', val:maskeli(F.money(acik)), gizli:!canFinans,
+          tone:acik ? 'warn' : '' },
+        { lbl:'Tahsilat oranı', val:oran != null ? oran + '%' : '—',
+          alt:fat.length + ' fatura',
+          ipucu:'Tahsil edilen ÷ toplam fatura. Kaynak: GV.fin.balance' }
+      ],
+      /* TEK grafik — §7.2 "fazladan grafik yok" */
+      grafikler:[
+        { baslik:'Fatura ve tahsilat — son 12 ay',
+          html:C.line([{ ad:'Fatura', values:fatAy }, { ad:'Tahsilat', values:tahAy }],
+                      ay.map(ayEtiket), { height:280, money:true, area:false,
+                                          label:'Aylık fatura ve tahsilat karşılaştırması' }),
+          aciklama:'İki seri, ortak eksen · aylık kırılım · kaynak: DB.invoices + DB.paymentAllocations' }
+      ],
+      tablo:{
+        baslik:'Müşteri bakiye tablosu',
+        kolonlar:[{ lbl:'Müşteri' }, { lbl:'Fatura', num:true }, { lbl:'Tahsilat', num:true },
+                  { lbl:'Açık bakiye', num:true }, { lbl:'Son vade' }],
+        satirlar:Object.keys(perMus).map(function(k){
+          var m = perMus[k];
+          return [
+            { v:m.ad, ipucu:m.ad },
+            { v:maskeli(F.money(m.fatura)), disa:canFinans ? m.fatura : '' },
+            { v:maskeli(F.money(m.tahsil)), disa:canFinans ? m.tahsil : '' },
+            { html:canFinans
+                ? '<span class="' + (m.acik ? 'u-danger' : 'u-faint') + '">' + F.money(m.acik) + '</span>'
+                : '<span class="cell-mask">••••••</span>',
+              disa:canFinans ? m.acik : '' },
+            { v:m.sonVade ? F.date(m.sonVade) : '—' }
+          ];
+        }).sort(function(a,b){ return String(a[0].v).localeCompare(String(b[0].v), 'tr'); })
+      }
+    };
+  }
+
+  /* ================================================================
+     6 · HİZMET VE DESTEK — talep, SLA, çözüm süresi, memnuniyet
+     ================================================================ */
+  function hizmetDestek(f){
+    var kapaliD = (DB.ticketClosedStatuses || []);
+    var tk = (DB.tickets || []).filter(function(t){
+      return (!f.kapsam || t.proje === f.kapsam) && (!f.sorumlu || t.sorumlu === f.sorumlu);
+    });
+    var acik = tk.filter(function(t){ return kapaliD.indexOf(t.durum) === -1; });
+    var kritik = acik.filter(function(t){ return t.oncelik === 'Kritik'; });
+    var cozulen = tk.filter(function(t){ return t.cozumSuresi != null; });
+    var ortCozum = cozulen.length
+      ? (cozulen.reduce(function(s,t){ return s + t.cozumSuresi; }, 0) / cozulen.length) : null;
+    var memn = tk.filter(function(t){ return t.memnuniyet != null; });
+    var ortMemn = memn.length
+      ? (memn.reduce(function(s,t){ return s + t.memnuniyet; }, 0) / memn.length) : null;
+
+    /* Trend — aylık açılan talep */
+    var ay = aylar(12);
+    var acilan = ay.map(function(m){
+      return tk.filter(function(t){ return String(t.acilis || '').slice(0,7) === m; }).length;
+    });
+
+    return {
+      kpis:[
+        { lbl:'Açık talep', val:F.num(acik.length) },
+        { lbl:'Kritik açık', val:F.num(kritik.length), tone:kritik.length ? 'danger' : '' },
+        { lbl:'Ortalama çözüm',
+          val:ortCozum != null ? Math.round(ortCozum) + ' sa' : '—',
+          alt:cozulen.length ? cozulen.length + ' çözülen talepte' : 'çözülen talep yok',
+          ipucu:'Çözüm süresi olmayan talep ortalamaya girmez' },
+        { lbl:'Memnuniyet',
+          val:ortMemn != null ? ortMemn.toFixed(1) + ' / 5' : '—',
+          alt:memn.length ? memn.length + ' talepte ölçülü' : 'ölçüm yok' }
+      ],
+      grafikler:[
+        { baslik:'Talep trendi — son 12 ay',
+          html:C.line([{ ad:'Açılan talep', values:acilan }], ay.map(ayEtiket),
+                      { height:280, label:'Aylık açılan talep' }),
+          aciklama:'Kaynak: DB.tickets.acilis (' + tk.length + ' kayıt)' }
+      ],
+      tablo:{
+        baslik:'Açık kritik talepler',
+        kolonlar:[{ lbl:'Talep' }, { lbl:'Müşteri' }, { lbl:'Öncelik' },
+                  { lbl:'SLA' }, { lbl:'Sorumlu' }],
+        satirlar:acik.filter(function(t){
+          return t.oncelik === 'Kritik' || t.oncelik === 'Yüksek';
+        }).map(function(t){
+          return [
+            { v:t.baslik, ipucu:t.baslik },
+            { v:t.musteriAd || t.musteri },
+            { html:GV.pri(t.oncelik), disa:t.oncelik },
+            { v:t.sla || '—' },
+            { v:t.sorumlu ? DB.empName(t.sorumlu) : '—' }
+          ];
+        })
+      }
+    };
+  }
+
+  /* ================================================================
+     Ayrıntılı analiz kataloğu — §7.1 · ADR-R2-05
+     "Yönetici için 'Ayrıntılı analiz' seçeneği açılabilir; STANDART
+      KULLANICIYA KATALOG GÖSTERİLMEMELİDİR."
+     ================================================================ */
+  var KATALOG_ROL = ['sahip','genelmudur','sistem'];
+  var katalogAcik = KATALOG_ROL.indexOf(GV.session.rol) !== -1;
+
+  function katalogHtml(){
+    if(!katalogAcik) return '';
+    var s = DB.reportMappingStats();
+    var hedefsiz = DB.reportsUnmapped();
+    return '<details class="rp-katalog">' +
+      '<summary>' + GV.ico('i-list','ic-sm') + ' Ayrıntılı analiz — ' + s.toplam +
+        ' rapor tanımı <span class="rp-katalog-rol">yalnız yönetici</span></summary>' +
+      '<div class="rp-katalog-ic">' +
+        '<p class="u-sm u-muted">' + s.eslesen + ' tanım altı şablonun drill-down ' +
+          'filtresine eşlendi, ' + s.hedefsiz + ' tanım şablonsuz kaldı ve burada durur. ' +
+          'Hiçbir tanım silinmedi (§7.1).</p>' +
+        '<div class="rp-katalog-tablo"><table class="rp-tablo"><thead><tr>' +
+          '<th>Rapor</th><th>Kategori</th><th>Şablon</th></tr></thead><tbody>' +
+          (DB.reportRegistry || []).map(function(r){
+            var sab = DB.reportTemplateOf(r);
+            return '<tr><td>' + GV.esc(r.title) + '</td><td>' + GV.esc(r.category) + '</td>' +
+              '<td>' + (sab
+                ? '<span class="badge is-ok">' + GV.esc(DB.reportTemplates[sab].ad) + '</span>'
+                : '<span class="badge">şablonsuz</span>') + '</td></tr>';
+          }).join('') +
+        '</tbody></table></div>' +
+        '<p class="u-sm u-muted">Şablonsuz ' + hedefsiz.length + ' tanımın ' +
+          hedefsiz.filter(function(r){ return r.category === 'Filo'; }).length +
+          '’i filo raporudur ve karar ADR-R2-05 gereği yedinci şablon açılmadı. ' +
+          'Kalanı varlık raporudur; altı şablonun hiçbiri varlık ölçmüyor ve ' +
+          '<b>hedef uydurulmadı</b>.</p>' +
+      '</div>' +
+    '</details>';
+  }
+
+  /* ---- Yüzeyi kur ------------------------------------------------ */
+  GV.pageHead({ eyebrow:'Analiz', title:'Raporlar',
+                sub:'Altı ana rapor · tek yüzey · rapor içi sol menü yok' });
+
+  GV.rapor({
+    mount:'#raporMount',
+    kapsamlar:(DB.projects || []).map(function(p){ return { v:p.kod, ad:p.ad }; }),
+    sorumlular:(DB.employees || []).filter(function(e){ return e.aktif !== false; })
+                 .map(function(e){ return { v:e.kod, ad:e.ad }; }),
+    raporlar:[
+      { key:'satis-ozeti',     ad:'Satış Özeti',     ikon:'i-funnel',    hesapla:satisOzeti,
+        ozet:'Aday ve fırsat kaynağı, dönüşüm ve teklif sonucu.' },
+      { key:'musteri-sagligi', ad:'Müşteri Sağlığı', ikon:'i-building',  hesapla:musteriSagligi,
+        ozet:'Aktivite, destek yükü, risk ve yenileme.' },
+      { key:'proje-teslimati', ad:'Proje Teslimatı', ikon:'i-briefcase', hesapla:projeTeslimati,
+        ozet:'Sağlık, ilerleme, süre ve kalite.' },
+      { key:'is-kapasite',     ad:'İş ve Kapasite',  ikon:'i-tasks',     hesapla:isKapasite,
+        ozet:'Görev, zaman, kapasite ve gecikme.' },
+      { key:'nakit-tahsilat',  ad:'Nakit ve Tahsilat', ikon:'i-wallet',  hesapla:nakitTahsilat,
+        ozet:'Fatura, tahsilat, açık bakiye ve gecikme.' },
+      { key:'hizmet-destek',   ad:'Hizmet ve Destek', ikon:'i-support',  hesapla:hizmetDestek,
+        ozet:'Talep, SLA, çözüm süresi ve memnuniyet.' }
+    ],
+    altBilgi:katalogHtml() +
+      '<p class="rp-backend">' + GV.ico('i-shield','ic-sm') +
+      ' <b>Backend payı:</b> gerçek XLSX ve PDF biçimi bu prototipte <b>yoktur ve ' +
+      'taklit edilmedi</b>. CSV gerçek biçimdir ve formül koruması uygulanır. ' +
+      'Çıktının yetki ve satır kapsamını aşmaması, dışa aktarımın kalıcı denetim ' +
+      'defterine yazılması ve satır bazlı veri kapsamı sunucu payıdır.</p>'
+  });
+});
+</script>
+</body>
+</html>

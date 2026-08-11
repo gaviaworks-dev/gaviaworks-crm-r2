@@ -744,7 +744,8 @@
     /* Dış ödeme ekranları kabuğu YÜKLEMEZ (§8.3) ama iç ekranlar onlara
        bağlantı verir; listede olmasalar `markWip` bağlantıyı keserdi. */
     'app-odeme.html',
-    'app-odeme-sonuc.html'
+    'app-odeme-sonuc.html',
+    'app-rapor.html'
   ];
   GV.built = BUILT;
 
