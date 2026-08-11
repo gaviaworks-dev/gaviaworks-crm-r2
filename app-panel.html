@@ -266,7 +266,7 @@ document.addEventListener('gv:ready', function(){
 
   function ekipOzet(){
     var izin = (DB.leaves || []).filter(function(l){ return l.durum === 'Onay bekliyor'; });
-    var aktifPersonel = (DB.employees || []).filter(function(e){ return e.aktif !== false; });
+    var aktifPersonel = GV.hr.atanabilirler();
     var body = '<div class="pn-stats">' +
       stat('Aktif personel', aktifPersonel.length) +
       stat('Onay bekleyen izin', izin.length) +

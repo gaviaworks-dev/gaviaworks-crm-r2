@@ -641,7 +641,7 @@ document.addEventListener('gv:ready', function(){
         sonuc:t.durum === 'Havuzda'
           ? 'Görev havuzda: atama Havuzda → Atandı geçişini uygular.'
           : 'Görev zaten atanmış: bu işlem sorumluyu değiştirir, durum değişmez.',
-        onaycilar:(DB.employees || []).filter(function(e){ return e.aktif !== false; })
+        onaycilar:GV.hr.atanabilirler()
                    .map(function(e){ return { deger:e.kod, ad:e.ad + ' — ' + e.pozisyon }; }),
         run:function(v){
           var r = GV.task.ata(t.kod, v.kisi, v.not || null);

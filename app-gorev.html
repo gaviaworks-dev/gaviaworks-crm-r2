@@ -318,7 +318,7 @@ document.addEventListener('gv:ready', function(){
         fields:[
           { key:'sorumlu', label:'Sorumlu', type:'select', cols:12, required:true,
             placeholder:'Kişi seçiniz',
-            options:(DB.employees || []).filter(function(e){ return e.aktif !== false; })
+            options:GV.hr.atanabilirler()
                       .map(function(e){ return { value:e.kod, label:e.ad + ' · ' + (e.depAd || e.dep) }; }) },
           { key:'not', label:'Not', type:'textarea', cols:12, rows:2,
             hint:'Denetim izine yazılır. İsteğe bağlı.' }
@@ -593,7 +593,7 @@ document.addEventListener('gv:ready', function(){
           record:{}, sections:[{ title:'Sorumlu', icon:'i-user-check', fields:[
             { key:'sorumlu', label:'Sorumlu', type:'select', cols:12, required:true,
               placeholder:'Kişi seçiniz',
-              options:(DB.employees || []).filter(function(e){ return e.aktif !== false; })
+              options:GV.hr.atanabilirler()
                         .map(function(e){ return { value:e.kod, label:e.ad + ' · ' + (e.depAd || e.dep) }; }) },
             { key:'not', label:'Not', type:'textarea', cols:12, rows:2,
               hint:'Denetim izine yazılır. İsteğe bağlı.' }

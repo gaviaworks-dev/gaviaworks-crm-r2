@@ -437,7 +437,7 @@ document.addEventListener('gv:ready', function(){
       /* §6.3: "Revizyona gönder — açıklama VE SORUMLU zorunlu." */
       GV.action({
         eylem:'Revizyona gönder', kayit:{ kod:r.kod, baslik:r.baslik }, gerekce:true,
-        onaycilar:(DB.employees || []).filter(function(e){ return e.aktif !== false; })
+        onaycilar:GV.hr.atanabilirler()
                     .map(function(e){ return { deger:e.kod, ad:e.ad + ' · ' + e.depAd }; }),
         run:function(v){
           if(!v.kisi) return { ok:false, mesaj:'Revizyon için sorumlu seçilmelidir' };

@@ -505,7 +505,7 @@ document.addEventListener('gv:ready', function(){
   GV.rapor({
     mount:'#raporMount',
     kapsamlar:(DB.projects || []).map(function(p){ return { v:p.kod, ad:p.ad }; }),
-    sorumlular:(DB.employees || []).filter(function(e){ return e.aktif !== false; })
+    sorumlular:GV.hr.atanabilirler()
                  .map(function(e){ return { v:e.kod, ad:e.ad }; }),
     raporlar:[
       { key:'satis-ozeti',     ad:'Satış Özeti',     ikon:'i-funnel',    hesapla:satisOzeti,
