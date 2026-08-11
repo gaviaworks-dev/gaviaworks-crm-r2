@@ -293,7 +293,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | # | R1 ekranı | Karar | Hedef |
 |---|---|---|---|
 | 87 | `app-izin.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI** — `app-zaman.html` › İzin yüzeyi. Sekmeler `DB.leaveStatuses`ten türetildi (7 talep). Bakiye kapısı hedefe taşındı: bakiyesi yetmeyen talep artık REDDEDİLEBİLİYOR |
-| 88 | `app-izin-detay.html` | **KARŞILIĞI VAR** | — |
+| 88 | `app-izin-detay.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI** (383 satır). Kuyruğun **2 ölü hedefini kapattı**. Bakiye kapısı hedefe bağlı: `IZN-2026-039` onaylanamıyor ama **reddedilebiliyor ve iptal edilebiliyor**; düğme devre dışı ve sebebi yazılı. Geçiş tablosunu ekran okumaz — `GV.flow.durumBilgi` bu turda motora eklendi |
 | 89 | `app-izin-form.html` | **KARŞILIĞI VAR** | — |
 | 90 | `app-zaman.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** İki yüzey sekmesi (Zaman · İzin), tembel çizim, `#izin` derin bağlantısı. 131 zaman kaydı · 6 haftalık defter |
 | 91 | `app-zaman-onay.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — `app-zaman.html` › Zaman yüzeyinin "Onay bekleyen" kayıtlı görünümü (43 satır, `?t=onay`). Haftalık defter satırın onay merciidir; 41 satır kapsanıyor, 90 kapsanmıyor |
@@ -303,12 +303,12 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
-| 93 | `app-demirbas.html` | **KARŞILIĞI VAR** | "Varlıklar" girdisinin bir sekmesi |
+| 93 | `app-demirbas.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI** — `app-varlik.html` › Demirbaş yüzeyi (844 satır, üç yüzey TEK `GV.list` mount'unda). 15 demirbaş · `passive:['Hurda']` · K-30 düşen iddia satırı çekmecede basılıyor |
 | 94 | `app-demirbas-detay.html` | **KARŞILIĞI VAR** | — |
 | 95 | `app-demirbas-form.html` | **KARŞILIĞI VAR** | — |
-| 96 | `app-zimmet.html` | **GÖMÜLÜYOR** | "Varlıklar" › Zimmet sekmesi. ⚠️ R1'in **zimmet kabulü çelişkisi** açık geldi → K-19 |
-| 97 | `app-zimmet-form.html` | **GÖMÜLÜYOR** | drawer |
-| 98 | `app-arac.html` | **GÖMÜLÜYOR** | "Varlıklar" › Filo sekmesi |
+| 96 | `app-zimmet.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — `app-varlik.html` › Zimmet yüzeyi. Tutanak **drawer**'dır, ayrı ekran açılmadı. Kabul / kabul geri alma aynı yetki kümesinden geçiyor |
+| 97 | `app-zimmet-form.html` | **GÖMÜLÜYOR** ✅ | **KAPANDI** — zimmet çekmecesi (`app-varlik.html?t=zimmet`) |
+| 98 | `app-arac.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — `app-varlik.html` › Filo yüzeyi. 4 araç · sözlüğü olmayan 5 alan kayıtlardan türetildi ve kaynağı ekranda yazılı (V2-43) |
 | 99 | `app-arac-detay.html` | **KARŞILIĞI VAR** | Altı alt kaydın sekmesini R1'de zaten taşıyor — bu revizyonun istediği yapının **çalışan emsali** |
 | 100 | `app-arac-form.html` | **KARŞILIĞI VAR** | — |
 

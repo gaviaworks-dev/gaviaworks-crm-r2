@@ -92,7 +92,19 @@ const EKRANLAR = [
   { dosya: 'app-personel.html',           ad: 'Personel',   oturum: true },
   { dosya: 'app-personel.html?t=cikis',   ad: 'Personel Çıkış', oturum: true },
   { dosya: 'app-zaman.html',              ad: 'Zaman',      oturum: true },
-  { dosya: 'app-zaman.html#izin',         ad: 'İzin',       oturum: true }
+  { dosya: 'app-zaman.html#izin',         ad: 'İzin',       oturum: true },
+  /* Varlıklar — ÜÇ YÜZEY DE ölçülür. Tek `?t=` ile açılan üç ayrı kaynak,
+     kolon ve KPI kümesi var; yalnız varsayılanı ölçmek diğer ikisinin
+     yerleşimini hiç çizmemek olurdu. `DMB-2025-007` K-30'da iddiası
+     düşürülen demirbaştır — düşen iddia satırı ancak orada çizilir. */
+  { dosya: 'app-varlik.html',             ad: 'Varlık · Demirbaş', oturum: true },
+  { dosya: 'app-varlik.html?t=zimmet',    ad: 'Varlık · Zimmet',   oturum: true },
+  { dosya: 'app-varlik.html?t=filo',      ad: 'Varlık · Filo',     oturum: true },
+  /* İzin detayı — İKİ kayıt. `IZN-2026-038` normal akış; `IZN-2026-039`
+     bakiyesi YETMEYEN talep: onay kapısı kapalı, ret/iptal açık. Kapının
+     iki yönü ancak o kayıtta çizilir. */
+  { dosya: 'app-izin-detay.html?id=IZN-2026-038', ad: 'İzin Detayı',      oturum: true },
+  { dosya: 'app-izin-detay.html?id=IZN-2026-039', ad: 'İzin · Bakiyesiz', oturum: true }
 ];
 
 const MIME = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8',
