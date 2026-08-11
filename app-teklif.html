@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Teklifler — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="satis" data-screen="teklif">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/data/firsat.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   TEKLİFLER — şartname §7.3 · ekran brief §4 (liste bileşeni)
+
+   Kaynak: `DB.quotes` (8 kayıt, crm.js:391). Tablo, sayfalama, filtre,
+   kolon yönetimi, çıktı ve arşiv toggle'ı `GV.list` yapar — bu ekran
+   YALNIZ yapılandırma yazar.
+
+   DURUM BU EKRANDA DEĞİŞMEZ. `q.durum = …` yazılmaz, `GV.flow.gec`
+   çağrılmaz: teklif geçişleri teklif DETAYINDA yapılır (§7.4). Burada
+   durum yalnız okunur — sekme, filtre, rozet ve KPI olarak.
+
+   "Açık", "süreçte" ve "karara bağlanan" tanımları ELLE YAZILMAZ;
+   `DB.transitions.quote` (org.js:504-515) üzerinden ÖLÇÜLÜR. Tablo
+   değişirse bu ekran kendiliğinden doğru kalır (L-40).
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F = GV.fmt;
+  var canFinans = GV.perm.can('finans');
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  /* Geçiş tablosu — teklif durum makinesinin TEK kaynağı. */
+  var TQ = (DB.transitions || {}).quote || {};
+
+  /* Tabloda yazılı durum anahtarları. Sekme adları şartnameden gelir ama
+     KARŞILIĞI tablodan doğrulanır; tabloda olmayan bir durumu sekme yapmak
+     boş sekme üretirdi. */
+  var TASLAK = 'Taslak', KAZANILDI = 'Kazanıldı', KAYBEDILDI = 'Kaybedildi';
+
+  function terminal(durum){ return !!(TQ[durum] || {}).terminal; }
+  function acikMi(q){ return !terminal(q.durum); }
+  /* "Süreçte" = terminal DEĞİL ve Taslak DEĞİL — türetilir, liste yazılmaz. */
+  function surecteMi(q){ return !terminal(q.durum) && q.durum !== TASLAK; }
+  /* Geçerlilik yalnız SÜRECİ DEVAM EDEN teklifte anlamlıdır: kazanılmış bir
+     teklifin geçerlilik tarihinin geçmiş olması bir sorun değildir. */
+  function suresiGecti(q){
+    return !!q.gecerlilik && q.gecerlilik < DB.today && !terminal(q.durum);
+  }
+
+  /* Bağlar TEK yerde: `firsat.js` (DB.quoteAccount / DB.quoteOpportunity).
+     Teklif → hesap bağı iki yolludur; ekran kendi eşlemesini kurmaz. */
+  function hesapKod(q){ return DB.quoteAccount(q); }
+  function hesapKaydi(q){ return GV.lifecycle.hesap(hesapKod(q)); }
+  function hesapAdi(q){ var h = hesapKaydi(q); return h ? h.unvan : null; }
+  function firsat(q){ return DB.quoteOpportunity(q); }
+
+  var tumu  = DB.quotes || [];
+  var acik  = tumu.filter(acikMi);
+  var arsiv = tumu.filter(function(q){ return q.arsiv === true; });
+
+  /* ⚠️ SIRA — `GV.pageHead` `GV.list`ten ÖNCE. Liste satır sayısını
+     `[data-listcount]` düğümüne yazar, o düğümü pageHead doğurur. */
+  GV.pageHead({
+    eyebrow:'Müşteri ve Satış',
+    title:'Teklifler',
+    sub:tumu.length + ' teklif · ' + acik.length + ' açık' +
+        (arsiv.length ? ' · ' + arsiv.length + ' arşivli kayıt varsayılan görünümde gizli' : ''),
+    actions:[
+      { label:'Yeni Teklif', icon:'i-plus', cls:'btn-acc', href:'app-teklif-form.html' }
+    ]
+  });
+
+  /* Mount her `gv:ready`de baştan kurulur — handler idempotenttir (§2.1).
+     `GV.refresh()` `#rec`i taze kopyayla değiştirdiği için dinleyici birikmez. */
+  mount.innerHTML =
+    '<div id="teklifUyari" class="u-mb-8" hidden></div>' +
+    '<div id="teklifListe"></div>' +
+    '<div id="teklifBackend"></div>';
+
+  /* ---- Geçerlilik uyarısı — SAYI ÖLÇÜLÜR, tahmin edilmez -------------
+     Ölçüm günü `DB.today` (org.js:9) — `new Date()` kullanılmaz.
+
+     ⚠️ Uyarı GÖRÜNEN kümeden sayılır, defterin tamamından değil: satır
+     kapsamı `kendi` olan satış temsilcisi 1 teklif görürken şeridin "4 açık
+     teklif" demesi, göremediği kayıtları saymak olurdu (UID-05). Kapsam,
+     sekme, arama ve filtre süzgeçlerini `GV.list` uyguluyor; şerit onun
+     `onRender` kancasından beslenir — ekran ikinci bir süzgeç YAZMAZ (L-40).
+
+     Sayı sıfırsa "0 teklif süresi doldu" diye uyarı basmak yanlış beyandır
+     (L-13): o zaman ölçümün kendisi söylenir. */
+  function uyariCiz(gorunen){
+    var el = document.getElementById('teklifUyari');
+    if(!el) return;
+    var html;
+    if(!Object.keys(TQ).length){
+      /* Koleksiyon değil KURAL eksik — sayılar türetilemez, söylenir (§10.1). */
+      html = GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Teklif geçiş tablosu yüklenemedi',
+        text:'"Açık", "süreçte" ve "karara bağlanan" tanımları DB.transitions.quote ' +
+             'üzerinden ölçülür; tablo olmadan bu sayılar türetilemedi.' });
+    } else {
+      var dolan = gorunen.filter(suresiGecti);
+      var acikGorunen = gorunen.filter(acikMi);
+      if(dolan.length){
+        html = GV.notice({ tone:'warn', icon:'i-hourglass',
+          title:dolan.length + ' teklifin geçerlilik süresi doldu',
+          text:'Bu görünümdeki şu teklifler hâlâ süreçte ama geçerlilik tarihi ' +
+               F.date(DB.today) + ' ölçüm gününe göre geçmiş: ' +
+               dolan.map(function(q){ return q.kod; }).join(', ') +
+               '. Durum değişimi teklif detayında yapılır.' });
+      } else if(!acikGorunen.length){
+        html = GV.notice({ tone:'neutral', icon:'i-info',
+          title:'Bu görünümde açık teklif yok',
+          text:'Geçerlilik ölçümü yalnız süreci devam eden teklifler için yapılır; ' +
+               'kapanmış bir teklifin geçerlilik tarihinin geçmiş olması beklenen durumdur.' });
+      } else {
+        /* En yakın son tarih de ölçülür — "sorun yok" demek yetmez, sınır söylenir. */
+        var yakin = acikGorunen.filter(function(q){ return !!q.gecerlilik; })
+                               .sort(function(a, b){ return a.gecerlilik < b.gecerlilik ? -1 : 1; })[0];
+        html = GV.notice({ tone:'ok', icon:'i-check-circle',
+          title:'Geçerlilik süresi dolmuş açık teklif yok',
+          text:'Bu görünümdeki ' + acikGorunen.length + ' açık teklifin tamamı ' +
+               F.date(DB.today) + ' ölçüm gününde geçerli.' +
+               (yakin ? ' En yakın son tarih: ' + yakin.kod + ' · ' + F.date(yakin.gecerlilik) + '.' : '') });
+      }
+    }
+    el.innerHTML = html;
+    el.hidden = false;
+  }
+
+  GV.list({
+    mount:'#teklifListe', id:'teklif', key:'kod',
+    source:function(){ return DB.quotes; },
+    exportName:'teklifler', exportTitle:'Teklif Listesi', pageSize:10, views:['table','card'],
+    defaultSort:'kod', defaultDir:'desc',
+    search:{ placeholder:'Teklif no, firma, hesap veya hazırlayan ara',
+             fields:['kod','firma','musteri','lead','analiz'],
+             /* Kayıtta KOD tutulup ekranda AD gösterilen alanlar ancak böyle aranabilir. */
+             extra:function(q){
+               var o = firsat(q);
+               return [hesapAdi(q), q.hazirlayan ? DB.empName(q.hazirlayan) : '', o ? o.kod : '']
+                      .filter(Boolean).join(' ');
+             } },
+
+    /* Satır kapsamı — satış temsilcisi `gor:'kendi'` ile yalnız hazırladığı
+       teklifleri görür; süzmeyi bileşen yapar, kapsam şeridini de o basar. */
+    scopeField:{ kendi:'hazirlayan' },
+
+    kpis:[
+      { label:'Toplam teklif', icon:'i-quote',
+        calc:function(base){ return base.length; } },
+
+      /* Açık = terminal OLMAYAN durum. Terminal listesi tablodan ölçülür. */
+      { label:'Açık teklif', icon:'i-hourglass', tone:'info',
+        meta:function(base){
+          var g = base.filter(suresiGecti).length;
+          return g ? g + ' tanesinin geçerlilik süresi dolmuş' : 'geçerlilik süresi dolan yok';
+        },
+        metaTone:'warn',
+        calc:function(base){ return base.filter(acikMi).length; } },
+
+      { label:'Toplam teklif tutarı', icon:'i-wallet', format:F.moneyK, perm:'finans',
+        meta:function(){ return 'KDV dahil'; },
+        calc:function(base){
+          return base.reduce(function(s, q){ return s + (q.toplam || 0); }, 0);
+        } },
+
+      /* Kazanma oranı = kazanılan / KARARA BAĞLANAN. Payda 0 ise oran YOKTUR;
+         "%0" yazmak "hiç kazanılmadı" iddiasıdır, oysa ölçülemiyor (L-13). */
+      { label:'Kazanma oranı', icon:'i-percent', tone:'ok', format:F.pct,
+        meta:function(base){
+          var kar = base.filter(function(q){ return q.durum === KAZANILDI; }).length;
+          var kay = base.filter(function(q){ return q.durum === KAYBEDILDI; }).length;
+          return (kar + kay)
+            ? kar + ' kazanıldı / ' + (kar + kay) + ' karara bağlandı'
+            : 'karara bağlanan teklif yok — oran türetilemedi';
+        },
+        calc:function(base){
+          var kar = base.filter(function(q){ return q.durum === KAZANILDI; }).length;
+          var kay = base.filter(function(q){ return q.durum === KAYBEDILDI; }).length;
+          var payda = kar + kay;
+          return payda ? Math.round(kar / payda * 100) : null;
+        } }
+    ],
+
+    tabs:[
+      { key:'tumu', label:'Tümü', icon:'i-list', filter:null },
+      { key:'taslak', label:'Taslak', icon:'i-edit',
+        filter:function(q){ return q.durum === TASLAK; } },
+      /* Süreçte sekmesi bir DURUM LİSTESİ DEĞİL, bir kuraldır. */
+      { key:'surecte', label:'Süreçte', icon:'i-hourglass', filter:surecteMi },
+      { key:'kazanildi', label:'Kazanıldı', icon:'i-check-circle',
+        filter:function(q){ return q.durum === KAZANILDI; } },
+      { key:'kaybedildi', label:'Kaybedildi', icon:'i-x-circle',
+        filter:function(q){ return q.durum === KAYBEDILDI; } }
+    ],
+
+    columns:[
+      GV.cols.kod('kod', 'Teklif', { width:'18%', locked:true,
+        href:function(q){ return 'app-teklif-detay.html?id=' + q.kod; },
+        sub:function(q){ return GV.esc(q.firma); } }),
+
+      /* Hesap bağı `DB.quoteAccount` ile çözülür (doğrudan `musteri`, yoksa
+         fırsat üzerinden). Çözülemezse "—" — firma adı benzerliği bağ değildir. */
+      { key:'hesap', label:'Hesap', cellClass:'cell-wrap',
+        sortValue:function(q){ return hesapAdi(q) || ''; },
+        exportValue:function(q){ return hesapAdi(q) || ''; },
+        render:function(q){
+          var kod = hesapKod(q);
+          if(!kod) return GV.cell.faint('—') + GV.cell.sub('hesap bağı kurulamadı');
+          var h = hesapKaydi(q);
+          if(!h) return GV.cell.faint('—') + GV.cell.sub(GV.esc(kod) + ' · hesap kaydı yok');
+          return GV.cell.link('app-musteri-detay.html?id=' + kod, h.unvan, GV.cell.sub(GV.esc(kod)));
+        } },
+
+      GV.cols.durum('durum', 'Durum'),
+
+      GV.cols.num('versiyon', 'Sürüm', { width:'8%',
+        /* K-17: revizyon yeni kayıt üretmiyor, önceki sürüm saklanmıyor.
+           Sürüm numarası veride var, sürüm GEÇMİŞİ yok — söylenir. */
+        sub:function(q){ return q.versiyon > 1 ? 'önceki sürüm kaydı yok · K-17' : ''; } }),
+
+      GV.cols.money('toplam', 'Tutar (KDV dahil)', { perm:'finans', width:'12%' }),
+      GV.cols.money('araToplam', 'Ara toplam', { perm:'finans', visible:false }),
+      GV.cols.money('indirim', 'İndirim', { perm:'finans', visible:false }),
+
+      /* `done` verildiğinde geçmiş tarih uyarı tonu ALMAZ: kapanmış teklifin
+         geçerlilik tarihi zaten geçmiştir, bu bir gecikme değildir. */
+      GV.cols.date('gecerlilik', 'Geçerlilik', {
+        done:function(q){ return terminal(q.durum); },
+        sub:function(q){ return suresiGecti(q) ? 'süre doldu' : ''; } }),
+
+      GV.cols.kisi('hazirlayan', 'Hazırlayan'),
+
+      { key:'firsat', label:'Bağlı fırsat', cellClass:'cell-wrap',
+        sortValue:function(q){ var o = firsat(q); return o ? o.kod : null; },
+        exportValue:function(q){ var o = firsat(q); return o ? o.kod : ''; },
+        render:function(q){
+          var o = firsat(q);
+          if(!o) return GV.cell.faint('—') + GV.cell.sub('aday kaydı bağlı değil');
+          return GV.cell.link('app-firsat-detay.html?id=' + o.kod, o.kod, GV.cell.sub(GV.esc(o.asama)));
+        } },
+
+      { key:'analiz', label:'Ön analiz',
+        exportValue:function(q){ return q.analiz || ''; },
+        render:function(q){
+          if(q.analiz) return '<span class="cell-code">' + GV.esc(q.analiz) + '</span>';
+          /* Taslak → İç Onay geçişinde `teklifOnAnaliz` kapısı vardır
+             (domain.js:189-196): onaylı ön analiz olmadan geçiş REDDEDİLİR. */
+          return GV.cell.faint('—') +
+                 (q.durum === TASLAK ? GV.cell.sub('iç onay kapısı ön analiz ister') : '');
+        } }
+    ],
+
+    filters:[
+      { key:'durum', label:'Durum', type:'multi',
+        /* Seçenekler geçiş tablosundan — ekran kendi durum listesini yazmaz. */
+        options:Object.keys(TQ).map(function(d){ return { value:d, label:d }; }) },
+      { key:'hazirlayan', label:'Hazırlayan', type:'select',
+        /* Yalnız teklifi OLAN personel; 16 kişilik kadroyu listelemek,
+           hiçbir kaydı süzmeyen 14 seçenek üretirdi. */
+        options:tumu.reduce(function(acc, q){
+          if(q.hazirlayan && acc.map(function(o){ return o.value; }).indexOf(q.hazirlayan) === -1)
+            acc.push({ value:q.hazirlayan, label:DB.empName(q.hazirlayan) });
+          return acc;
+        }, []) },
+      { key:'tarih', label:'Teklif tarihi', type:'daterange' },
+      { key:'gecerlilikDoldu', label:'Geçerlilik', type:'select',
+        options:[{ value:'doldu', label:'Geçerlilik süresi dolmuş açık teklifler' }],
+        test:function(q){ return suresiGecti(q); } }
+    ],
+
+    /* Süresi dolmuş açık teklif kırmızı şeritli satır (`is-late`), arşivlenen
+       kayıt soluk. Kapanmış teklif SOLUKLAŞTIRILMAZ — kazanılan bir teklif
+       geçmiş değil, sonuçtur. */
+    rowClass:function(q){
+      if(suresiGecti(q)) return 'is-late';
+      if(q.arsiv === true) return 'is-passive';
+      return '';
+    },
+
+    card:function(q){
+      var o = firsat(q);
+      var h = hesapKaydi(q);
+      return '<div class="gv-rcard-top"><div>' +
+        '<a class="cell-main" href="app-teklif-detay.html?id=' + GV.esc(q.kod) + '">' + GV.esc(q.kod) + '</a>' +
+        '<div class="cell-code">' + GV.esc(h ? h.unvan : q.firma) + '</div></div>' +
+        GV.badge(q.durum) + '</div>' +
+        '<div class="gv-rcard-meta">' +
+          '<span>Sürüm ' + GV.esc(q.versiyon) + '</span>' +
+          (o ? '<span>' + GV.esc(o.kod) + '</span>' : '') +
+          (q.analiz ? '<span>' + GV.esc(q.analiz) + '</span>' : '') +
+        '</div>' +
+        '<div class="gv-rcard-foot">' +
+          (canFinans ? GV.cell.mny(q.toplam) : '<span class="cell-mask">••••••</span>') +
+          GV.dateCell(q.gecerlilik, { done:terminal(q.durum) }) +
+        '</div>';
+    },
+
+    /* 980px altında tablo yerine bu markup basılır (ui.js:1116-1133).
+       `GV.cell.mrow` ızgarayı kendi kurar — 390px'te yatay taşma yok. */
+    mobile:function(q){
+      var h = hesapKaydi(q);
+      return GV.cell.mrow(
+        '<a class="cell-main" href="app-teklif-detay.html?id=' + GV.esc(q.kod) + '">' + GV.esc(q.kod) + '</a>' +
+          GV.badge(q.durum),
+        GV.esc(h ? h.unvan : q.firma),
+        [ GV.ico('i-quote','ic-sm') + 'Sürüm ' + GV.esc(q.versiyon),
+          GV.ico('i-calendar','ic-sm') + (q.gecerlilik ? F.dateShort(q.gecerlilik) : '—') ],
+        (canFinans ? GV.cell.mny(q.toplam) : '<span class="cell-mask">••••••</span>') +
+          (q.hazirlayan ? GV.user(q.hazirlayan, { sm:true }) : '')
+      );
+    },
+
+    /* Durum geçişi burada YOK — teklif detayında `GV.flow.adimlar` ile basılır.
+       Buraya "Kazanıldı işaretle" düğmesi konsaydı ikinci bir mutasyon noktası
+       doğardı (§7 yasak listesi). */
+    rowActions:[
+      { key:'ac', icon:'i-external', label:'Teklifi aç',
+        href:function(q){ return 'app-teklif-detay.html?id=' + q.kod; } }
+    ],
+
+    bulk:[
+      { key:'disa', label:'Dışa aktar', icon:'i-download', export:true }
+    ],
+
+    emptyState:{ icon:'i-quote', title:'Bu görünümde teklif yok',
+      desc:'Filtreleri ya da sekmeyi değiştirebilirsiniz. Arşivlenen teklifler ' +
+           'varsayılan görünümde gizlidir; "Arşivlenenleri Göster" ile açılır.' },
+
+    /* Geçerlilik şeridi listenin GÖRDÜĞÜ kümeden sayılır — kapsam, sekme,
+       arama ve filtre uygulandıktan sonra. */
+    onRender:function(gorunen){ uyariCiz(gorunen); }
+  });
+
+  /* ---- Backend payı — brief §10.2 (b) biçimi ------------------------- */
+  document.getElementById('teklifBackend').innerHTML =
+    '<section class="gv-card u-mt-8"><div class="gc-head">' +
+      '<h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+      '<span class="u-faint u-sm">2 madde</span></div>' +
+      '<div class="gc-body">' +
+        '<ul class="odl-gap">' +
+          '<li><span class="odl-gap-kod">BE-S3</span>' +
+            '<span>Teklif sürümleme (revizyon = yeni kayıt) bu turda kapsam dışı — K-17</span>' +
+            '<span class="odl-gap-bolum">riskler K-17</span></li>' +
+          '<li><span class="odl-gap-kod">BE-S5</span>' +
+            '<span>Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır</span>' +
+            '<span class="odl-gap-bolum">§9 audit_event</span></li>' +
+        '</ul>' +
+        '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+          '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+        '<p class="u-faint u-sm">K-17 (tasks/riskler-ve-kapsam.md): R1\'de teklif sürümleme ' +
+          '<b>yapılmadı</b> — revizyon yeni bir kayıt üretmiyor ve eski sürüm kilitlenmiyor. ' +
+          'R2\'de yapılacak ama <b>bu dilimde değil</b> (ADR-R2-11). Bu yüzden listedeki ' +
+          '"Sürüm" kolonu bir sayı gösterir, sürüm <b>geçmişi</b> göstermez.</p>' +
+      '</div>' +
+    '</section>';
+});
+</script>
+</body>
+</html>
