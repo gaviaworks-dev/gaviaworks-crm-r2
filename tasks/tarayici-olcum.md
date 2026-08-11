@@ -12,6 +12,11 @@
 
 ## 1. Sonuç
 
+> **11 Ağustos ikinci güncellemesi:** Operasyon ve beş ödeme ekranı yazıldıktan
+> sonra tarama **9 ekran × 6 genişlik = 54 ölçüme** genişletildi ve yine
+> sıfır bulguyla kapandı. Aşağıdaki tablo ilk üç ekranın ölçümüdür; genişletilmiş
+> koşumun özeti §7'dedir.
+
 | | |
 |---|---:|
 | Ekran | 3 |
@@ -176,3 +181,60 @@ GV_ROOT=/yol/bozuk-kopya GV_PORT=8795 node tasks/qa/tarayici.js
 ```
 
 Ayrıntılı çıktı `tasks/qa/tarayici-sonuc.json` dosyasına yazılır (gitignored).
+
+
+---
+
+## 7. Genişletilmiş koşum — dokuz ekran
+
+Operasyon ve ödeme ekranları eklendikten sonraki tam tarama:
+
+| | |
+|---|---:|
+| Ekran | **9** |
+| Genişlik | 6 |
+| Ölçüm | **54** |
+| **Yatay taşma** | **0** |
+| **Konsol hatası (kendi kaynağımız)** | **0** |
+| **Eksik sprite ikonu** | **0** |
+| **Odak tuzağı** | **0** |
+| Dış kaynak isteği başarısız | 8 (Google Fonts CDN) |
+
+| Ekran | 1600 | 1440 | 1280 | 1024 | 768 | 390 |
+|---|---|---|---|---|---|---|
+| Giriş | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Gündem | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Müşteriler | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Operasyon | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Ödeme Linkleri | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Yeni Link | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Link Detayı | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Dış Ödeme | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Ödeme Sonucu | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+### 7.1 Ölçüm katmanında bulunan ÜÇÜNCÜ kusur
+
+Dış ödeme ekranları eklendiğinde tarama **12 bulgu** bastı ve on ikisi de
+aynıydı: *"#gvSprite enjekte edilmedi"*. Doğruydu ama **kusur değildi** —
+o iki ekran şartname §8.3 gereği kabuğu hiç yüklemez ve tek bir ikon bile
+kullanmaz (`sprite:0çizili/0gizli`).
+
+Eksen düzeltildi: sprite yokluğu ancak sayfa **ikon kullanıyorsa** kusurdur.
+
+Bu, bu oturumda ölçüm katmanında bulunan **üçüncü** kusur sınıfıdır ve
+üçü de aynı aileden: *araç doğru şeye bakmıyor.* İki tanesi daha ödeme akış
+ekseninde çıktı — iddiaları ürünün **cümlesine** bağlamıştım ve tek harf
+farkla ("kalan bakiye**sini**" ≠ "kalan bakiye**yi**") yanlış bulgu bastılar.
+İkisi de artık **cümleye değil sonuca** bakıyor: kayıt oluştu mu, durum
+değişti mi.
+
+**Ders:** bir ölçüt ürünün metnine bağlanırsa, ürünün metni değiştiğinde
+sessizce yalan söyler. Ölçüt gözlemlenebilir **sonuca** bağlanmalıdır.
+
+### 7.2 Diğer üç eksen
+
+| Eksen | Ne ölçtü | Sonuç |
+|---|---|---|
+| `ops-akis.js` | 39 kuyruk satırı · ayırıcı %30–%50 kilidi · tercih saklama · boş gerekçe reddi | temiz |
+| `odeme-akis.js` | kart alanı yokluğu · süresi dolmuş link · beş sonuç ekranı ödeme yaratmıyor | temiz |
+| `not-izolasyon.js` | 4 negatif hüküm: statik referans · açılışta bellek · sahiplik süzgeci · çekmece yüklemesi | temiz |

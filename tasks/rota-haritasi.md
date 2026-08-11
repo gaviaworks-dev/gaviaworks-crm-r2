@@ -8,6 +8,10 @@
 > Karar veremediğim ekran `KARAR BEKLİYOR` işaretlidir ve **sebebi yazılıdır**.
 >
 > Bu defter **plan değildir** — hedef karar tablosudur. Göç Beyar onayına bağlıdır.
+>
+> **11 Ağustos güncellemesi:** Beyar on bir kararı verdi (`tasks/kararlar.md`).
+> Dokuz "KARAR BEKLİYOR" satırı kapandı, Operasyon ve beş ödeme ekranı yazıldı.
+> Değişen satırlar aşağıda **✔ karar** ya da **✅ yayında** ile işaretli.
 
 ---
 
@@ -26,18 +30,45 @@
 
 ## 1. Sayım özeti
 
-| Karar | Ekran | Pay |
-|---|---:|---:|
-| KARŞILIĞI VAR | **44** | %29,7 |
-| GÖMÜLÜYOR | **84** | %56,8 |
-| YÖNLENDİRİLİYOR | **11** | %7,4 |
-| KARAR BEKLİYOR | **9** | %6,1 |
-| **Toplam** | **148** | %100 |
-| YENİ yazılacak | **6** (+2 karar bekliyor) | — |
-| **Bugün R2'de yayında** | **3** | dikey dilim |
+| Karar | Ekran | Pay | Önceki |
+|---|---:|---:|---:|
+| KARŞILIĞI VAR | **44** | %29,7 | 44 |
+| GÖMÜLÜYOR | **91** | %61,5 | 84 |
+| YÖNLENDİRİLİYOR | **12** | %8,1 | 11 |
+| KAPSAM DIŞI | **1** | %0,7 | 0 |
+| KARAR BEKLİYOR | **0** | %0 | 9 |
+| **Toplam** | **148** | %100 | 148 |
+| YENİ yazılacak | **8** (2'si karar bekliyordu, artık kesin) | — | 6+2 |
+| **Bugün R2'de yayında** | **9** | | 3 |
 
-**Kapsam dışı: 0.** R1'in hiçbir ekranı "ele alınmıyor" diye bırakılmadı;
-her birinin bir hedefi var. Boş bir kova için satır uydurulmadı.
+> **Bu tablo ölçüldü, yazılmadı.** Defterin §2–§12 arasındaki numaralı karar
+> satırları taranarak sayıldı: 148 satır, eksik numara yok, tekrar yok.
+> İlk yazdığım özet (90 / 11 / 2) **yanlıştı** ve ölçüm onu düzeltti — kendi
+> defterime güvenmek yerine saydırdığım için yakalandı (R1 dersi L-28:
+> borç kaydının kendi kapsamı da ölçülmeden güvenilmez).
+
+**Değişimin kaynağı — kararlar:**
+
+| Karar | Etki |
+|---|---|
+| ADR-R2-03 Sohbet kapsam dışı | 1 ekran KARAR BEKLİYOR → **KAPSAM DIŞI** |
+| ADR-R2-04 Referans + komisyon gömülür | 6 ekran KARAR BEKLİYOR → **GÖMÜLÜYOR** |
+| ADR-R2-05 Filo raporu katalogda kalır | 1 ekran KARAR BEKLİYOR → **YÖNLENDİRİLİYOR** |
+| ADR-R2-07 Yönetici paneli rol varyantı | 1 ekran KARAR BEKLİYOR → **GÖMÜLÜYOR** |
+| ADR-R2-08 Fırsat kendi ekranını alır | Y7/Y8 karar bekliyordu → **kesin** |
+| ADR-R2-06 Doküman arşivi yönetim bloğunda | konum belirsizliği kapandı |
+
+⚠️ **Filo raporu için düzeltme:** ADR-R2-05 kararından sonra
+`app-rapor-filo.html` da diğer altı rapor ekranı gibi **YÖNLENDİRİLİYOR**
+oldu — hedefi `app-rapor.html?rapor=ayrintili&kategori=filo` (Ayrıntılı
+analiz kataloğu). Yönlendirilen rapor ekranı 6 → **7** oldu, ama toplam
+YÖNLENDİRİLİYOR sayısı 11'de kaldı çünkü karar bekleyen satırdan geldi.
+
+**KARAR BEKLİYOR satırı kalmadı.** İki ekranın (`app-butce.html` ve
+`app-destek-paket*.html`) **kaderi** kesindir — ikisi de gömülüyor — ama
+**hangi kaydın sekmesi** olacakları şartnamede yazılı değil ve bir varsayımla
+işaretlendiler. Varsayım uygulanmadı; ikisi de henüz yazılmamış ekranlara ait.
+Ayrıntı §13.
 
 R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 16 bölüm · 86 tıklanabilir menü girdisi · 8 rapor yüzeyi · 105 rapor tanımı.
@@ -53,7 +84,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | 3 | `app-panel-onaylar.html` | **GÖMÜLÜYOR** ✅ | Üst çubuk onay çekmecesi — R2'de **çalışıyor** (`gvApprove`). §3.2: "onay için ayrıca üst düzey bölüm açılmamalıdır." |
 | 4 | `app-panel-bildirimler.html` | **GÖMÜLÜYOR** ✅ | Üst çubuk bildirim çekmecesi — R2'de **çalışıyor** (`gvBell`). |
 | 5 | `app-panel-duyurular.html` | **GÖMÜLÜYOR** | Panel duyuru widget'ı. |
-| 6 | `app-panel-yonetici.html` | **KARAR BEKLİYOR** | **Şartname bu ekranı hiç anmıyor.** §4.1 "kartlar rol bazlı varsayılan gelir" diyor — bu okumaya göre yönetici paneli ayrı ekran değil `app-panel.html`'in rol varyantıdır. R2'de rol bazlı iki özet kartı zaten bu işi yapıyor. Ayrı yönetici yüzeyi gerekiyor mu? |
+| 6 | `app-panel-yonetici.html` | **GÖMÜLÜYOR** ✔ ✅ | **ADR-R2-07:** ayrı ekran değil, Ana Panel'in rol varyantı. R2'de `OZET_BY_ROLE` tablosu rol başına iki özet kartı seçiyor; `sahip` ve `genelmudur` fırsat + nakit görüyor. **Çalışıyor.** |
 
 ---
 
@@ -107,12 +138,12 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
-| 24 | `app-referans.html` | **KARAR BEKLİYOR** | Yedi çalışma alanının hiçbirinde karşılığı yok. 10 rapor kaydı var (`Yönlendirme` kategorisi). Müşteri ve Satış altına mı, müşteri detayı sekmesine mi? |
-| 25 | `app-referans-detay.html` | **KARAR BEKLİYOR** | Aynı sebep |
-| 26 | `app-referans-form.html` | **KARAR BEKLİYOR** | Aynı sebep |
-| 27 | `app-komisyon.html` | **KARAR BEKLİYOR** | Komisyon bir finansal yükümlülük; Finans'ın §3.1'deki dört girdisi **dolu** (Faturalar · Tahsilatlar · Ödeme Linkleri · Satın Alma). Beşinci girdi 18 sınırını zorlar. |
-| 28 | `app-komisyon-detay.html` | **KARAR BEKLİYOR** | Aynı sebep |
-| 29 | `app-komisyon-form.html` | **KARAR BEKLİYOR** | Aynı sebep |
+| 24 | `app-referans.html` | **GÖMÜLÜYOR** ✔ | **ADR-R2-04:** yönlendiren kişi müşteri detayında **alan** olur. Ayrı menü girdisi açılmaz; `DB.referrers` verisi korunur. |
+| 25 | `app-referans-detay.html` | **GÖMÜLÜYOR** ✔ | → müşteri detayı › Özet (yönlendiren alanı) |
+| 26 | `app-referans-form.html` | **GÖMÜLÜYOR** ✔ | → drawer |
+| 27 | `app-komisyon.html` | **GÖMÜLÜYOR** ✔ | **ADR-R2-04:** komisyon Finans raporunda **satır** olur. Finans'ın dört girdisi dolu; beşinci girdi 18 sınırını zorlardı. |
+| 28 | `app-komisyon-detay.html` | **GÖMÜLÜYOR** ✔ | → Nakit ve Tahsilat raporu drill-down |
+| 29 | `app-komisyon-form.html` | **GÖMÜLÜYOR** ✔ | → drawer |
 
 ---
 
@@ -197,13 +228,13 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
-| 66 | `app-sohbet.html` | **KARAR BEKLİYOR** | **Yedi çalışma alanının hiçbirinde iletişim/sohbet yok; §3.2 üst çubuk araçlarında da yok.** Modül kapanıyor mu, üst çubuğa mı taşınıyor, yoksa Proje ve Operasyon'a mı giriyor? Şartname tamamen sessiz. |
+| 66 | `app-sohbet.html` | **KAPSAM DIŞI** ✔ | **ADR-R2-03:** R2'ye taşınmaz. Şartname bu modülü hiç anmıyor — ne yedi çalışma alanında ne §3.2 üst çubuk araçlarında yeri var. Adressiz bir modül için sekizinci alan açmak, revizyonun tek cümlelik amacına aykırı. `DB.channels` R1'de duruyor, R2'ye kopyalanmadı. |
 
 ### 4.8 YENİ — Operasyon
 
 | # | Dosya | Karar | Kaynak |
 |---|---|---|---|
-| **Y1** | `app-operasyon.html` | **YENİ** | §6 çift bölmeli ekran. Sol %35 kuyruk / sağ %65 işlem paneli, sürüklenebilir ayırıcı (sol ≥%30, sağ ≥%50), tercih saklanır. Kuyruk: destek · görev · bekleyen onay · takip zamanı gelen müşteri aksiyonu · geciken tahsilat. Sekiz hızlı eylem. "Odak penceresinde aç" + `BroadcastChannel`. |
+| **Y1** | `app-operasyon.html` | **YENİ** ✅ | **YAZILDI.** Sol %35 kuyruk / sağ %65 işlem paneli; ayırıcı sürüklenir ve %30–%50 arasında kilitlenir, tercih saklanır. Kuyruk beş tipi ortak satır modeliyle taşıyor — ölçüldü: **39 satır** (22 görev · 4 destek · 10 onay · 1 takip · 2 tahsilat). Sekiz eylem `GV.flow`/`GV.approval` üzerinden yürüyor ve `GV.audit`e yazıyor; ret/revizyon/iptal gerekçesiz tamamlanmıyor. Odak penceresi `BroadcastChannel` ile senkron. |
 
 ---
 
@@ -235,11 +266,11 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | Dosya | Karar | Kaynak |
 |---|---|---|---|
-| **Y2** | `app-odeme-linki.html` | **YENİ** | §8.1 liste: link · müşteri · tutar · kalan · durum · son kullanma · son işlem |
-| **Y3** | `app-odeme-linki-form.html` | **YENİ** | §8.2 ilk görünüm 6 alan + tek birincil eylem; gelişmiş seçenekler kapalı |
-| **Y4** | `app-odeme-linki-detay.html` | **YENİ** | §8.1 paylaşım · açılma · deneme · ödeme · iptal · iade geçmişi |
-| **Y5** | `app-odeme.html` | **YENİ** | §8.3 dış müşteri ekranı — **`shell.js` YÜKLENMEZ**, CRM menüsü yok, mobil öncelikli tek kolon, TEST etiketi zorunlu |
-| **Y6** | `app-odeme-sonuc.html` | **YENİ** | §8.1 başarılı · başarısız · beklemede · süresi dolmuş · iptal |
+| **Y2** | `app-odeme-linki.html` | **YENİ** ✅ | **YAZILDI.** 7 link, açık bakiyeli faturalardan türetildi |
+| **Y3** | `app-odeme-linki-form.html` | **YENİ** ✅ | **YAZILDI.** İlk görünüm 6 alan + tek birincil eylem; gelişmiş seçenekler kapalı; kart alanı yok; fazla tutar reddediliyor |
+| **Y4** | `app-odeme-linki-detay.html` | **YENİ** ✅ | **YAZILDI.** Geçiş düğmeleri `GV.flow`tan türetiliyor; 11 backend maddesi tek tek listeleniyor |
+| **Y5** | `app-odeme.html` | **YENİ** ✅ | **YAZILDI.** Kabuk yüklenmiyor (ölçüldü: 0 kabuk düğümü), **hiç girdi alanı yok**, TEST etiketi 4 kez, müşteri maskeli, süresi dolmuş linkte ödeme düğmesi basılmıyor |
+| **Y6** | `app-odeme-sonuc.html` | **YENİ** ✅ | **YAZILDI.** Beş sonuç ekranı; **hiçbiri linki ODENDI yapmıyor** — beşinin beşi ölçüldü |
 
 ---
 
@@ -330,9 +361,10 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
-| 123 | `app-dokuman.html` | **KARŞILIĞI VAR** | Yönetici arşivi olarak sürer. ⚠️ **Menü konumu belirsiz** — yedi çalışma alanının hiçbirinde "Belgeler" yok. Ekranın kaderi net, adresi değil → K-05 |
+| 123 | `app-dokuman.html` | **KARŞILIĞI VAR** ✔ | **ADR-R2-06:** merkezî arşiv, Ayarlar'ın **yönetim bloğunda** ayrı girdi olur. Arşiv bir yönetim yüzeyidir, günlük iş değil. Yönetim bloğu standart kullanıcıya görünmediği için **17 girdi değişmez**; yönetici 20 → 21 görür ve §3.1 buna izin veriyor. |
 | 124 | `app-dokuman-detay.html` | **KARŞILIĞI VAR** | Arşiv kayıt görünümü |
 | 125 | `app-dokuman-sure.html` | **GÖMÜLÜYOR** | `app-dokuman.html` › Süresi Dolanlar kayıtlı görünümü |
+| — | *(günlük belge ekleme)* | **GÖMÜLÜYOR** ✔ | **ADR-R2-06:** ilgili kaydın Belgeler sekmesine düşer — müşteri, proje ve destek detaylarında |
 
 ---
 
@@ -351,7 +383,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | 130 | `app-rapor-gorev.html` | **YÖNLENDİRİLİYOR** | → `?rapor=is-kapasite` (19 kayıt) |
 | 131 | `app-rapor-personel.html` | **YÖNLENDİRİLİYOR** | → `?rapor=is-kapasite` (13 kayıt) |
 | 132 | `app-rapor-referans.html` | **YÖNLENDİRİLİYOR** | → `?rapor=satis-ozeti` (10 kayıt) |
-| 133 | `app-rapor-filo.html` | **KARAR BEKLİYOR** | **19 rapor kaydının altı şablonda karşılığı yok.** Filo yedinci şablon mu olacak (o zaman "altı ana rapor" bozulur), yoksa 19 kayıt yalnız "Ayrıntılı analiz" katalogunda mı kalacak? Şartname filoyu rapor tarafında hiç anmıyor. → K-04 |
+| 133 | `app-rapor-filo.html` | **YÖNLENDİRİLİYOR** ✔ | **ADR-R2-05:** yedinci şablon **açılmaz**, altı şablon korunur. → `app-rapor.html?rapor=ayrintili&kategori=filo`. 19 kayıt §7.1'in kendi çıkışıyla "Ayrıntılı analiz" kataloğunda kalır: silinmez, standart kullanıcıya gösterilmez. |
 
 ### 9.1 105 raporun ölçülmüş dağılımı
 
@@ -416,8 +448,8 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | Y4 | `app-odeme-linki-detay.html` | §8.1 | kesin |
 | Y5 | `app-odeme.html` | §8.3 | kesin — TEST etiketli mock |
 | Y6 | `app-odeme-sonuc.html` | §8.1 | kesin |
-| Y7 | `app-firsat-detay.html` | §5.3 | **KARAR BEKLİYOR** |
-| Y8 | `app-firsat-form.html` | §5.3 | **KARAR BEKLİYOR** |
+| Y7 | `app-firsat-detay.html` | §5.3 | **kesin** ✔ (ADR-R2-08) |
+| Y8 | `app-firsat-form.html` | §5.3 | **kesin** ✔ (ADR-R2-08) |
 
 **Y7/Y8 gerekçesi:** §5.3 `opportunity`yi ayrı varlık yapıyor ve R2'de
 `DB.opportunities` **türetildi** (12 kayıt). Ama §3.1'de fırsatın menü
@@ -426,22 +458,34 @@ Satış Akışı kanban kartından bir yere tıklanacak — o hedef belirsiz.
 
 ---
 
-## 13. KARAR BEKLİYOR — dokuz ekranın toplu listesi
+## 13. Karar durumu — dokuz satır kapandı, iki konum varsayım
 
-| # | Ekran | Sebep | Risk defteri |
+11 Ağustos kararlarıyla dokuz "KARAR BEKLİYOR" satırının **dokuzu da**
+kapandı (`tasks/kararlar.md`). Haritada karar bekleyen satır kalmadı.
+
+Ama iki ekranın **konumu** hâlâ bir varsayıma dayanıyor. Kaderleri kesin
+(ikisi de gömülüyor); belirsiz olan hangi kaydın sekmesi olacakları.
+Şartname ikisini de hiç anmıyor:
+
+| # | Ekran | Ne belirsiz | Bu turda ne varsayıldı |
 |---|---|---|---|
-| 6 | `app-panel-yonetici.html` | Şartname anmıyor; rol varyantı mı ayrı ekran mı | K-06 |
-| 24 | `app-referans.html` | Yedi alanda karşılığı yok | K-03 |
-| 25 | `app-referans-detay.html` | Aynı | K-03 |
-| 26 | `app-referans-form.html` | Aynı | K-03 |
-| 27 | `app-komisyon.html` | Yedi alanda karşılığı yok; Finans'ın 4 girdisi dolu | K-03 |
-| 28 | `app-komisyon-detay.html` | Aynı | K-03 |
-| 29 | `app-komisyon-form.html` | Aynı | K-03 |
-| 66 | `app-sohbet.html` | Ne çalışma alanında ne üst çubukta yeri var | K-02 |
-| 133 | `app-rapor-filo.html` | 19 rapor kaydı altı şablona düşmüyor | K-04 |
+| 79 | `app-butce.html` | Proje detayının Bütçe sekmesi mi, Nakit ve Tahsilat raporunun bir görünümü mü? | Proje detayı sekmesi — `GV.proje.maliyet` orada zaten okunuyor |
+| 58/59 | `app-destek-paket*.html` | Müşteri detayının Destek sekmesi mi, Satın Alma benzeri bir sözleşme yüzeyi mi? | Müşteri detayı › Destek sekmesi (§2 bağlamsal işlem ilkesi) |
 
-Ayrıca **konumu** karar bekleyen (kaderi net) bir ekran: `app-dokuman.html`
-— kalıyor ama hangi çalışma alanında olduğu yazılı değil (K-05).
+Varsayımlar **uygulanmadı** — ikisi de henüz yazılmamış ekranlara ait.
+Beyar farklı düşünürse yalnız bu iki satır değişir.
+
+### 13.1 Kapanan dokuz satır
+
+| # | Ekran | Yeni karar | ADR |
+|---|---|---|---|
+| 6 | `app-panel-yonetici.html` | GÖMÜLÜYOR — rol varyantı | ADR-R2-07 |
+| 24–26 | `app-referans*.html` | GÖMÜLÜYOR — müşteri detayında alan | ADR-R2-04 |
+| 27–29 | `app-komisyon*.html` | GÖMÜLÜYOR — Finans raporunda satır | ADR-R2-04 |
+| 66 | `app-sohbet.html` | **KAPSAM DIŞI** | ADR-R2-03 |
+| 123 | `app-dokuman.html` | KARŞILIĞI VAR — yönetim bloğunda | ADR-R2-06 |
+| 133 | `app-rapor-filo.html` | YÖNLENDİRİLİYOR — Ayrıntılı analiz | ADR-R2-05 |
+| Y7/Y8 | `app-firsat-*.html` | YENİ — kesin | ADR-R2-08 |
 
 ---
 
@@ -454,6 +498,12 @@ Ayrıca **konumu** karar bekleyen (kaderi net) bir ekran: `app-dokuman.html`
 | Standart kullanıcıda görünür (en yüksek) | — | **17** |
 | Yönetici rolde görünür (toplam) | — | **20** (3'ü ayrı "Yönetim" bloğunda, soluk) |
 | Menü ayracı | 13 | **0** |
+| Yayında olan ekran | 148 | **9** |
+
+⚠️ **ADR-R2-06'nın menüye etkisi henüz uygulanmadı.** Doküman arşivi yönetim
+bloğuna dördüncü girdi olarak eklendiğinde yönetici rolde toplam 20 → 21,
+yönetim bloğu 3 → 4 olacak. Standart kullanıcının 17'si **değişmeyecek**.
+Bu, doküman ekranı yazıldığında yapılacak.
 
 Ölçüm: `node tasks/qa/kontrol.js` §5 — 27 rolün tamamı tek tek koşuldu.
 Kabul kriteri (§12) "en fazla 7 alan ve 18 menü girdisi" **sağlanıyor**.
