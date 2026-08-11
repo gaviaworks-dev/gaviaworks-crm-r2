@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Ödeme Sonucu — TEST</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/odeme-dis.css">
+</head>
+<body class="odw">
+
+<div class="odw-test" role="alert">TEST ORTAMI — GERÇEK ÖDEME ALINMAZ</div>
+<div class="odw-test-alt">Bu ekran mock adaptörün döndürdüğü sonucu gösterir; gerçek tahsilat yapılmadı.</div>
+
+<main class="odw-sar" id="odw"></main>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/odeme.js"></script>
+<script>
+/* =====================================================================
+   ÖDEME SONUÇ EKRANI — şartname §8.1
+   "Başarılı, başarısız, beklemede, süresi dolmuş veya iptal"
+
+   ⚠️ EN ÖNEMLİ HÜKÜM — §8.3:
+   "Müşteri tarayıcıdaki başarı dönüşüyle ödenmiş kabul EDİLMEMELİDİR.
+   Kesin sonuç, ödeme sağlayıcısından gelen imzası doğrulanmış sunucu
+   bildirimiyle belirlenir."
+
+   Bu yüzden bu ekran HİÇBİR DURUMDA linki `ODENDI` yapmaz ve hiçbir tahsilat
+   kaydı üretmez. "Başarılı" sonucu bile yalnız BİLDİRİM BEKLENİYOR der.
+   Ödemeyi kesinleştiren tek yol webhook'tur ve o backend payıdır (B-01/B-05).
+   ===================================================================== */
+(function(){
+  'use strict';
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function para(n, br){
+    try{
+      return new Intl.NumberFormat('tr-TR', { style:'currency', currency:br || 'TRY',
+        maximumFractionDigits:2 }).format(n || 0);
+    }catch(e){ return (n || 0) + ' ' + (br || ''); }
+  }
+  function tarih(t){
+    if(!t) return '—';
+    var p = String(t).slice(0,10).split('-');
+    return p.length === 3 ? p[2] + '.' + p[1] + '.' + p[0] : t;
+  }
+
+  var q = new URLSearchParams(location.search);
+  var kod = q.get('link');
+  var sonuc = (q.get('sonuc') || 'beklemede').toLowerCase();
+  var host = document.getElementById('odw');
+  var l = (window.DB && DB.paymentLinks || []).filter(function(x){ return x.kod === kod; })[0];
+
+  /* Beş sonuç ekranı — §8.1. Hiçbiri kaydı ODENDI yapmaz. */
+  var EKRANLAR = {
+    basarili:{
+      ton:'is-ok', ikon:'✓', baslik:'Ödeme talimatınız alındı',
+      metin:'Sağlayıcı işlemi kabul etti. Ödemeniz, sağlayıcıdan gelen doğrulanmış ' +
+            'bildirim sunucuda işlendikten sonra kesinleşir.',
+      uyari:'Bu ekran bir ödeme KANITI DEĞİLDİR. Tarayıcı dönüşü tahsilat oluşturmaz; ' +
+            'kesin sonuç, imzası doğrulanmış sağlayıcı bildirimiyle belirlenir. ' +
+            'Bu prototipte webhook ucu yoktur (B-01, B-05).'
+    },
+    beklemede:{
+      ton:'is-warn', ikon:'…', baslik:'Ödemeniz işleniyor',
+      metin:'Sağlayıcıdan sonuç bekleniyor. Bu sırada yeni bir ödeme başlatmayın; ' +
+            'sonuç belli olduğunda tarafınıza bilgi verilir.',
+      uyari:'TEST ortamında gerçek bir sağlayıcı oturumu açılmadı. Gerçek sistemde ' +
+            'link bu aşamada İşlemde durumuna geçer ve sonucu webhook belirler.'
+    },
+    basarisiz:{
+      ton:'is-danger', ikon:'×', baslik:'Ödeme tamamlanamadı',
+      metin:'İşlem sağlayıcı tarafından tamamlanamadı. Kartınızdan tutar çekilmediyse ' +
+            'yeniden deneyebilirsiniz.',
+      uyari:'Başarısız denemeler de denetim izine yazılır. Tekrarlayan hatada ' +
+            'sizinle iletişimde olan yetkiliye ulaşın.'
+    },
+    'suresi-doldu':{
+      ton:'is-neutral', ikon:'!', baslik:'Bağlantının süresi dolmuş',
+      metin:'Bu ödeme bağlantısı artık yeni işlem kabul etmiyor.',
+      uyari:'Süresi dolmuş bir bağlantı yeniden kullanılamaz; yeni bir bağlantı talep edin.'
+    },
+    iptal:{
+      ton:'is-neutral', ikon:'—', baslik:'Ödeme iptal edildi',
+      metin:'İşlemden vazgeçtiniz. Herhangi bir tahsilat yapılmadı.',
+      uyari:'Bağlantı hâlâ geçerliyse aynı adresten yeniden ödeme başlatabilirsiniz.'
+    }
+  };
+
+  var e = EKRANLAR[sonuc] || EKRANLAR.beklemede;
+
+  function firmaBlok(){
+    var ad = (window.DB && DB.company && DB.company.ad) || 'GaviaWorks';
+    var bas = ad.split(/\s+/).map(function(w){ return w.slice(0,1); }).join('').slice(0,2).toUpperCase();
+    return '<div class="odw-firma">' +
+      '<div class="odw-logo">' + esc(bas) + '</div>' +
+      '<div><div class="odw-firma-ad">' + esc(ad) + '</div>' +
+      '<div class="odw-firma-alt">Ödeme sonucu</div></div>' +
+    '</div>';
+  }
+
+  host.innerHTML =
+    '<div class="odw-kart">' +
+      firmaBlok() +
+      '<div class="odw-sonuc ' + e.ton + '">' +
+        '<div class="odw-sonuc-ikon">' + esc(e.ikon) + '</div>' +
+        '<h1>' + esc(e.baslik) + '</h1>' +
+        '<p>' + esc(e.metin) + '</p>' +
+        (l
+          ? '<dl style="margin-top:var(--sp-9);text-align:left">' +
+              '<div class="odw-satir"><dt>Tutar</dt><dd>' + esc(para(l.kalan, l.paraBirimi)) + '</dd></div>' +
+              (l.fatura ? '<div class="odw-satir"><dt>Fatura</dt><dd>' + esc(l.fatura) + '</dd></div>' : '') +
+              '<div class="odw-satir"><dt>Referans</dt><dd>' + esc(l.kod) + '</dd></div>' +
+              '<div class="odw-satir"><dt>Tarih</dt><dd>' + esc(tarih(DB.today)) + '</dd></div>' +
+            '</dl>'
+          : '') +
+        '<div class="odw-uyari">' + esc(e.uyari) + '</div>' +
+      '</div>' +
+    '</div>' +
+    (l && sonuc !== 'basarili'
+      ? '<button type="button" class="odw-btn odw-btn-line" id="odwGeri" style="margin-top:var(--sp-8)">' +
+        'Ödeme sayfasına dön</button>'
+      : '') +
+    '<div class="odw-destek"><b>Sorunuz mu var?</b>' +
+      esc((window.DB && DB.company && DB.company.ad) || 'GaviaWorks') +
+      ((window.DB && DB.company && DB.company.telefon) ? ' · ' + esc(DB.company.telefon) : '') +
+    '</div>' +
+    '<p class="odw-dip">TEST ortamı — gerçek ödeme alınmaz' + (l ? ' · ' + esc(l.kod) : '') + '</p>';
+
+  var geri = document.getElementById('odwGeri');
+  if(geri) geri.addEventListener('click', function(){
+    location.href = 'app-odeme.html?link=' + encodeURIComponent(kod);
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Güvenli Ödeme — TEST</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<!-- ⚠️ shell.css ve ui.css BİLEREK YÜKLENMEZ (§8.3): dış sayfa CRM
+     bilgisi ya da uygulama menüsü göstermez. Yalnız tasarım tokenları
+     paylaşılır ki marka tutarlı kalsın. -->
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/odeme-dis.css">
+</head>
+<body class="odw">
+
+<!-- TEST etiketi sayfanın HER YERİNDE: üstte yapışkan şerit, altta ikinci
+     satır, sağlayıcı bloğunda üçüncü kez, dipnotta dördüncü kez. -->
+<div class="odw-test" role="alert">TEST ORTAMI — GERÇEK ÖDEME ALINMAZ</div>
+<div class="odw-test-alt">Ödeme sağlayıcısı seçilmedi. Bu ekran mock adaptörle çalışan bir prototiptir.</div>
+
+<main class="odw-sar" id="odw"></main>
+
+<!-- Kabuk yüklenmez; yalnız veri ve bu sayfanın kendi betiği. -->
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/odeme.js"></script>
+<script>
+/* =====================================================================
+   DIŞ MÜŞTERİ ÖDEME EKRANI — şartname §8.3
+
+   İçerik sırası şartnamedeki gibi:
+     · Tahsilat yapan şirketin logo ve unvanı
+     · Maskeli müşteri bilgisi
+     · Ödeme açıklaması ve varsa fatura numarası
+     · Tutar ve para birimi
+     · Güvenli ödeme sağlayıcısı bileşeni VEYA sağlayıcıya yönlendirme
+     · Aydınlatma/koşul bağlantıları
+     · "Güvenli Öde" butonu
+     · Destek iletişim bilgisi
+
+   ⚠️ GERÇEK KART ALANI YAZILMADI. §8.7: "Sağlayıcı seçilmemişse gerçek kart
+   formu TAKLİT EDİLMEMELİ." Kart numarası, son kullanma ve CVV girdisi bu
+   dosyada YOKTUR — yerinde açıkça işaretlenmiş bir yer tutucu durur.
+
+   ⚠️ Bu sayfa hiçbir CRM verisini AÇIKTA taşımaz: müşteri adı maskelenir,
+   personel, proje, ciro ve iç kayıt bilgisi hiç basılmaz.
+   ===================================================================== */
+(function(){
+  'use strict';
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function para(n, br){
+    try{
+      return new Intl.NumberFormat('tr-TR', { style:'currency', currency:br || 'TRY',
+        maximumFractionDigits:2 }).format(n || 0);
+    }catch(e){ return (n || 0) + ' ' + (br || ''); }
+  }
+  function tarih(t){
+    if(!t) return '—';
+    var p = String(t).slice(0,10).split('-');
+    return p.length === 3 ? p[2] + '.' + p[1] + '.' + p[0] : t;
+  }
+
+  /* Maskeleme — §8.3 "Maskeli müşteri bilgisi".
+     Unvanın ilk kelimesi ve son harfi kalır; ortası gizlenir. */
+  function maskeUnvan(ad){
+    var s = String(ad || '').trim();
+    if(!s) return '—';
+    var p = s.split(/\s+/);
+    if(p.length === 1) return p[0].slice(0,2) + '•••';
+    return p[0] + ' ' + p.slice(1).map(function(w){
+      return w.slice(0,1) + '•'.repeat(Math.max(2, w.length - 1));
+    }).join(' ');
+  }
+
+  var q = new URLSearchParams(location.search);
+  /* ⚠️ Gerçek sistemde bu parametre TAHMİN EDİLEMEZ BİR TOKEN'dır ve URL'de
+     sıralı kimlik taşınmaz (§8.6). Prototipte token üretilmediği için kayıt
+     kodu kullanılıyor — sayfa bunu kullanıcıya açıkça söylüyor. */
+  var kod = q.get('link');
+  var host = document.getElementById('odw');
+
+  var l = (window.DB && DB.paymentLinks || []).filter(function(x){ return x.kod === kod; })[0];
+
+  /* Süresi dolmuş / iptal link ödeme oturumu BAŞLATAMAZ (§8.5). */
+  var ACIK = ['AKTIF','ACILDI','KISMI_ODENDI'];
+
+  function firmaBlok(){
+    var ad = (window.DB && DB.company && DB.company.ad) || 'GaviaWorks';
+    var bas = ad.split(/\s+/).map(function(w){ return w.slice(0,1); }).join('').slice(0,2).toUpperCase();
+    return '<div class="odw-firma">' +
+      '<div class="odw-logo">' + esc(bas) + '</div>' +
+      '<div><div class="odw-firma-ad">' + esc(ad) + '</div>' +
+      '<div class="odw-firma-alt">Güvenli ödeme sayfası</div></div>' +
+    '</div>';
+  }
+
+  function hataEkran(baslik, metin, ton){
+    host.innerHTML = '<div class="odw-kart">' + firmaBlok() +
+      '<div class="odw-sonuc ' + ton + '">' +
+        '<div class="odw-sonuc-ikon">!</div>' +
+        '<h1>' + esc(baslik) + '</h1><p>' + esc(metin) + '</p>' +
+      '</div></div>' +
+      '<p class="odw-dip">TEST ortamı — gerçek ödeme alınmaz.</p>';
+  }
+
+  if(!kod){ hataEkran('Ödeme bağlantısı eksik', 'Adreste bir ödeme referansı bulunamadı.', 'is-neutral'); return; }
+  if(!l){ hataEkran('Bağlantı bulunamadı', 'Bu ödeme bağlantısı geçersiz ya da kaldırılmış olabilir.', 'is-danger'); return; }
+
+  var evre = (DB.paymentLinkStages || {})[l.durum] || {};
+  var suresiGecti = l.sonKullanma && l.sonKullanma < DB.today;
+  var acik = ACIK.indexOf(l.durum) !== -1 && !suresiGecti;
+
+  if(!acik){
+    var neden = l.durum === 'IPTAL' ? 'Bu ödeme bağlantısı iptal edilmiş.'
+              : l.durum === 'ODENDI' ? 'Bu ödeme daha önce tamamlanmış.'
+              : suresiGecti || l.durum === 'SURESI_DOLDU'
+                ? 'Bu ödeme bağlantısının süresi ' + tarih(l.sonKullanma) + ' tarihinde doldu.'
+                : 'Bu bağlantı şu anda ödeme kabul etmiyor (' + (evre.ad || l.durum) + ').';
+    host.innerHTML = '<div class="odw-kart">' + firmaBlok() +
+      '<div class="odw-sonuc ' + (l.durum === 'ODENDI' ? 'is-ok' : 'is-warn') + '">' +
+        '<div class="odw-sonuc-ikon">' + (l.durum === 'ODENDI' ? '✓' : '!') + '</div>' +
+        '<h1>' + esc(evre.ad || 'Ödeme alınamıyor') + '</h1>' +
+        '<p>' + esc(neden) + '</p>' +
+        '<div class="odw-uyari">Yeni bir ödeme bağlantısı için sizinle iletişimde olan ' +
+          'yetkiliye ulaşabilirsiniz. Süresi dolmuş bir bağlantı yeniden kullanılamaz.</div>' +
+      '</div></div>' +
+      destekBlok() +
+      '<p class="odw-dip">TEST ortamı — gerçek ödeme alınmaz.</p>';
+    return;
+  }
+
+  /* Açılma sayacı — §8.1 "açılma" geçmişi. Gerçek sistemde bu olay
+     sunucuda yazılır; burada bellekte artar ve sayfa yenilenince sıfırlanır. */
+  l.acilma = (l.acilma || 0) + 1;
+
+  function destekBlok(){
+    var c = (window.DB && DB.company) || {};
+    return '<div class="odw-destek">' +
+      '<b>Sorunuz mu var?</b>' +
+      esc(c.ad || 'GaviaWorks') +
+      (c.telefon ? ' · ' + esc(c.telefon) : '') +
+    '</div>';
+  }
+
+  host.innerHTML =
+    '<div class="odw-kart">' +
+      firmaBlok() +
+      '<div class="odw-govde">' +
+
+        '<div class="odw-tutar">' +
+          '<div class="odw-tutar-lbl">Ödenecek tutar</div>' +
+          '<div class="odw-tutar-num">' + esc(para(l.kalan, l.paraBirimi)) + '</div>' +
+        '</div>' +
+
+        '<dl>' +
+          '<div class="odw-satir"><dt>Ödeyen</dt><dd>' + esc(maskeUnvan(l.musteriAd)) + '</dd></div>' +
+          '<div class="odw-satir"><dt>Açıklama</dt><dd>' + esc(l.aciklama) + '</dd></div>' +
+          (l.fatura ? '<div class="odw-satir"><dt>Fatura</dt><dd>' + esc(l.fatura) + '</dd></div>' : '') +
+          '<div class="odw-satir"><dt>Son ödeme</dt><dd>' + esc(tarih(l.sonKullanma)) + '</dd></div>' +
+        '</dl>' +
+
+        /* ⚠️ SAĞLAYICI BİLEŞENİNİN YER TUTUCUSU — gerçek kart alanı DEĞİL */
+        '<div class="odw-saglayici">' +
+          '<strong>TEST</strong>' +
+          '<h2>Güvenli ödeme sağlayıcısı bileşeni buraya gelir</h2>' +
+          '<p>Ödeme sağlayıcısı henüz seçilmedi. Gerçek sistemde bu alanda ' +
+            'sağlayıcının barındırılan ödeme sayfası ya da tokenize edilmiş kart ' +
+            'bileşeni yer alır. <b>Kart numarası, son kullanma tarihi ve CVV ' +
+            'hiçbir zaman bu sunucuya girilmez.</b></p>' +
+          '<code>PaymentProviderAdapter.createCheckoutSession() — ' + esc(l.saglayici) + '</code>' +
+        '</div>' +
+
+        '<button type="button" class="odw-btn" id="odwOde">Güvenli Öde</button>' +
+        '<button type="button" class="odw-btn odw-btn-line" id="odwIptal">Vazgeç</button>' +
+
+        '<p class="odw-kosullar">' +
+          'Devam ederek <a href="#" id="odwAydinlatma">Aydınlatma Metni</a> ve ' +
+          '<a href="#" id="odwKosul">Mesafeli Hizmet Koşulları</a>nı kabul etmiş olursunuz.' +
+        '</p>' +
+
+        '<div class="odw-uyari">' +
+          '<b>Bu bir test ekranıdır.</b> «Güvenli Öde» gerçek bir tahsilat başlatmaz; ' +
+          'mock adaptör bir sonuç ekranına yönlendirir. Gerçek sistemde ödemenin ' +
+          'kesin sonucu tarayıcı dönüşüyle değil, sağlayıcıdan gelen imzası ' +
+          'doğrulanmış sunucu bildirimiyle belirlenir.' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    destekBlok() +
+    '<p class="odw-dip">TEST ortamı — gerçek ödeme alınmaz · ' + esc(l.kod) + '</p>';
+
+  document.getElementById('odwOde').addEventListener('click', function(){
+    /* Mock adaptör: gerçek bir sağlayıcı oturumu AÇILMAZ. Deneme sayacı
+       artar ve kullanıcı sonuç ekranına gider. Ödeme YAZILMAZ — §8.3
+       "Müşteri tarayıcıdaki başarı dönüşüyle ödenmiş kabul edilmemelidir." */
+    l.deneme = (l.deneme || 0) + 1;
+    location.href = 'app-odeme-sonuc.html?link=' + encodeURIComponent(l.kod) + '&sonuc=beklemede';
+  });
+  document.getElementById('odwIptal').addEventListener('click', function(){
+    location.href = 'app-odeme-sonuc.html?link=' + encodeURIComponent(l.kod) + '&sonuc=iptal';
+  });
+
+  ['odwAydinlatma','odwKosul'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.addEventListener('click', function(e){
+      e.preventDefault();
+      alert('Hukuki metinler bu prototipte yazılmadı. Şartname §14: aydınlatma metni, ' +
+            'mesafeli hizmet ve ödeme koşulları ilgili uzmanlarla kesinleştirilmelidir.');
+    });
+  });
+})();
+</script>
+</body>
+</html>

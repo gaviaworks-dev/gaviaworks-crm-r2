@@ -1,0 +1,192 @@
+/* =====================================================================
+   GAVIAWORKS CRM R2 — DIŞ ÖDEME EKRANI
+   Şartname §8.3 · yalnız `app-odeme.html` ve `app-odeme-sonuc.html`
+
+   §8.3: "Dış sayfa uygulama menüsü veya CRM bilgisi göstermemelidir.
+   MOBİL ÖNCELİKLİ TEK KOLON düzen."
+
+   Bu yüzden `shell.css` ve `ui.css` YÜKLENMEZ — kabuğun tek bir sınıfı bile
+   bu sayfaya girmez. Yalnız `tokens.css` paylaşılır ki marka rengi ve
+   tipografi tutarlı kalsın. Sıfır hardcode değer.
+   ===================================================================== */
+
+*, *::before, *::after{ box-sizing:border-box; }
+
+body.odw{
+  margin:0;
+  font-family:var(--font);
+  font-size:var(--fs-base);
+  line-height:var(--lh-base);
+  color:var(--ink);
+  background:var(--bg-sunk);
+  -webkit-font-smoothing:antialiased;
+}
+
+/* TEST şeridi — sayfanın HER YERİNDE görünür (görev kısıtı).
+   Yapışkandır, kapatılamaz ve içerikten önce gelir. */
+.odw-test{
+  position:sticky; top:0; z-index:var(--z-sticky);
+  background:var(--warn); color:var(--brand-night);
+  padding:var(--sp-4) var(--sp-7);
+  font-size:var(--fs-xs); font-weight:var(--fw-700);
+  letter-spacing:var(--ls-wide); text-align:center;
+}
+.odw-test-alt{
+  background:var(--warn-tint); color:var(--ink-2);
+  padding:var(--sp-5) var(--sp-7);
+  font-size:var(--fs-2xs); text-align:center;
+  border-bottom:1px solid var(--line);
+}
+
+/* Tek kolon, mobil öncelikli */
+.odw-sar{
+  max-width:calc(var(--sp-17) * 3.2);
+  margin:0 auto;
+  padding:var(--sp-9) var(--sp-7) var(--sp-13);
+}
+
+.odw-kart{
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:var(--r-lg);
+  box-shadow:var(--sh-sm);
+  overflow:hidden;
+}
+
+/* Tahsilat yapan şirket */
+.odw-firma{
+  display:flex; align-items:center; gap:var(--sp-6);
+  padding:var(--sp-8) var(--sp-8) var(--sp-7);
+  border-bottom:1px solid var(--line);
+}
+.odw-logo{
+  width:var(--sp-13); height:var(--sp-13);
+  border-radius:var(--r-md);
+  background:var(--brand-night); color:var(--brand-mint);
+  display:flex; align-items:center; justify-content:center;
+  font-weight:var(--fw-800); font-size:var(--fs-lg); flex:0 0 auto;
+}
+.odw-firma-ad{ font-size:var(--fs-md); font-weight:var(--fw-700); color:var(--ink); }
+.odw-firma-alt{ font-size:var(--fs-2xs); color:var(--muted); margin-top:var(--sp-1); }
+
+.odw-govde{ padding:var(--sp-8); }
+
+/* Tutar — sayfanın odak noktası */
+.odw-tutar{
+  text-align:center;
+  padding:var(--sp-9) 0 var(--sp-8);
+  border-bottom:1px dashed var(--line-2);
+  margin-bottom:var(--sp-8);
+}
+.odw-tutar-lbl{
+  font-size:var(--fs-2xs); color:var(--muted);
+  letter-spacing:var(--ls-caps); text-transform:uppercase;
+}
+.odw-tutar-num{
+  font-family:var(--font-num);
+  font-size:var(--fs-4xl); font-weight:var(--fw-800);
+  color:var(--ink); letter-spacing:var(--ls-tight);
+  margin-top:var(--sp-3); line-height:var(--lh-tight);
+}
+.odw-tutar-para{ font-size:var(--fs-lg); color:var(--muted); margin-left:var(--sp-3); }
+
+.odw-satir{
+  display:flex; justify-content:space-between; gap:var(--sp-7);
+  padding:var(--sp-5) 0;
+  border-bottom:1px solid var(--line);
+  font-size:var(--fs-sm);
+}
+.odw-satir:last-of-type{ border-bottom:0; }
+.odw-satir dt{ color:var(--muted); margin:0; }
+.odw-satir dd{ margin:0; font-weight:var(--fw-600); text-align:right; word-break:break-word; }
+
+/* Sağlayıcı bileşeninin YER TUTUCUSU — gerçek kart alanı değildir */
+.odw-saglayici{
+  margin:var(--sp-9) 0 var(--sp-8);
+  padding:var(--sp-9) var(--sp-7);
+  border:2px dashed var(--warn);
+  border-radius:var(--r-md);
+  background:var(--warn-tint);
+  text-align:center;
+}
+.odw-saglayici h2{
+  margin:var(--sp-5) 0 var(--sp-4);
+  font-size:var(--fs-sm); font-weight:var(--fw-700); color:var(--ink);
+}
+.odw-saglayici p{
+  margin:0; font-size:var(--fs-2xs); color:var(--ink-2);
+  line-height:var(--lh-base);
+}
+.odw-saglayici code{
+  display:block; margin-top:var(--sp-6);
+  font-size:var(--fs-2xs); color:var(--muted);
+  word-break:break-all;
+}
+
+.odw-btn{
+  display:flex; align-items:center; justify-content:center; gap:var(--sp-4);
+  width:100%; border:0; cursor:pointer;
+  height:var(--h-lg); border-radius:var(--r-md);
+  background:var(--acc); color:var(--acc-ink);
+  font-family:var(--font); font-size:var(--fs-md); font-weight:var(--fw-700);
+}
+.odw-btn:hover{ background:var(--acc-deep); }
+.odw-btn:disabled{ background:var(--line-2); color:var(--muted); cursor:not-allowed; }
+.odw-btn-line{
+  background:var(--paper); color:var(--ink-2);
+  border:1px solid var(--line-2); margin-top:var(--sp-6);
+  height:var(--h-md); font-size:var(--fs-sm);
+}
+
+.odw-kosullar{
+  margin:var(--sp-7) 0 0;
+  font-size:var(--fs-2xs); color:var(--muted); text-align:center;
+  line-height:var(--lh-loose);
+}
+.odw-kosullar a{ color:var(--acc-deep); }
+
+.odw-destek{
+  margin-top:var(--sp-9);
+  padding:var(--sp-7);
+  background:var(--paper); border:1px solid var(--line);
+  border-radius:var(--r-md);
+  font-size:var(--fs-2xs); color:var(--muted); text-align:center;
+}
+.odw-destek b{ color:var(--ink-2); display:block; margin-bottom:var(--sp-2); }
+
+.odw-dip{
+  margin-top:var(--sp-9);
+  font-size:var(--fs-2xs); color:var(--faint); text-align:center;
+}
+
+/* Durum ekranları (§8.1 sonuç) */
+.odw-sonuc{ text-align:center; padding:var(--sp-11) var(--sp-8); }
+.odw-sonuc-ikon{
+  width:var(--sp-16); height:var(--sp-16); margin:0 auto var(--sp-8);
+  border-radius:var(--r-circle);
+  display:flex; align-items:center; justify-content:center;
+  font-size:var(--fs-3xl); font-weight:var(--fw-800);
+}
+.odw-sonuc.is-ok      .odw-sonuc-ikon{ background:var(--ok-tint);     color:var(--ok); }
+.odw-sonuc.is-danger  .odw-sonuc-ikon{ background:var(--danger-tint); color:var(--danger); }
+.odw-sonuc.is-warn    .odw-sonuc-ikon{ background:var(--warn-tint);   color:var(--warn); }
+.odw-sonuc.is-neutral .odw-sonuc-ikon{ background:var(--bg-sunk);     color:var(--muted); }
+.odw-sonuc h1{ margin:0 0 var(--sp-5); font-size:var(--fs-xl); font-weight:var(--fw-800); color:var(--ink); }
+.odw-sonuc p{ margin:0; font-size:var(--fs-sm); color:var(--muted); line-height:var(--lh-base); }
+
+.odw-uyari{
+  margin:var(--sp-8) 0 0;
+  padding:var(--sp-6) var(--sp-7);
+  border-radius:var(--r-md);
+  background:var(--warn-tint); border:1px solid var(--warn);
+  font-size:var(--fs-2xs); color:var(--ink-2);
+  line-height:var(--lh-base); text-align:left;
+}
+
+/* 390px altı da dahil tek kolon — ayrıca kırılım gerekmez, ama dar
+   ekranda kenar boşluğu daralır. */
+@media (max-width:420px){
+  .odw-sar{ padding:var(--sp-7) var(--sp-5) var(--sp-11); }
+  .odw-govde{ padding:var(--sp-7); }
+  .odw-tutar-num{ font-size:var(--fs-3xl); }
+}
