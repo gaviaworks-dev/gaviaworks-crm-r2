@@ -153,7 +153,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
-| 30 | `app-proje.html` | **KARŞILIĞI VAR** | §3.1 menü girdisi |
+| 30 | `app-proje.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** 6 sekme, hepsi `DB.projectStatuses` ve `GV.proje.*` yordamlarından TÜRETİLDİ. ⚠️ "Kapanan" varsayılan görünümde **0** satır: kapanan 7 projenin 7'si de `arsiv:true`, şerit bunu söylüyor. `GV.proje.sure` 7/14 projede `kapsam:false` → "0 sa" değil "defterde kayıt yok" |
 | 31 | `app-proje-detay.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Dokuz sekme, tembel çizim. `#<sekme>` derin bağlantısı çalışıyor ve SÖZLEŞMEDİR — kuyruk ve `GV.proje.kapanisKontrol` buraya bağlandı. |
 | 32 | `app-proje-form.html` | **KARŞILIĞI VAR** | — |
 
@@ -203,10 +203,10 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
-| 54 | `app-destek.html` | **KARŞILIĞI VAR** | §3.1'de kendi menü girdisi var |
+| 54 | `app-destek.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Kuyrukla **aynı satır modeli** (`GV.kuyruk.tipler.destek`); kaynak `DB.tickets` çünkü kuyruk yalnız açık 4 talebi taşıyor, liste 7'sini de gösterir. 4 talebin 13 alanı kuyrukla karşılaştırıldı: **0 fark** |
 | 55 | `app-destek-detay.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Kuyruğun **4 satırı** bu ekrana bağlandı. SLA bir SÜRE taahhüdüdür, tarihe çevrilmedi |
 | 56 | `app-destek-form.html` | **KARŞILIĞI VAR** | — |
-| 57 | `app-destek-sla.html` | **GÖMÜLÜYOR** | destek kayıtlı görünümü + "Hizmet ve Destek" raporu (§7.1: SLA o şablonun ölçütü) |
+| 57 | `app-destek-sla.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — destek listesinin "SLA riskli/ihlal" kayıtlı görünümü (3 satır). SLA bir SÜRE taahhüdüdür, tarihe çevrilmedi |
 | 58 | `app-destek-paket.html` | **GÖMÜLÜYOR** ✅ | → müşteri detayı › Destek sekmesi — **çalışıyor** (ADR-R2-13) |
 | 59 | `app-destek-paket-form.html` | **GÖMÜLÜYOR** ✅ | → aynı sekmede paket kartı |
 | 60 | `app-destek-memnuniyet.html` | **GÖMÜLÜYOR** | "Hizmet ve Destek" raporu (§7.1: memnuniyet o şablonun ölçütü) |
