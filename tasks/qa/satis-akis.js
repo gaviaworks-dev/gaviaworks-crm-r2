@@ -389,7 +389,82 @@ console.log('\n[S9] Ekran kodu durum/aşama/evre alanını ELLE yazmıyor');
   if(!bulgu) ok(`${dosyalar.length} ekranın hiçbiri durum alanını elle yazmıyor`);
 }
 
+/* ---- S10 — teklif sürümleme (K-17 · ADR-R2-17) ----------------------
+   R1'de üç tur boyunca SAHTE kaldı: `versiyon` sayacı artıyor, önceki
+   sürümün kaydı hiçbir yerde durmuyordu. Bu eksen üç hükmü de ölçer. */
+console.log('\n[S10] Teklif sürümleme — revizyon yeni kayıt, eski sürüm kilitli');
+{
+  const { DB, GV } = kur();
+  const q = DB.quotes.find(x => x.durum === 'Müşteri İncelemesi') ||
+            DB.quotes.find(x => !(DB.transitions.quote[x.durum] || {}).terminal);
+  const onceki = DB.quotes.length;
+  const kalemOnce = (DB.quoteItems || []).filter(i => i.teklif === q.kod).length;
+
+  olc();
+  const r = GV.teklif.revizyonAc(q.kod, { not:'eksen koşumu' });
+  if(!r.ok) de('revizyon açılamadı: ' + (r.mesaj || r.why));
+  else if(DB.quotes.length !== onceki + 1)
+    de(`revizyon YENİ KAYIT üretmedi — ${onceki} → ${DB.quotes.length}`);
+  else ok(`revizyon yeni kayıt üretti: ${q.kod} v${q.versiyon || 1} → ${r.yeni.kod} v${r.versiyon}`);
+
+  olc();
+  const kalemSonra = (DB.quoteItems || []).filter(i => i.teklif === r.yeni.kod).length;
+  if(kalemSonra !== kalemOnce) de(`kalemler kopyalanmadı — kaynak ${kalemOnce}, yeni ${kalemSonra}`);
+  else ok(`${kalemOnce} kalem yeni sürüme kopyalandı`);
+
+  olc();
+  /* KİLİT — eski sürüm hiçbir yöne gidemez. */
+  const adim = GV.flow.adimlar('quote', q.kod);
+  if(adim.length) de(`OLUMSUZ VAKA GEÇTİ — kilitli sürüm ${adim.length} adım sunuyor`);
+  else ok('kilitli sürümde adım listesi boş — ölü buton basılmıyor');
+
+  olc();
+  const g = GV.flow.gec('quote', q.kod, 'Kazanıldı');
+  if(g.ok) de('OLUMSUZ VAKA GEÇTİ — kilitli sürümde geçiş uygulandı');
+  else if(g.why !== 'kilit') de('kilit yerine başka nedenle düştü: ' + g.why);
+  else ok('kilitli sürümde geçiş reddedildi (why=kilit)');
+
+  olc();
+  /* Kilit SİMETRİK mi — Beyar kısıtı: "bir işi geri almak ya da kaybetmek,
+     onu tamamlamaktan daha ağır koşula bağlanamaz." Kilit kaydın tamamını
+     dondurur; kaybetmeyi kazanmaktan DAHA AĞIR koşula bağlamaz. */
+  const kayip = GV.flow.gec('quote', q.kod, 'Kaybedildi', null, { neden:'BUTCE', not:'eksen' });
+  if(kayip.ok) de('kilit asimetrik — kaybetmeye izin veriyor, kazanmaya vermiyor');
+  else if(kayip.why !== 'kilit') de('kayıp çıkışı kilit dışında bir nedenle düştü: ' + kayip.why);
+  else ok('kilit simetrik — kazanma da kaybetme de aynı koşulda reddediliyor');
+
+  olc();
+  /* YENİ sürüm çalışır durumda — kilit zinciri tıkamıyor. */
+  const yeniAdim = GV.flow.adimlar('quote', r.yeni.kod);
+  if(!yeniAdim.length) de('OLUMLU VAKA DÜŞTÜ — yeni sürüm de kilitli çıktı');
+  else ok(`yeni sürüm açık: ${yeniAdim.map(a => a.hedef).join(', ')}`);
+
+  olc();
+  /* FARK — iki sürüm karşılaştırılabiliyor mu. */
+  r.yeni.araToplam = (q.araToplam || 0) - 50000;
+  const f = GV.teklif.fark(q.kod, r.yeni.kod);
+  if(!f) de('fark karşılaştırması null döndü');
+  else if(!f.alan.some(a => a.alan === 'araToplam'))
+    de('fark, değişen tutarı bildirmiyor');
+  else ok(`fark ölçüldü: ${f.alan.length} alan · ${f.kalem.length} kalem · tutar farkı ${f.tutarFarki}`);
+
+  olc();
+  /* Zincir sayacı ile devralınan sayaç AYRIŞTIRILIYOR mu (L-13). */
+  const { DB:DB2, GV:GV2 } = kur();
+  const devralan = DB2.quotes.find(x => (x.versiyon || 1) > 1 && !x.kokTeklif);
+  const z = GV2.teklif.zincir(devralan.kod);
+  if(!z.devralinan) de(`${devralan.kod} v${devralan.versiyon} devralınan sayaç olarak işaretlenmedi`);
+  else ok(`devralınan sayaç ayrıştırıldı — ${devralan.kod} "v${z.devralinanSayi}" diyor ama zincirde ${z.adet} kayıt var`);
+
+  olc();
+  /* Terminal kayıtta revizyon YOK. */
+  const kazanan = DB2.quotes.find(x => x.durum === 'Kazanıldı');
+  const izin = GV2.teklif.revizyonIzni(kazanan.kod);
+  if(izin.ok) de('OLUMSUZ VAKA GEÇTİ — kazanılmış teklifte revizyon açıldı');
+  else ok('terminal kayıtta revizyon reddedildi (' + izin.why + ')');
+}
+
 /* ---- Özet ----------------------------------------------------------- */
 console.log(`\n${hata ? '✗ ' + hata + ' BULGU' : '✓ TEMİZ'} · ${olculen} kontrol koşuldu` +
-            ` · 9 eksen · her eksende en az bir olumlu ve bir olumsuz vaka\n`);
+            ` · 10 eksen · her eksende en az bir olumlu ve bir olumsuz vaka\n`);
 process.exit(hata ? 1 : 0);
