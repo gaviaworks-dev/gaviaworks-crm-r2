@@ -152,3 +152,17 @@ V2-09 · V2-10 · V2-13 · V2-14 · V2-15 · V2-16 — on üç madde.
 | **V2-42** | `Offboarding → Aktif` kenarı yok | Yanlışlıkla çıkış sürecine alınan personel geri döndürülemez. "Geri almak yapmaktan ağır olamaz" kuralına aykırı görünüyor; kenar EKLENMEDİ, karar Beyar'ın |
 | **V2-43** | Dört sözlük eksik | `vehicleStatuses` · `contractTypes` · `performanceStatuses` · `trainingStatuses` yok; ekranlar değerleri kayıtlardan türetmek ve kaynağını yazmak zorunda |
 | **V2-44** | `DB.salaryHistory[].bitis` 15/15 boş | Tüm maaş kayıtları açık uçlu; "şu an geçerli maaş" hangi satır olduğu tarihten türetiliyor, alandan değil |
+
+## Dilim 4 — ekran turlarında bulunan ek borç
+
+| # | Madde | Ölçüm |
+|---|---|---|
+| **V2-45** | **Kaynak taraflı kapı — dört tabloda daha** | `ik-ekseni.js` genel taraması: `project.Test/Kabul` (`projeTeslim`) · `project.Kapanış` (`projeKapanis`) · `ticket.Müşteri Onayı` (`destekKota`) · `delivery.İç Kontrol` (`teslimKritikHata`). Dördü de yalnız GERİ DÖNÜŞ hedefini engelliyor (iptal/ret engellenmiyor), o yüzden kusur ilan edilmedi — ama "ileri gidemiyorsan geri de gidemezsin" bir iş kuralı tercihidir ve Beyar kararı bekliyor. Eksen her koşumda listeliyor, sessiz istisna yok |
+| **V2-46** | `ui.js` ton sözlüğünde 4 personel durumu yok | `Onboarding · İzinli · Offboarding · Ayrıldı` → 7 durumun 4'ü nötr rozet basıyor, yani rozet hiçbir şey söylemiyor (`GV.pri` sorununun ikizi) |
+| **V2-47** | `Gates.personelEvrak` fiilen hiç kapanmıyor | Yordam `adim.zorunlu && adim.durum !== 'Tamamlandı'` okuyor; `DB.onboarding[].adimlar` yalnız `{ad, tamam, sorumlu}` taşıyor. `Onboarding → Aktif` her zaman geçiyor — L-31 "uygulanmayan kural" |
+| **V2-48** | `GV.varlik.zimmetliler` ile `Gates.personelZimmet` farklı küme ölçüyor | Biri `durum !== 'İade edildi' && aktif !== false`, diğeri `durum === 'Aktif' && !iadeTarihi`. Bugün aynı sonucu veriyorlar, er geç ayrışırlar |
+| **V2-49** | Kabuk 403 sayfasında sprite enjekte edilmiyor | Yetkisiz rolde 22-24 `<use>` hedefi boş çiziliyor. Ekrana özgü değil, tüm ekranlarda |
+| **V2-50** | `mevcut()` / seçenek türetme yardımcısı üç ekranda kopya | `app-proje` · `app-gorev` · `app-personel`. `GV.list` `filters[].optionsFromData` gibi bir yuvaya ait (L-40) |
+| **V2-51** | `timelogStatuses` / `timesheetStatuses` sözlükleri yok | `DB.timelogs[].onay` ve `DB.timesheets[].durum` değerleri kayıtlardan türetilmek zorunda |
+| **V2-52** | `GV.notice` `actions[]` yalnız `href` üretiyor | Çekmece açan aksiyon verilemiyor; zaman ekranı o düğümü elle kurdu |
+| **V2-53** | Brief boşluğu: `GV.zaman.*` · `GV.fmt.hours/pct/days` imzasız | Beşi de gerçek; brief §9.5 / §4.3'e eklenmeli |
