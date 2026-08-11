@@ -37,7 +37,8 @@ const EKRANLAR = [
   { dosya: 'app-odeme-linki-detay.html?id=ODL-2026-102', ad: 'Link Detayı', oturum: true },
   /* Dış ekranlar kabuk YÜKLEMEZ — `oturum:false` ve `.gv-app` beklenmez. */
   { dosya: 'app-odeme.html?link=ODL-2026-102',       ad: 'Dış Ödeme',   oturum: false },
-  { dosya: 'app-odeme-sonuc.html?link=ODL-2026-102&sonuc=beklemede', ad: 'Ödeme Sonucu', oturum: false }
+  { dosya: 'app-odeme-sonuc.html?link=ODL-2026-102&sonuc=beklemede', ad: 'Ödeme Sonucu', oturum: false },
+  { dosya: 'app-rapor.html', ad: 'Raporlar', oturum: true }
 ];
 
 const MIME = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8',
