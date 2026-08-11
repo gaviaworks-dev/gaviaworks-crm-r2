@@ -1915,21 +1915,37 @@ GV.hr.atanabilirler()   // hazır, ada göre sıralı atama listesi
 GV.hr.icMaliyet(kod, tarih) · GV.hr.kayitOrani(l) · GV.hr.disKaynak(kod)
 ```
 
-⚠️ **`DB.employees[].aktif` TUZAKTIR — OKUNMAZ (K-18).** Alan 16/16 kayıtta
-`true` idi, yani hiçbir şey ayırt etmiyordu; yedi ekran onu okuyup
-`Offboarding` durumundaki `EMP-015`i atama listelerine koyuyordu. Okuyan
-`undefined` alır ve `DB.ikBayat.sayac` artar; `tasks/qa/ik-ekseni.js` tek bir
-okuma kalırsa kırmızı yanar.
+⚠️ **`aktif` ALANI TUZAKTIR — HİÇBİR VARLIKTA OKUNMAZ (K-18 → K-33).**
+K-18'de yalnız personelde kapatılmıştı; ölçüldü ki aynı tuzak **53
+koleksiyonda daha** kuruluydu (54 koleksiyon · 566 kayıt · yalnız 8'i
+`false`). Artık `durum` ekseni olan **her** koleksiyonda tuzaklıdır: okuyan
+`undefined` alır, `DB.bayatAktif.sayac` artar (personelde `DB.ikBayat`).
+`tasks/qa/aktif-ekseni.js` **tek bir beyansız okuma** kalırsa kırmızı yanar.
+
+**Ekran `aktif` yazmaz, okumaz, süzmez.** Pasiflik sorusu tek yordamdan
+geçer:
+
+```js
+GV.arsivli(r)                 // arsiv:true → arşiv; durum varsa KANON odur;
+                              // durum yoksa aktif kanondur (3 koleksiyon)
+GV.arsivli(r, ['Hurda'])      // bu listede hangi durumlar pasif sayılıyor
+GV.list({ …, passive:['Hurda'] })   // aynı listeyi bileşene bildirmenin yolu
+```
+
+`aktif` yalnız `durum` ekseni **olmayan** üç koleksiyonda kanondur ve orada
+okunması doğrudur: `departments` (3 pasif) · `contacts` (1) · `customers`
+(`durum` K-21'de tuzaklandı). Bu dilimde ikisine de dokunmuyorsun.
 
 **`employee` geçiş tablosu (`DB.transitions.employee`, 7 durum):**
 ```
 Taslak      → Onboarding            zorunlu: girisTarihi · dep · pozisyon
-Onboarding  → Aktif
+Onboarding  → Aktif                 kapı: personelEvrak (KAYNAKTA, doğru)
 Aktif       → İzinli · Pasif · Offboarding
 İzinli      → Aktif · Pasif · Offboarding
 Pasif       → Aktif · Offboarding                    GİRİŞ GEREKÇESİ
-Offboarding → Ayrıldı              zorunlu: cikisTarihi · cikisNedenKodu · GİRİŞ GEREKÇESİ
-Ayrıldı     → (yok, TERMINAL)
+Offboarding → Ayrıldı · **Aktif**   ÇIKIŞ GEREKÇESİ (iki yön de)
+Ayrıldı     → (yok, TERMINAL)       girisZorunlu: cikisTarihi · cikisNedenKodu
+                                    girisKapi: personelZimmet
 ```
 Yetki **yedi geçişte de** `ik / sahip / genelmudur`. Çıkış neden kodları
 `DB.reasonCodes` içinde `tur:'cikis'` taşıyanlardır (6 kod: `ISTIFA` ·
@@ -1937,9 +1953,15 @@ Yetki **yedi geçişte de** `ik / sahip / genelmudur`. Çıkış neden kodları
 `STAJ_BITIS` + `DIGER`). Geçiş **yalnız `GV.flow.gec('employee', …)`** ile
 yapılır; `e.durum = …` yasaktır.
 
-⚠️ `Offboarding → Aktif` kenarı **YOKTUR**: yanlışlıkla çıkış sürecine
-alınan personel geri döndürülemez. Ölçüldü ve Beyar'a soruldu — ekran bunu
-düğme olarak vaat etmez.
+✅ **`Offboarding → Aktif` kenarı VARDIR (K-31).** Yanlışlıkla çıkış
+sürecine alınan personel, **gerekçe ile** geri döndürülür. Ekran bu düğmeyi
+basar; etiketi `GV.flow.adimlar('employee', kod)` üretir.
+
+⚠️ İki yönün koşulu FARKLIDIR ve fark hedefte durur, kaynakta değil:
+`Ayrıldı` hedefi çıkış tarihi + neden kodu + zimmet kapısı ister; `Aktif`
+hedefi yalnız gerekçe ister. **Geri almak, ileri gitmekten ağır değildir.**
+Ekran `eksik` listesini `adimlar()`ın döndürdüğü **hedef başına** okur —
+tek liste bütün hedeflere basılmaz.
 
 ### 20.3 `GV.varlik` — zimmet TEK KAYNAK (K-18 eki, bu turda yazıldı)
 
@@ -1961,10 +1983,25 @@ Kural: zimmet ancak **personel onayladığında** envanteri `Zimmetli` yapar.
 Onay beklerken demirbaş **`Zimmet bekliyor`** durumundadır.
 `DB.assetStatuses` = `['Depoda','Zimmet bekliyor','Zimmetli','Aktif','Hurda']`.
 
-**Yüklemede 4 kayıt düzeltildi** ve düzeltme `sonTazeleme.degisen` içinde
-saklanır — ekran "envanter EMP-009 diyordu, tutanak yok" diye gösterebilir.
-Üçünde (`DMB-2025-007` · `DMB-2026-013` · `DMB-2026-014`) envanter bir
-sahip yazıyordu ama **hiç zimmet kaydı yoktu**.
+**Yüklemede düzeltilen kayıt artık 0'dır (K-30).** Eskiden 4 kayıt her
+açılışta sessizce onarılıyordu; envanter literalleri defterin söylediğine
+çekildi. Bir onarımın her seferinde tekrar koşması, onarılmamış demektir —
+`GV.varlik.sonTazeleme.degisen.length === 0` bunu ölçer ve **öyle kalmalıdır**.
+
+Üç demirbaşta envanter bir sahip yazıyordu ama **hiç tutanak yoktu**. Defter
+kanonik olduğu için iddia DÜŞÜRÜLDÜ; **eksik tutanak üretilmedi**. İddianın
+kendisi, ölçülmüş kaynağı ve düşme sebebi `DB.assetClaimDrops` (3 kayıt)
+içinde durur:
+
+```js
+GV.varlik.dusenIddia(demirbasKod)       // → { iddiaPersonel, kaynak[], neden, karar } | null
+GV.varlik.dusenIddiaSatiri(demirbasKod) // → zaman çizelgesine basılacak TÜRETİLMİŞ satır | null
+```
+
+⚠️ Bu satır **veriye yazılmaz**, görüntü anında defterden türetilir — sahte
+bir aktivite kaydı, olmayan bir aktörle olmayan bir olay uydurmak olurdu.
+Demirbaş detayında ve zimmet çekmecesinde **basılması zorunludur**: envanterin
+bir zamanlar başka bir şey söylediği bilgisi kaybolmamalıdır.
 
 ### 20.4 Veri gerçekleri — ölçüldü
 
@@ -1974,10 +2011,13 @@ sahip yazıyordu ama **hiç zimmet kaydı yoktu**.
 | `DB.leaves` | **7** | tür 4 çeşit · durum: `Onay bekliyor` · `Onaylandı` · `Reddedildi`. `vekil` 5/7, `ret` 1/7 |
 | `DB.timelogs` | **131** | `onay`: `Bekliyor` · `Onaylandı`. `gorev` 47/131, `proje` 120/131, `modul` 78/131 |
 | `DB.timesheets` | **6** | haftalık defter; yalnız `2026-W31` kapsamlı |
-| `DB.assets` | **15** | 8 kategori. `zimmetli` ve `durum` TÜRETİLİR |
-| `DB.assignments` | **7** | 6 `Aktif` · 1 `İade edildi`; `personelOnay` 6 `Onaylandı` · 1 `Bekliyor` |
-| `DB.vehicles` | **4** | durum `Aktif` (3) · `Serviste` (1). `proje` **4/4 boş** · `anaSurucu` 2/4 |
-| `DB.vehicleExpenses` | 8 | araca bağlı gider |
+| `DB.assets` | **15** | 8 kategori (sözlük 20). durum: `Zimmetli` 5 · `Depoda` 5 · `Aktif` 3 · `Zimmet bekliyor` 1 · `Hurda` 1. `zimmetli` 5/15 ve `durum` **TÜRETİLİR**. `siparis` 3/15 · `dep` 15/15 · `garantiBit` 15/15. Lokasyon 4 çeşit: `Ofis · Ankara` / `Depo · Ankara` / `Ofis · Sistem odası` / `Bulut` |
+| `DB.assignments` | **7** | 6 `Aktif` · 1 `İade edildi`; `personelOnay` 6 `Onaylandı` · 1 `Bekliyor`. `tutanak` 7/7 (dosya adı) · `hasar` 1/7 |
+| `DB.assetClaimDrops` | **3** | K-30 düşen zimmet iddiası — tutanak DEĞİLDİR, düşme kaydıdır |
+| `DB.vehicles` | **4** | durum `Aktif` (3) · `Serviste` (1). `proje` **4/4 boş** · `anaSurucu` 2/4. 28 alan: plaka · marka · model · modelYili · tip · yakit · vites · motorHacmi · motorNo · sasi · renk · mulkiyet · alisTarihi · alisBedeli · satici · siparis · kullanim · anaSurucu · yedekSurucu · dep · proje · durum · guncelKm · sonBakimTarihi · sonBakimKm · sonrakiBakimTarihi · sonrakiBakimKm |
+| `DB.vehicleExpenses` | 8 | araca bağlı gider — 8 tür, **her türden 1 kayıt** (Bakım · Yakıt · HGS · Kira · Ceza · Sigorta · Kasko · Lastik) |
+| `DB.maintenance` | **5** | araç bakımı · `durum` (`Yaklaşıyor` vb.) · `islemler` dizi · `maliyet` planlıda `null` |
+| `DB.fuelLogs` | 5 | yakıt · `DB.fines` 2 · `DB.inspections` 4 · `DB.accidents` 1 |
 | `DB.performance` | **5** | `Tamamlandı` 4 · `Açık` 1. Açık olanda 12 ölçüt alanı **boş** |
 | `DB.trainings` | **4** | `katilimci` dizi alanıdır |
 | `DB.salaryHistory` | **15** | `bitis` **0/15 dolu** — hepsi açık uçlu kayıt |
@@ -2020,3 +2060,58 @@ kalanı `urlSync:false` bildirir (§18.9 · iki yönlüdür).
 | `BE-K2` | Zimmet tutanağı ıslak/e-imza taşımaz; kabul yalnız bir bayraktır | varlık |
 | `BE-S4` | Belge yükleme gerçek depoya yazmaz | personel · varlık |
 | `BE-S5` | Denetim izi kalıcı değildir | üçünde de |
+
+### 20.7 `app-varlik.html` — TEK LİSTE, KAYITLI GÖRÜNÜM (şartname §3.1)
+
+**Demirbaş · Zimmet · Filo AYRI EKRAN AİLESİ DEĞİLDİR.** Üçü de *tek* bir
+`GV.list` örneğinde, **kayıtlı görünüm** olarak taşınır — §18.8'deki görev
+listesi deseninin aynısı. Üç ayrı `GV.list` kurmak yasaktır: üç arama kutusu,
+üç kolon yöneticisi, üç sayfalama durumu doğar ve §6'nın liste standardı
+üçe bölünür.
+
+Yüzey değişince değişenler: `source` · `columns` · `kpis` · `filters` ·
+`rowActions` · `emptyState` · `exportName`. Değişmeyen: bileşenin kendisi.
+
+| Yüzey | `?t=` | source | Birincil kolon |
+|---|---|---|---|
+| Demirbaş | `demirbas` (varsayılan) | `DB.assets` (15) | `kod` · kategori · marka/model · durum · zimmetli · lokasyon |
+| Zimmet | `zimmet` | `DB.assignments` (7) | `kod` · demirbaş · personel · teslimTarihi · durum · personelOnay |
+| Filo | `filo` | `DB.vehicles` (4) | `kod` · plaka · marka/model · kullanım · anaSurucu · durum · guncelKm |
+
+`urlSync` **yalnız bu tek listede** açıktır (§20.5 kuralı gereği sayfada
+ikinci bir `GV.list` kurulmayacak).
+
+**`passive` sözleşmesi.** Demirbaş yüzeyinde `passive:['Hurda']` verilir —
+hurdaya ayrılmış demirbaş arşiv toggle'ı açılmadan listede görünmez. Zimmet
+yüzeyinde `passive:['İade edildi']`, filo yüzeyinde **verilmez** (`Serviste`
+bir araç emekliliği değildir, geçici bir durumdur ve listede görünmelidir).
+
+**Zimmet tutanağı DRAWER'dır, ekran değildir.** Bir demirbaş satırından ya da
+zimmet satırından `GV.action`/drawer ile açılır (§8.1); ayrı bir
+`app-zimmet-detay.html` **açılmaz**. Çekmecede bulunması zorunlu olanlar:
+- tutanak dosya adı (`z.tutanak`) — indirilemez, `BE-K2` beyanı yanında durur
+- `personelOnay` ve `onayTarihi`
+- **kabul / kabul geri alma** düğmeleri — `GV.varlik.kabulEt(kod)` ve
+  `GV.varlik.kabulGeriAl(kod, gerekce)`. İkisinin yetki kümesi AYNIDIR;
+  geri almada gerekçe **kayıt koşuludur**, yetki değil.
+- `hasar` alanı doluysa (1/7) basılır.
+- Demirbaşın `GV.varlik.dusenIddiaSatiri(kod)` satırı — **varsa zorunlu**.
+
+**Ekran envanter YAZMAZ.** `a.durum` ve `a.zimmetli` türetilmiştir; tek
+mutasyon noktası `GV.varlik.kabulEt` / `.kabulGeriAl`'dir. `DB.assets`
+üstünde doğrudan atama yasaktır.
+
+**Sözlüğü olmayan alanlar.** `vehicleStatuses` sözlüğü **YOKTUR**; filo
+durum süzgecinin seçenekleri kayıtlardan türetilir ve ekranda "seçenekler
+mevcut 4 kayıttan türetildi" diye **yazılır** (§10.1). Aynısı `mulkiyet` ·
+`kullanim` · `tip` · `yakit` için de geçerlidir.
+
+**Bakım/yakıt/ceza defterleri bu ekranda liste değildir.** `DB.maintenance`
+(5) · `DB.fuelLogs` (5) · `DB.fines` (2) · `DB.inspections` (4) ·
+`DB.accidents` (1) · `DB.vehicleExpenses` (8) araç **detayına** aittir
+(`app-arac-detay.html`, bu dilimin sonunda). Filo yüzeyinde yalnız
+`sonrakiBakimTarihi` türevi bir KPI ("bakımı yaklaşan araç") basılır ve
+sayının nereden geldiği yazılır.
+
+**KPI'lar ölçümdür, süs değildir.** Her KPI'ın altında hangi kayıttan
+türediği yazılır; türetilemeyen KPI **basılmaz** (§10.1 — boş ≠ sıfır).
