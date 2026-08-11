@@ -923,10 +923,20 @@
       var t = cfg.tabs.filter(function(x){ return x.key === state.tab; })[0];
       return t && t.filter ? rows.filter(t.filter) : rows;
     }
+    /* Arşiv eksenini bu bileşen TANIMLAMAZ, sorar (K-33). Kural tek yerde:
+       `GV.arsivli`. Burada üç eksen yan yana okunuyordu (`arsiv` · `aktif` ·
+       `durum`) ve `durum`u olan kayıtlarda `aktif` de okunduğu için ikinci
+       eksen canlı kalıyordu.
+       `cfg.passive` — bu listede hangi durumların pasif sayıldığı. Varlığa
+       göre değişir ('Hurda' demirbaşta emeklilik, 'Pasif' tedarik
+       kaynağında emeklilik); yazılmazsa yalnız 'Arşivlendi'.
+       `GV` yoksa (bileşen alana kör, tek başına da koşabilmeli) eski üç
+       eksenli davranışa DEĞİL, `arsiv` tek eksenine düşer. */
     function afterArchive(rows){
       if(cfg.archive === false) return rows;
       return rows.filter(function(r){
-        var arch = r.arsiv === true || r.aktif === false || r.durum === 'Arşivlendi';
+        var arch = window.GV && GV.arsivli ? GV.arsivli(r, cfg.passive)
+                                           : r.arsiv === true;
         return state.archive ? true : !arch;
       });
     }

@@ -26,6 +26,112 @@
   'use strict';
   var GV = window.GV = window.GV || {};
 
+  /* =====================================================================
+     ARŞİV — TEK EKSEN (K-33 · VB-20 eki)
+
+     Bir kaydın "çalışma kümesinden çıkmış" olması ÜÇ ayrı yerde
+     yazılabiliyordu: `arsiv:true`, `aktif:false` ve `durum:'Arşivlendi'`.
+     Üç eksen aynı soruya üç cevap verebilir; hangisinin kanon olduğu hiçbir
+     yerde yazılı değildi ve 19 okuma yeri ikisini birden okuyordu.
+
+     KURAL — ölçülerek kondu, tercih değil:
+       · `arsiv === true`            her kayıtta arşivdir, tartışmasız.
+       · Kaydın bir `durum` ekseni VARSA kanon odur; `aktif` OKUNMAZ.
+         Hangi durumun "pasif" saydığı varlığa göre değişir ve listenin
+         kendi sözleşmesinde (`cfg.passive`) yazılır — çünkü bir tedarik
+         kaynağı için `Pasif` emekliliktir, bir personel için değildir.
+         Genel liste yalnız `Arşivlendi`yi bilir.
+       · Kaydın `durum` ekseni YOKSA `aktif` kanondur ve okunur.
+         Ölçüldü: yalnız üç koleksiyon böyledir — `departments` (3 pasif),
+         `contacts` (1), `customers` (`durum` K-21'de tuzağa çevrildi).
+
+     Bu yordam, `durum`u olan bir kayıtta `aktif`e ASLA dokunmaz. Nöbetçi
+     (`tasks/qa/aktif-ekseni.js`) tam olarak bunu ölçer. */
+  /* Kaydın GERÇEK `durum` ekseni — yoksa `undefined`.
+     ⚠️ Alan OKUNARAK karar verilemez: `DB.customers[].durum` K-21'de tuzağa
+     çevrildi ve okumak sayacı artırır. Ölçüldü — ilk yazım tam bunu yaptı ve
+     `bayat-alan` ekseni yüklemede 12 yanlış alarm bildirdi. Tuzak bir
+     GETTER'dır; değer tanımlayıcısı olup olmadığına bakmak alanı okumaz. */
+  function kanonDurum(r){
+    var t = Object.getOwnPropertyDescriptor(r, 'durum');
+    if(!t || t.get) return undefined;
+    return typeof t.value === 'string' ? t.value : undefined;
+  }
+  GV.kanonDurum = kanonDurum;
+
+  GV.arsivDurumlariVarsayilan = ['Arşivlendi'];
+  GV.arsivli = function(r, pasif){
+    if(!r || typeof r !== 'object') return false;
+    if(r.arsiv === true) return true;
+    var d = kanonDurum(r);
+    if(d !== undefined)
+      return (pasif || GV.arsivDurumlariVarsayilan).indexOf(d) !== -1;
+    return r.aktif === false;   /* K-33: durumu yoksa `aktif` kanondur */
+  };
+
+  /* =====================================================================
+     `aktif` TUZAĞI — BÜTÜN VARLIKLARDA (K-33)
+
+     K-18'de `DB.employees[].aktif` tuzağa çevrilmişti; ölçüldü ki aynı tuzak
+     53 koleksiyonda daha kuruluydu: 566 kayıtta alan vardı ve **yalnız 8'i
+     `false`**. Yani alan neredeyse hiçbir yerde bir şey ayırt etmiyor, ama
+     `durum` ile yan yana okunduğunda ikinci bir eksen gibi davranıyordu.
+
+     KİMİ TUZAĞA ÇEVİRİR — liste elle tutulmaz, VERİDEN TÜRETİLİR:
+     bir koleksiyonun herhangi bir kaydında gerçek (string) `durum` varsa o
+     koleksiyon `durum` kanonludur ve `aktif` alanı tuzağa çevrilir. Elle
+     tutulan bir liste, yeni bir koleksiyon eklendiğinde sessizce eskirdi.
+
+     `durum` ekseni olmayan koleksiyonlarda alan KALIR — orada kanon odur
+     (`departments` · `contacts` · `customers`). `customers` bu ayrımı
+     doğrular: alanı `durum` VAR ama K-21'de tuzağa çevrildiği için değeri
+     `undefined` döner, dolayısıyla kanon olarak `aktif` kalır. Karar alan
+     ADINA değil DEĞERİNE bakılarak verilir.
+
+     Alan silinmez, TUZAĞA çevrilir: okuyan `undefined` alır ve sayaç artar.
+     `enumerable:false` — dışa aktarma ve `Object.keys` taraması tuzağı
+     tetiklemez, yalnız gerçek bir karar okuması tetikler. */
+  GV.bayatAktifKur = function(){
+    if(!window.DB) return null;
+    DB.bayatAktif = { okuma:[], yazma:[], sayac:0, tuzakli:[], kanon:[] };
+
+    Object.keys(DB).forEach(function(ad){
+      var v = DB[ad];
+      if(!Array.isArray(v) || !v.length) return;
+      var kayitlar = v.filter(function(x){ return x && typeof x === 'object'; });
+      if(!kayitlar.length) return;
+      var alanli = kayitlar.filter(function(x){
+        return Object.getOwnPropertyDescriptor(x, 'aktif'); });
+      if(!alanli.length) return;
+
+      var durumlu = kayitlar.some(function(x){ return kanonDurum(x) !== undefined; });
+      if(!durumlu){ DB.bayatAktif.kanon.push(ad); return; }
+
+      var cevrilen = 0;
+      alanli.forEach(function(x){
+        var t = Object.getOwnPropertyDescriptor(x, 'aktif');
+        if(t.get) return;              /* zaten tuzaklı (hr.js · employees) */
+        delete x.aktif;   /* K-33: tuzağı kuran tek yer */
+        Object.defineProperty(x, 'aktif', {
+          configurable:true, enumerable:false,
+          get:function(){
+            DB.bayatAktif.okuma.push({ koleksiyon:ad, kod:x.kod || null });
+            DB.bayatAktif.sayac++;
+            return undefined;
+          },
+          set:function(){
+            DB.bayatAktif.yazma.push({ koleksiyon:ad, kod:x.kod || null });
+            DB.bayatAktif.sayac++;
+          }
+        });
+        cevrilen++;
+      });
+      if(cevrilen) DB.bayatAktif.tuzakli.push({ koleksiyon:ad, kayit:cevrilen });
+    });
+    return DB.bayatAktif;
+  };
+  GV.bayatAktifKur();
+
   function can(action){ return !(GV.perm && GV.perm.can) || !!GV.perm.can(action); }
   function saat(){ return (window.DB ? DB.today : '') + 'T09:00'; }
   /* Aktivite kaydı kişiyi KOD olarak tutar, ad olarak değil (VB-12).
@@ -2286,12 +2392,13 @@
                      !!p.gercekBitis || p.ilerleme === 100);
     },
 
-    /* `arsiv` TEK arşiv eksenidir (VB-20). `aktif:false` eski ikinci eksendi;
-       `GV.list` hâlâ ikisini de arşiv sayıyor, o yüzden tanım onunla aynı
-       kalıyor — ama proje kayıtlarında `aktif` alanı artık YOK. */
+    /* `arsiv` TEK arşiv eksenidir (VB-20). `aktif:false` eski ikinci eksendi
+       ve buradaki okuma K-33'te kaldırıldı: proje kayıtlarında `aktif` alanı
+       zaten YOKTU, yani bu koşul her zaman `false` veren ÖLÜ bir okumaydı —
+       ama kaldırılmadıkça "iki eksen var" izlenimini sürdürüyordu. */
     arsivli:function(p){
       p = Proje.kayit(p);
-      return !!p && (p.arsiv === true || p.aktif === false);
+      return !!p && GV.arsivli(p);
     },
 
     acik:function(p){
@@ -2562,7 +2669,11 @@
       var k = Destek.kayit(t);
       if(!k || !window.DB || !DB.supportPackages) return null;
       var aday = DB.supportPackages.filter(function(p){
-        return p.aktif !== false && p.durum !== 'Sona erdi' && p.musteri === k.musteri; });
+        /* K-33: `p.aktif !== false` okuması kaldırıldı. Paket kayıtlarında
+           `durum` kanondur ve 7/7 kayıtta `aktif` zaten `true`ydu — hiçbir
+           paketi elemeyen, yalnız ikinci bir eksen varmış gibi gösteren bir
+           koşuldu. Eleme tek eksenden yapılır. */
+        return p.durum !== 'Sona erdi' && p.musteri === k.musteri; });
       if(!aday.length) return null;
       if(k.proje){
         var projeli = aday.filter(function(p){ return p.proje === k.proje; });
@@ -2792,7 +2903,9 @@
     /* Bir demirbaşın YAŞAYAN zimmet kaydı — iade edilmemiş olan. */
     zimmetOf:function(demirbasKod){
       return ((window.DB && DB.assignments) || []).filter(function(z){
-        return z.demirbas === demirbasKod && z.durum !== 'İade edildi' && z.aktif !== false;
+        /* K-33: `z.aktif !== false` kaldırıldı — tutanak kayıtlarında `durum`
+           kanondur ('İade edildi'), `aktif` 7/7 kayıtta `true`ydu. */
+        return z.demirbas === demirbasKod && z.durum !== 'İade edildi';
       })[0] || null;
     },
 
@@ -2839,7 +2952,7 @@
     /* Personelin üzerindeki demirbaşlar — çıkış akışı bunu sorar. */
     zimmetliler:function(personelKod){
       return ((window.DB && DB.assignments) || []).filter(function(z){
-        return z.personel === personelKod && z.durum !== 'İade edildi' && z.aktif !== false;
+        return z.personel === personelKod && z.durum !== 'İade edildi';
       });
     },
 
@@ -3971,7 +4084,8 @@
       yeni.icOnay       = 'Bekliyor';
       yeni.musteriOnay  = '—';
       yeni.arsiv        = false;
-      yeni.aktif        = true;
+      /* K-33: `yeni.aktif = true` YAZILMIYOR — teklif kaydında `durum`
+         kanondur, `aktif` ikinci eksendi ve artık tuzaktır. */
       /* Önceki sürümün karar alanları TAŞINMAZ: yeni sürüm henüz hiçbir
          karara bağlanmadı. Taşımak, alınmamış bir kararı alınmış gösterirdi. */
       delete yeni.kayipNedeni;

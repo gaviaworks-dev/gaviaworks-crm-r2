@@ -170,6 +170,7 @@
   function buildMusteriSession(kontakKod){
     if(!window.DB || !DB.contacts) return null;
     var k = kontakKod ? DB.contacts.filter(function(c){ return c.kod === kontakKod; })[0] : null;
+    /* `contacts` — `durum` yok, `aktif` kanon (K-33). */
     if(!k) k = DB.contacts.filter(function(c){ return c.aktif !== false; })[0] || DB.contacts[0];
     if(!k) return null;
     var m = (DB.customers || []).filter(function(c){ return c.kod === k.musteri; })[0];

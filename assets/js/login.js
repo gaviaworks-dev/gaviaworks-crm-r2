@@ -114,6 +114,8 @@
          projesi/talebi bulunan iki kişi listelenir. */
       if(DB.contacts){
         var musAday = DB.contacts.filter(function(c){
+          /* `contacts` koleksiyonunda `durum` ekseni YOKTUR — `aktif` burada
+             KANONDUR ve okunması doğrudur (K-33). */
           if(c.aktif === false || !c.birincil) return false;
           return (DB.projects || []).some(function(p){ return p.musteri === c.musteri; }) ||
                  (DB.tickets  || []).some(function(t){ return t.musteri === c.musteri; });
