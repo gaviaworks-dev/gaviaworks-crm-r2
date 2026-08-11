@@ -98,7 +98,7 @@ try {
   const ctx = { console: { log(){}, warn(){}, error(){} } };
   vm.createContext(ctx);
   vm.runInContext('var window=globalThis; var self=globalThis;', ctx);
-  const sira = ['org','crm','work','misc','ops','hr','notes','reports','lifecycle']
+  const sira = ['org','crm','work','misc','ops','hr','notes','reports','lifecycle','odeme']
     .map(n => `assets/data/${n}.js`).filter(p => fs.existsSync(path.join(ROOT, p)));
   for (const f of sira) vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
   const DB = ctx.DB;
@@ -110,6 +110,30 @@ try {
   const mukerrer = kodlar.filter((k,i)=>kodlar.indexOf(k)!==i);
   if (mukerrer.length) de('mükerrer hesap kodu: ' + mukerrer.join(', '));
   else ok('mükerrer hesap kodu yok');
+
+  /* --- GV.flow onaltıncı varlık: ödeme linki (§8.4) --- */
+  const ent = Object.keys(DB.flowEntities || {});
+  ok(`GV.flow geçiş varlığı: ${ent.length} · ${ent.includes('paymentLink') ? 'paymentLink KAYITLI' : 'paymentLink YOK'}`);
+  if (!ent.includes('paymentLink')) de('paymentLink geçiş varlığı kayıtlı değil');
+  const tb = (DB.transitions || {}).paymentLink;
+  if (!tb) de('paymentLink geçiş tablosu yok');
+  else {
+    const durum = Object.keys(tb);
+    let kenar = 0; durum.forEach(d => kenar += (tb[d].next || []).length);
+    /* Tabloda olmayan hedef = sessiz kırık geçiş */
+    const yetim = [];
+    durum.forEach(d => (tb[d].next || []).forEach(h => { if (!tb[h] && !yetim.includes(h)) yetim.push(h); }));
+    if (yetim.length) de('paymentLink tablosunda karşılığı olmayan hedef: ' + yetim.join(', '));
+    else ok(`paymentLink durum makinesi: ${durum.length} durum · ${kenar} geçiş kenarı · yetim hedef yok`);
+    /* Sözlükte olmayan durum = ekranda "—" basılır, sessiz kusur */
+    const sozsuz = durum.filter(d => !(DB.paymentLinkStages || {})[d]);
+    if (sozsuz.length) de('sözlükte karşılığı olmayan durum: ' + sozsuz.join(', '));
+    const kayitsiz = (DB.paymentLinks || []).filter(l => !tb[l.durum]);
+    if (kayitsiz.length) de(`${kayitsiz.length} ödeme linki tabloda olmayan durumda`);
+    else ok(`ödeme linki: ${(DB.paymentLinks||[]).length} kayıt · ${JSON.stringify(DB.paymentLinksByStage())}`);
+  }
+  ok(`bilerek boş koleksiyon: paymentAttempts=${DB.paymentAttempts.length} paymentTransactions=${DB.paymentTransactions.length} webhookEvents=${DB.webhookEvents.length}`);
+  ok(`backend payı kaydı: ${(DB.paymentBackendGaps||[]).length} madde`);
 } catch (e) { de('veri katmanı istisna attı — ' + e.message); }
 
 /* ---- 5. MENÜ SAYIMI ---------------------------------------------- */

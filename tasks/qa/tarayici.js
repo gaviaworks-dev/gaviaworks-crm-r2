@@ -31,7 +31,13 @@ const EKRANLAR = [
   { dosya: 'index.html',       ad: 'Giriş',            oturum: false },
   { dosya: 'app-panel.html',   ad: 'Gündem',           oturum: true },
   { dosya: 'app-musteri.html', ad: 'Müşteriler',       oturum: true },
-  { dosya: 'app-operasyon.html', ad: 'Operasyon',      oturum: true }
+  { dosya: 'app-operasyon.html', ad: 'Operasyon',      oturum: true },
+  { dosya: 'app-odeme-linki.html',       ad: 'Ödeme Linkleri', oturum: true },
+  { dosya: 'app-odeme-linki-form.html',  ad: 'Yeni Link',      oturum: true },
+  { dosya: 'app-odeme-linki-detay.html?id=ODL-2026-102', ad: 'Link Detayı', oturum: true },
+  /* Dış ekranlar kabuk YÜKLEMEZ — `oturum:false` ve `.gv-app` beklenmez. */
+  { dosya: 'app-odeme.html?link=ODL-2026-102',       ad: 'Dış Ödeme',   oturum: false },
+  { dosya: 'app-odeme-sonuc.html?link=ODL-2026-102&sonuc=beklemede', ad: 'Ödeme Sonucu', oturum: false }
 ];
 
 const MIME = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8',
@@ -191,7 +197,8 @@ const OLC_ODAK_HAZIRLIK = new Function(`
         (disMi(r.url()) ? disKaynak : konsol).push(m);
       });
 
-      const url = base + '/' + ek.dosya + (ek.oturum ? '?role=sahip' : '');
+      const url = base + '/' + ek.dosya +
+        (ek.oturum ? (ek.dosya.indexOf('?') === -1 ? '?role=sahip' : '&role=sahip') : '');
       await page.goto(url, { waitUntil: 'networkidle' });
       /* Kabuk sprite'ı fetch ile enjekte ediyor ve gv:ready ondan sonra
          atılıyor; networkidle yetmeyebilir. İskeletin doğmasını bekle. */
@@ -225,7 +232,13 @@ const OLC_ODAK_HAZIRLIK = new Function(`
       if (konsol.length) bulgular.push(...konsol.map(k => 'KONSOL — ' + k));
       if (tasma.kaydi) bulgular.push(`TAŞMA — belge ${tasma.scroll}px, görüntü ${tasma.genislik}px · suçlu: ` +
         (tasma.suclular.map(s => `${s.etiket}${s.sinif ? '.' + s.sinif.split(' ')[0] : ''}${s.id ? '#' + s.id : ''}@${s.sag}px`).join(', ') || 'bulunamadı'));
-      if (!sprite.enjekte) bulgular.push('SPRITE — #gvSprite enjekte edilmedi');
+      /* ⚠️ ÖLÇÜM DÜZELTMESİ (üçüncü kez aynı sınıf hata — R1 dersi L-26).
+         Sprite yokluğu ancak sayfa İKON KULLANIYORSA kusurdur. Dış ödeme
+         ekranları şartname §8.3 gereği kabuğu hiç yüklemez ve tek bir
+         <use href="#i-*"> bile içermez; onlarda #gvSprite'ı şart koşmak
+         tasarım kararını kusur diye raporlamaktı. */
+      if (!sprite.enjekte && sprite.kullanim > 0)
+        bulgular.push(`SPRITE — sayfa ${sprite.kullanim} ikon kullanıyor ama #gvSprite enjekte edilmedi`);
       if (sprite.eksik.length) bulgular.push('SPRITE — belgede olmayan ikon: ' + sprite.eksik.join(', '));
       if (sprite.cizilmeyen) bulgular.push(`SPRITE — görünür olduğu hâlde 0×0 çizilen ikon: ${sprite.cizilmeyen}`);
       if (!odakIlerledi) bulgular.push(`ODAK — Tab sırası ilerlemedi (${odakZinciri.length}/${odakH.odaklanabilir})`);
