@@ -278,6 +278,193 @@ document.addEventListener('gv:ready', function(){
     });
   }
 
+  /* ================================================================
+     ÇEKMECE — TAHSİS DEFTERİ VE GEÇMİŞ (K-23)
+
+     Beyar'ın kararı: tahsilat detayı AYRI EKRAN DEĞİLDİR. Liste satırına
+     tıklanınca tahsis defteri ve kayıt geçmişi bu çekmecede açılır.
+     Operasyon kuyruğunun "tam kaydı aç" hedefi de buraya bağlandı
+     (`kuyruk.js` → `app-tahsilat.html?ac=<kod>`); ekran açılışta o
+     parametreyi okur ve çekmeceyi kendisi açar.
+
+     Defter İKİ TÜR SATIR taşır ve ikisi aynı biçimde basılmaz:
+       · ASIL satır  — pozitif tutar, faturaya yazılmış tahsis
+       · TERS satır  — eksi tutar, geri alma kaydı (K-25). Şartname §8.5
+         gereği asıl satır SİLİNMEZ; ikisi birlikte durur ve net sıfırlanır.
+     "Geri al" düğmesi yalnız NET'i pozitif olan çiftte basılır; net sıfırsa
+     iş zaten yapılmıştır ve düğme ölü bir vaat olurdu (§4.6).
+     ================================================================ */
+  var acikCekmece = null;
+
+  function defterSatirlari(p){
+    return (DB.paymentAllocations || [])
+      .filter(function(a){ return a.tahsilat === p.kod; })
+      .slice()
+      .sort(function(a, b){ return String(a.tarih || '').localeCompare(String(b.tarih || '')); });
+  }
+
+  /* Faturaya göre gruplanmış NET — hangi çift geri alınabilir, o buradan okunur.
+     Net hesabı ORTAK KATMANDAN gelir (`GV.fin.ciftNet`); ekran ikinci bir
+     dağıtım formülü kurmaz (§14.2 · L-40). */
+  function defterCiftleri(p){
+    var faturalar = [];
+    defterSatirlari(p).forEach(function(a){
+      if(faturalar.indexOf(a.fatura) === -1) faturalar.push(a.fatura);
+    });
+    return faturalar.map(function(fk){
+      return { fatura:fk, net:GV.fin.ciftNet(p.kod, fk) };
+    });
+  }
+
+  function defterHtml(p){
+    var satirlar = defterSatirlari(p);
+    var ciftler  = defterCiftleri(p);
+    var t = nakitTarih(p);
+    var y = yontemOku(p);
+    var para = function(v){ return canFinans ? F.money(v) : '••••••'; };
+
+    /* --- Kayıt künyesi --- */
+    var kunye = GV.dl([
+      ['Müşteri', GV.esc(musteriAdi(p) || p.musteri || '—')],
+      ['Fatura', p.fatura ? GV.esc(p.fatura) : '<span class="u-faint">—</span>'],
+      ['Tutar', para(p.tutar)],
+      ['Vade', p.vade ? GV.esc(F.date(p.vade)) : '<span class="u-faint">—</span>'],
+      ['Nakit olayı', nakitVar(p)
+        ? 'Tahsil edildi' + (t ? ' · ' + GV.esc(F.date(t.tarih)) +
+            (t.kesin ? '' : ' <span class="u-faint u-xs">(tahsil tarihi kayıtta yok, son aksiyon tarihi)</span>') : '')
+        : '<span class="u-warn">Henüz gerçekleşmedi — bu kayıt bir ALACAKTIR</span>'],
+      ['Yöntem', y
+        ? GV.esc(y.ad) + (y.kesin ? '' : ' <span class="u-faint u-xs">(kayıtta yok, tahsis defterinden türetildi)</span>')
+        : '<span class="u-faint">—</span>'],
+      ['Sorumlu', p.sorumlu ? GV.esc(DB.empName(p.sorumlu)) : '<span class="u-faint">—</span>']
+    ], { skipEmpty:false });
+
+    /* --- Tahsis defteri --- */
+    var defter;
+    if(!satirlar.length){
+      defter = GV.empty({ icon:'i-link', title:'Bu tahsilat hiçbir faturaya dağıtılmadı',
+        desc:nakitVar(p)
+          ? 'Para geldi ama hangi faturayı kapattığı yazılmadı. Dağıtım fatura ekseninde yapılır.'
+          : 'Dağıtım ancak nakit olayından sonra yapılabilir — tahsil edilmemiş bir alacak faturaya tahsis edilemez.' });
+    }else{
+      defter =
+        '<div class="gv-tablewrap"><table class="gtable"><thead><tr>' +
+          '<th>Fatura</th><th class="num">Tutar</th><th>Tarih</th><th>Kayıt</th>' +
+        '</tr></thead><tbody>' +
+        satirlar.map(function(a){
+          var ters = a.ters === true;
+          return '<tr' + (ters ? ' class="is-late"' : '') + '>' +
+            '<td>' + GV.cell.link('app-fatura-detay.html?id=' + a.fatura, a.fatura) + '</td>' +
+            '<td class="num">' + (canFinans
+              ? GV.cell.mny(a.tutar, { signed:true })
+              : '<span class="cell-mask">••••••</span>') + '</td>' +
+            '<td>' + (a.tarih ? GV.esc(F.dateShort(a.tarih)) : GV.cell.faint('—')) + '</td>' +
+            '<td>' + (ters
+              ? GV.badge('Ters kayıt', 'is-danger') +
+                GV.cell.sub(GV.esc('Gerekçe: ' + (a.gerekce || '—')) +
+                  (a.aktor ? ' · ' + GV.esc(DB.empName(a.aktor)) : ''))
+              : GV.badge('Tahsis', 'is-ok') +
+                GV.cell.sub(GV.esc([a.yontem, a.dekont ? 'dekont ' + a.dekont : null]
+                  .filter(Boolean).join(' · ') || 'yöntem yazılmamış'))) + '</td>' +
+          '</tr>';
+        }).join('') +
+        '</tbody></table></div>' +
+        '<p class="u-faint u-sm u-mt-4">Defterde ' + satirlar.length + ' satır var; ' +
+          'net dağıtılan ' + para(p.dagitilan || 0) + ' · dağıtılmamış ' +
+          para(p.dagitilmamis || 0) + '. Ters kayıt satırları <b>silinmez</b>, ' +
+          'eksi tutarla defterde kalır (şartname §8.5).</p>';
+    }
+
+    /* --- Geri alma düğmeleri — yalnız NET'i pozitif çiftlerde (K-25) --- */
+    var canliCiftler = ciftler.filter(function(c){ return c.net > 0.01; });
+    var geriAlma = '';
+    if(canliCiftler.length){
+      geriAlma =
+        '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-refresh') + 'Tahsisi geri al</h3>' +
+          '<span class="u-faint u-sm">' + canliCiftler.length + ' çift</span></div>' +
+        '<div class="gc-body">' +
+          (canFinans
+            ? '<p class="u-sm u-muted u-mb-4">Geri alma kaydı <b>silmez</b>: eksi tutarlı bir ters ' +
+                'kayıt üretir, fatura durumu tahsis toplamından kendiliğinden geri düşer. ' +
+                'Gerekçe zorunludur.</p>' +
+              canliCiftler.map(function(c){
+                return '<div class="gv-mrow-bottom u-mb-4">' +
+                  '<span class="cell-main">' + GV.esc(c.fatura) + '</span> ' +
+                  '<span class="u-num">' + para(c.net) + '</span> ' +
+                  '<button type="button" class="btn btn-danger-line btn-sm" data-geri="' +
+                    GV.esc(c.fatura) + '" data-kod="' + GV.esc(p.kod) + '">' +
+                    GV.ico('i-refresh','ic-sm') + 'Geri al</button></div>';
+              }).join('')
+            : GV.notice({ tone:'info', icon:'i-lock',
+                title:'Tahsis geri alma yetkiniz yok',
+                text:'Bu işlem finans yetkisi ister. Tahsisi kuran yetki ile geri alan yetki ' +
+                     'bilerek AYNI tutuldu: bir kaydı kurabilen kullanıcı onu geri de alabilmelidir.' })) +
+        '</div>';
+    }
+
+    /* --- Geçmiş --- */
+    var gecmis = GV.audit.oku(p.kod, 20);
+
+    return '<div class="gv-card"><div class="gc-body">' + kunye + '</div></div>' +
+      '<section class="gv-card u-mt-4"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-link') + 'Tahsis defteri</h3>' +
+        '<span class="u-faint u-sm">' + satirlar.length + ' satır</span></div>' +
+        '<div class="gc-body">' + defter + '</div></section>' +
+      (geriAlma ? '<section class="gv-card u-mt-4">' + geriAlma + '</section>' : '') +
+      '<section class="gv-card u-mt-4"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-activity') + 'Geçmiş</h3>' +
+        '<span class="u-faint u-sm">' + gecmis.length + ' hareket</span></div>' +
+        '<div class="gc-body">' + (gecmis.length
+          ? GV.activity(gecmis)
+          : GV.empty({ icon:'i-activity', title:'Bu kayıt için hareket yazılmamış',
+              desc:'Denetim izi bellekte tutulur ve sayfa yenilenince sıfırlanır (BE-S5).' })) +
+        '</div></section>';
+  }
+
+  /* Geri alma penceresi — gerekçe ZORUNLU, mutasyon tek kapıdan.
+     `GV.action` gerekçe alanını, neden kodunu ve sonucu kendi kurar; ekran
+     kendi modalını yazmaz (§8). Yordam `why:'gerekce'` ile reddederse mesaj
+     kullanıcıya olduğu gibi döner — ekran kendi cümlesini uydurmaz. */
+  function geriAlPenceresi(p, faturaKod, net){
+    GV.action({
+      eylem:'İade Et',
+      kayit:{ kod:p.kod, baslik:(musteriAdi(p) || p.musteri) + ' → ' + faturaKod },
+      sonuc:faturaKod + ' faturasına yazılmış ' + (canFinans ? F.money(net) : '••••••') +
+            ' tutarındaki tahsis geri alınacak. Kayıt SİLİNMEZ: defterde eksi tutarlı ' +
+            'bir ters kayıt oluşur ve faturanın ödeme durumu tahsis toplamından yeniden türetilir.',
+      gerekce:true,
+      nedenTuru:'iade',
+      etkilenen:[faturaKod + ' faturasının ödeme durumu', p.kod + ' tahsilatının dağıtılmamış bakiyesi'],
+      tone:'danger',
+      run:function(v){
+        var r = GV.fin.tahsisKaldir(p.kod, faturaKod, [v.neden, v.not].filter(Boolean).join(' — '));
+        if(r.ok === false) return { ok:false, mesaj:r.mesaj || r.why };
+        GV.refresh();
+        return { mesaj:faturaKod + ' tahsisi geri alındı · ' + F.money(r.kaldirilan) +
+                       ' tutarında ters kayıt üretildi (defterde ' + r.satirSayisi + ' satır)' };
+      }
+    });
+  }
+
+  function defterBagla(govde, p){
+    govde.addEventListener('click', function(ev){
+      var b = ev.target.closest('[data-geri]');
+      if(!b || b.disabled) return;
+      var fk = b.dataset.geri;
+      var net = GV.fin.ciftNet(p.kod, fk);
+      geriAlPenceresi(p, fk, net);
+    });
+  }
+
+  function defterAc(p){
+    if(acikCekmece && acikCekmece.close) acikCekmece.close();
+    acikCekmece = GV.drawer({
+      title:'Tahsilat ' + p.kod,
+      body:'',
+      onMount:function(govde){ govde.innerHTML = defterHtml(p); defterBagla(govde, p); }
+    });
+  }
+
   GV.list({
     mount:'#thsListe', id:'tahsilat', key:'kod',
     source:function(){ return DB.payments; },
@@ -349,8 +536,9 @@ document.addEventListener('gv:ready', function(){
     ],
 
     columns:[
-      /* Tahsilat detay ekranı yayında yok; kod bağlantı olarak basılmaz
-         (kabuk zaten kilitlerdi, ama burada gidilecek bir yer de yok). */
+      /* Tahsilat detayı AYRI EKRAN DEĞİLDİR (K-23) — kod bir `href` taşımaz,
+         satıra tıklamak tahsis defteri çekmecesini açar. Gidilecek bir sayfa
+         olmadığı için bağlantı basmak sahte çıkış olurdu. */
       GV.cols.kod('kod', 'Tahsilat', { width:'15%', locked:true,
         sub:function(p){ return GV.esc(p.sonAksiyon || ''); } }),
 
@@ -523,7 +711,14 @@ document.addEventListener('gv:ready', function(){
        yoktur — `GV.fin.tahsisEt` bir fatura ve tutar ister, o seçim fatura
        ekseninde yapılır. Yazamadığım aksiyonu buraya ölü buton olarak
        koymuyorum (§4.6). */
+    /* K-23 — satıra tıklamak tahsis defterini açar. Bileşen etkileşimli
+       düğümlerdeki tıklamayı zaten dışarıda bırakıyor (ui.js `cfg.rowOpen`),
+       yani satır aksiyonu ve seçim kutusu bundan etkilenmez. */
+    rowOpen:function(p){ defterAc(p); },
+
     rowActions:[
+      { key:'defter', icon:'i-link', label:'Tahsis defterini ve geçmişi aç',
+        run:function(p){ defterAc(p); } },
       { key:'tahsil', icon:'i-wallet', label:'Tahsil edildi işaretle',
         /* `show` false ise buton HİÇ basılmaz: zaten tahsil edilmiş kayıtta
            `GV.fin.tahsilEt` "zaten gerçekleşmiş" diye reddeder, yetkisiz
@@ -542,6 +737,21 @@ document.addEventListener('gv:ready', function(){
 
     onRender:function(gorunen){ seritCiz(gorunen); }
   });
+
+  /* ---- DERİN BAĞLANTI — `?ac=<tahsilat kodu>` (K-23) ------------------
+     Operasyon kuyruğunun "Tam kaydı aç" hedefi buraya gelir. Parametre
+     KULLANILDIKTAN SONRA adresten silinir: `GV.refresh()` `gv:ready`i
+     yeniden atar ve parametre dursaydı çekmece her tazelemede kendiliğinden
+     yeniden açılırdı — kullanıcı kapattığı pencereyi kapatamazdı. */
+  var acKod = new URLSearchParams(location.search).get('ac');
+  if(acKod){
+    var acRec = P.filter(function(x){ return x.kod === acKod; })[0];
+    var url = new URL(location.href);
+    url.searchParams.delete('ac');
+    history.replaceState({}, '', url.pathname + url.search + url.hash);
+    if(acRec) defterAc(acRec);
+    else GV.toast('Tahsilat kaydı bulunamadı: ' + acKod, 'danger');
+  }
 
   /* ---- Backend payı — brief §10.2 (b) biçimi ------------------------- */
   document.getElementById('thsBackend').innerHTML =

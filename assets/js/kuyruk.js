@@ -174,7 +174,12 @@
         baslik:(p.musteriAd || p.musteri) + ' — vadesi geçmiş tahsilat',
         iliski:p.fatura || null,
         durum:p.durum, sorumlu:p.sorumlu, sonTarih:p.vade,
-        tam:'app-tahsilat-detay.html?id=' + p.kod,
+        /* K-23 — tahsilat detayı AYRI EKRAN DEĞİLDİR. Hedef, tahsilat
+           listesinin tahsis defteri çekmecesidir; ekran `?ac=` parametresini
+           okur ve çekmeceyi açar. Eskiden burada `app-tahsilat-detay.html`
+           yazıyordu ve o dosya hiç doğmadı — kuyruğun iki satırı yazılmayan
+           bir ekranı işaret ediyordu. */
+        tam:'app-tahsilat.html?ac=' + p.kod,
         tone:'danger', gecikti:true
       });
     });
