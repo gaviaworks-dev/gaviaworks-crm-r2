@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Faturalar — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="finans" data-screen="fatura">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/data/odeme.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   FATURALAR — ekran brief §4 (liste bileşeni) · §17 (finans zinciri)
+
+   Kaynak: `DB.invoices` (17 kayıt, misc.js:72). Tablo, sayfalama, filtre,
+   kolon yönetimi, çıktı, arşiv toggle ve mobil satır `GV.list`in işidir —
+   bu ekran YALNIZ yapılandırma yazar.
+
+   İKİ ŞEY BU EKRANDA HESAPLANMAZ:
+
+   1. TUTAR. Net · KDV · brüt yalnız `GV.fin.tutar(f,'invoice')`
+      (domain.js:1380) üzerinden okunur. Çapa NET'tir; brüt her yerde
+      `net + kdv` olarak yeniden hesaplanır ve kayıttaki brüt otoriter
+      değil DOĞRULANANDIR. Ekranın kendi KDV/brüt formülünü yazması,
+      R1'de çift KDV'yi doğuran hamlenin aynısı olurdu.
+   2. BAKİYE. Tahsil edilen ve açık bakiye yalnız `GV.fin.balance(f)`
+      (domain.js:1102) üzerinden okunur — tahsis defteri (
+      `DB.paymentAllocations`) bakiyenin TEK kaynağıdır. "brüt − tahsil"
+      desenini burada elle kurmak ikinci bir bakiye yeri açardı.
+
+   İKİ AYRI EKSEN, İKİ AYRI KOLON (org.js:420-427 · [10.4.5]):
+     · `f.durum`      → ÖDEME durumu. TÜRETİLMİŞTİR; ekran onu YAZMAZ ve
+                        okurken de kanonik yordamdan sorar:
+                        `GV.fin.odemeDurum(f)`.
+     · `f.belgeDurum` → BELGE durumu. `GV.flow` varlığı `invoice`
+                        (org.js:376). Belge geçişi fatura DETAYINDA yapılır;
+                        bu ekranda durum yalnız okunur.
+     · gecikme        → ÜÇÜNCÜ eksen: `GV.fin.gecikti(f)`. Kısmi ödenmiş bir
+                        fatura da gecikmiş olabilir; tek alana sıkıştırmak
+                        bilgi yutardı.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F = GV.fmt;
+  var canFinans = GV.perm.can('finans');
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  /* ---- Kanonik okuyucular — ekranın TEK para kapıları ----------------- */
+  function tutarOf(f){ return GV.fin.tutar(f, 'invoice') || {}; }
+  function bakiyeOf(f){ return GV.fin.balance(f) || { brut:0, tahsil:0, acik:0, oran:0 }; }
+  function odemeDurumOf(f){ return GV.fin.odemeDurum(f); }
+  function gecikmisMi(f){ return GV.fin.gecikti(f); }
+  /* Tutarsız kayıt = `sapma` dolu, yani kayıt KENDİ İÇİNDE çelişiyor.
+     Hangi sayının doğru olduğuna kod adına karar vermek yerine söylenir. */
+  function celiskiliMi(f){ return tutarOf(f).tutarli === false; }
+  function kodOf(f){ return f.kod; }
+  /* Fatura → ödeme linki bağı tek yerde (odeme.js). */
+  function linkOf(f){
+    return (DB.paymentLinks || []).filter(function(l){ return l.fatura === f.kod; })[0] || null;
+  }
+  /* Toplama tek yerde: her çağıran kanonik yordamdan okunmuş bir sayı verir. */
+  function topla(list, oku){
+    return (list || []).reduce(function(s, x){ return s + (oku(x) || 0); }, 0);
+  }
+
+  var tumu     = DB.invoices || [];
+  var acikSayi = tumu.filter(function(f){ return bakiyeOf(f).acik > 0; }).length;
+
+  /* ⚠️ SIRA — `GV.pageHead` `GV.list`ten ÖNCE (app-musteri.html:69-73). */
+  GV.pageHead({
+    eyebrow:'Finans',
+    title:'Faturalar',
+    sub:tumu.length + ' fatura · ' + acikSayi + ' faturada açık bakiye · ' +
+        'ödeme durumu tahsis defterinden türetilir, belge durumu ayrı eksendir'
+  });
+
+  mount.innerHTML =
+    '<div id="ftrUyari" class="u-mb-8" hidden></div>' +
+    '<div id="ftrListe"></div>' +
+    '<div id="ftrBackend"></div>';
+
+  /* Koleksiyon HİÇ yüklenmediyse sayı üretilmez, yokluk söylenir (§10.1). */
+  if(!DB.invoices){
+    document.getElementById('ftrUyari').innerHTML = GV.notice({ tone:'warn', icon:'i-alert',
+      title:'Fatura koleksiyonu yüklenemedi',
+      text:'`DB.invoices` bu sayfada tanımlı değil; tutar, tahsilat ve bakiye ' +
+           'ölçülemedi. Ekranda "0" gösterilmez — ölçüm yapılamadığı için liste kurulmadı.' });
+    document.getElementById('ftrUyari').hidden = false;
+    return;
+  }
+
+  /* ---- Şerit: gecikme + çapa tutarlılığı ------------------------------
+     İkisi de GÖRÜNEN kümeden sayılır (kapsam · sekme · arama · filtre
+     uygulandıktan sonra), defterin tamamından değil: satır kapsamı
+     `musteri` olan bir oturuma göremediği faturaları saymak yanlış beyandır
+     (UID-05). Süzgeci `GV.list` uyguluyor; şerit `onRender`dan besleniyor —
+     ekran ikinci bir süzgeç YAZMAZ (L-40).
+
+     Sayı sıfırsa "0 gecikmiş fatura" diye uyarı basılmaz; ÖLÇÜMÜN KENDİSİ
+     söylenir (L-13). Aynı şey tutarlılık için de geçerli: "sorun yok" değil,
+     "17/17 tutarlı" yazılır — kaç kayıt ölçüldüğü de bilgidir. */
+  function uyariCiz(gorunen){
+    var el = document.getElementById('ftrUyari');
+    if(!el) return;
+    var html = '';
+
+    if(!gorunen.length){
+      html = GV.notice({ tone:'neutral', icon:'i-info',
+        title:'Bu görünümde fatura yok',
+        text:'Gecikme ve çapa tutarlılığı ölçümü görünen kayıtlar üzerinde yapılır; ' +
+             'küme boş olduğu için iki ölçüm de yapılamadı. Sekmeyi ya da filtreleri değiştirin.' });
+      el.innerHTML = html; el.hidden = false;
+      return;
+    }
+
+    var gecikmis  = gorunen.filter(gecikmisMi);
+    var gecikmisB = topla(gecikmis, function(f){ return bakiyeOf(f).acik; });
+
+    if(gecikmis.length){
+      html += GV.notice({ tone:'danger', icon:'i-alert',
+        title:gecikmis.length + ' faturanın vadesi geçti · açık bakiye ' + F.money(gecikmisB),
+        text:'Ölçüm günü ' + F.date(DB.today) + '. Gecikmiş faturalar: ' +
+             gecikmis.map(function(f){ return kodOf(f) + ' (' + GV.fin.gecikmeGun(f) + ' gün)'; }).join(', ') +
+             '. Gecikme ödeme durumundan AYRI bir eksendir; kısmi ödenmiş bir fatura da gecikmiş olabilir.' });
+    }else{
+      html += GV.notice({ tone:'ok', icon:'i-check-circle',
+        title:'Bu görünümde vadesi geçmiş fatura yok',
+        text:'Ölçüm günü ' + F.date(DB.today) + '; görünen ' + gorunen.length +
+             ' faturanın hiçbirinde vadesi geçmiş açık bakiye yok. Gecikme saklanan bir alan ' +
+             'değildir, vade ile açık bakiyeden okunur.' });
+    }
+
+    var celiskili = gorunen.filter(celiskiliMi);
+    if(celiskili.length){
+      html += GV.notice({ tone:'danger', icon:'i-alert-circle',
+        title:celiskili.length + '/' + gorunen.length + ' fatura kendi içinde çelişiyor',
+        text:'Kayıtlı brüt ile net + KDV birbirini tutmuyor: ' +
+             celiskili.map(kodOf).join(', ') +
+             '. Bu satırlar listede işaretlendi; hangi sayının doğru olduğuna ekran karar vermez, ' +
+             'iki değeri de brüt hücresinde gösterir.' });
+    }else{
+      html += GV.notice({ tone:'ok', icon:'i-shield-check',
+        title:gorunen.length + '/' + gorunen.length + ' fatura tutarlı',
+        text:'Net + KDV = brüt bağımsız çapadan ölçüldü (GV.fin.tutar). Kayıttaki brüt ' +
+             'otoriter değil doğrulanandır; sapma çıksaydı satır işaretlenirdi.' });
+    }
+
+    el.innerHTML = html;
+    el.hidden = false;
+  }
+
+  /* ---- Sekme ve filtre sözlükleri — elle liste YAZILMAZ ---------------
+     Ödeme ekseni üç değerlidir (org.js:427) ve karşılığı `GV.fin.odemeDurum`
+     yordamıdır; sekme süzgeci o yordamı çağırır, kayıttaki ayna alanı değil.
+     Sözlüğe dördüncü bir değer eklenirse sekme kendiliğinden doğar. */
+  var ODEME_EKSEN = DB.invoicePayStatuses || [];
+  var SEKME = {
+    'Ödenmedi':     { key:'acikbakiye', label:'Açık',   icon:'i-hourglass' },
+    'Kısmi Ödendi': { key:'kismi',      label:'Kısmi',  icon:'i-percent' },
+    'Ödendi':       { key:'odendi',     label:'Ödendi', icon:'i-check-circle' }
+  };
+  function sekmeTanim(d){
+    return SEKME[d] || { key:'d' + ODEME_EKSEN.indexOf(d), label:d, icon:'i-receipt' };
+  }
+
+  /* Belge ekseni geçiş tablosundan okunur (org.js:542) — ekran kendi belge
+     durum listesini yazmaz. Tablo yoksa sözlüğe düşülür. */
+  var TI = (DB.transitions || {}).invoice || {};
+  var BELGE_EKSEN = Object.keys(TI).length ? Object.keys(TI) : (DB.invoiceDocStatuses || []);
+
+  /* Seçenekler yalnız KAYDI OLAN değerlerden üretilir: hiçbir kaydı süzmeyen
+     seçenek kullanıcıya tıklanacak bir hiç sunar. */
+  function tekil(list, deger, etiket){
+    var out = [];
+    (list || []).forEach(function(x){
+      var v = deger(x);
+      if(v == null || v === '') return;
+      for(var i = 0; i < out.length; i++) if(out[i].value === v) return;
+      out.push({ value:v, label:etiket(x) });
+    });
+    return out.sort(function(a, b){ return String(a.label).localeCompare(String(b.label), 'tr'); });
+  }
+
+  GV.list({
+    mount:'#ftrListe', id:'fatura', key:'kod',
+    source:function(){ return DB.invoices; },
+    exportName:'faturalar', exportTitle:'Fatura Listesi', pageSize:10,
+    views:['table','card'],
+    defaultSort:'vade', defaultDir:'asc',
+    search:{ placeholder:'Fatura no, müşteri, sözleşme veya proje ara',
+             fields:['kod','musteriAd','musteri','sozlesme','proje','milestone'] },
+
+    /* Müşteri oturumu yalnız kendi faturalarını görür; süzmeyi ve kapsam
+       şeridini bileşen basar (ui.js:823-869). */
+    scopeField:{ musteri:'musteri' },
+
+    /* KPI'ların hepsi para eksenidir → `perm:'finans'`. Yetkisiz rolde
+       `0` DEĞİL `••••••` basılır (UID-11): 0 bir değerdir, "göremezsin"
+       demek değildir. */
+    kpis:[
+      { label:'Toplam fatura tutarı', icon:'i-receipt', format:F.moneyK, perm:'finans',
+        meta:function(base){
+          var netToplam = topla(base, function(x){ return tutarOf(x).net; });
+          var kdvToplam = topla(base, function(x){ return tutarOf(x).kdv; });
+          return 'brüt · net ' + F.moneyK(netToplam) + ' + KDV ' + F.moneyK(kdvToplam);
+        },
+        calc:function(base){ return topla(base, function(x){ return tutarOf(x).brut; }); } },
+
+      { label:'Tahsil edilen', icon:'i-wallet', tone:'ok', format:F.moneyK, perm:'finans',
+        meta:function(base){
+          var n = base.filter(function(x){ return bakiyeOf(x).tahsil > 0; }).length;
+          return n + ' faturaya tahsis işlendi';
+        },
+        calc:function(base){ return topla(base, function(x){ return bakiyeOf(x).tahsil; }); } },
+
+      { label:'Açık bakiye', icon:'i-hourglass', tone:'warn', format:F.moneyK, perm:'finans',
+        meta:function(base){
+          var n = base.filter(function(x){ return bakiyeOf(x).acik > 0; }).length;
+          var g = base.filter(gecikmisMi).length;
+          return n + ' faturada açık bakiye · ' + (g ? g + ' tanesi vadesi geçmiş' : 'vadesi geçen yok');
+        }, metaTone:'warn',
+        calc:function(base){ return topla(base, function(x){ return bakiyeOf(x).acik; }); } },
+
+      /* Tahsilat oranı = tahsil / brüt. Payda 0 ise oran YOKTUR — "%0"
+         yazmak "hiç tahsil edilmedi" iddiasıdır, oysa ölçülemiyor (L-13). */
+      { label:'Tahsilat oranı', icon:'i-percent', tone:'ok', format:F.pct, perm:'finans',
+        meta:function(base){
+          var payda = topla(base, function(x){ return tutarOf(x).brut; });
+          return payda
+            ? F.moneyK(topla(base, function(x){ return bakiyeOf(x).tahsil; })) + ' / ' + F.moneyK(payda) + ' brüt'
+            : 'faturalanmış tutar yok — oran türetilemedi';
+        },
+        calc:function(base){
+          var payda = topla(base, function(x){ return tutarOf(x).brut; });
+          if(!payda) return null;
+          return Math.round(topla(base, function(x){ return bakiyeOf(x).tahsil; }) / payda * 100);
+        } }
+    ],
+
+    tabs:[{ key:'tumu', label:'Tümü', icon:'i-list', filter:null }]
+      .concat(ODEME_EKSEN.map(function(d){
+        var t = sekmeTanim(d);
+        return { key:t.key, label:t.label, icon:t.icon,
+                 filter:function(f){ return odemeDurumOf(f) === d; } };
+      }))
+      /* Gecikme ÜÇÜNCÜ eksendir; ödeme durumu sekmeleriyle örtüşür ve
+         bu bilerektir — aynı fatura hem "Açık" hem "Vadesi geçmiş" olur. */
+      .concat([{ key:'gecikmis', label:'Vadesi geçmiş', icon:'i-alert', filter:gecikmisMi }]),
+
+    columns:[
+      GV.cols.kod('kod', 'Fatura', { width:'14%', locked:true,
+        href:function(f){ return 'app-fatura-detay.html?id=' + f.kod; },
+        sub:function(f){
+          return f.milestone ? 'taksit ' + GV.esc(f.milestone) : 'taksite bağlı değil';
+        } }),
+
+      { key:'musteri', label:'Müşteri', cellClass:'cell-wrap',
+        sortValue:function(f){ return f.musteriAd || f.musteri || ''; },
+        exportValue:function(f){ return f.musteriAd || f.musteri || ''; },
+        render:function(f){
+          if(!f.musteri) return GV.cell.faint('—') + GV.cell.sub('müşteri bağı kurulamadı');
+          return GV.cell.link('app-musteri-detay.html?id=' + f.musteri,
+                              f.musteriAd || f.musteri, GV.cell.sub(GV.esc(f.musteri)));
+        } },
+
+      { key:'sozlesme', label:'Sözleşme',
+        exportValue:function(f){ return f.sozlesme || ''; },
+        render:function(f){
+          /* Sözleşmesiz fatura bir hata değil: ek iş ve tek seferlik
+             kalemler sözleşmeye bağlanmadan faturalanabiliyor. */
+          if(!f.sozlesme) return GV.cell.faint('—') + GV.cell.sub('sözleşmeye bağlı değil');
+          return '<span class="cell-code">' + GV.esc(f.sozlesme) + '</span>';
+        } },
+
+      { key:'proje', label:'Proje',
+        exportValue:function(f){ return f.proje || ''; },
+        render:function(f){
+          if(!f.proje) return GV.cell.faint('—');
+          return '<span class="cell-code">' + GV.esc(f.proje) + '</span>';
+        } },
+
+      /* Fatura tarihi geçmiş bir olaydır — gecikme tonu ALMAZ (`plain`). */
+      GV.cols.date('tarih', 'Fatura tarihi', { plain:true, width:'9%' }),
+
+      /* Vade gecikme ekseninin tarihidir: kapanmış faturada uyarı tonu
+         basılmaz (`done`), açık ve vadesi geçmişte `is-late` doğar. */
+      GV.cols.date('vade', 'Vade', { width:'9%',
+        done:function(f){ return bakiyeOf(f).acik === 0; },
+        sub:function(f){ return gecikmisMi(f) ? GV.fin.gecikmeGun(f) + ' gün gecikti' : ''; } }),
+
+      /* --- Para kolonları — hepsi kanonik yordamdan okur -----------------
+         `GV.cols.money` fabrikası KULLANILAMADI: fabrika değeri `x[key]`
+         ile ham alandan okur (ui.js:3025), oysa net/KDV/brüt kayıttan değil
+         `GV.fin.tutar`dan, tahsilat ve bakiye `GV.fin.balance`tan gelir.
+         `GV.cols.durum`da bunun için `deger(x)` kapısı var; `money`de yok —
+         eksik bileşen olarak RAPOR EDİLDİ, burada yazılmadı. Kolonlar
+         fabrikanın sözleşmesini (cellClass 'num' · perm · sortValue ·
+         exportValue) birebir taşır. */
+      { key:'net', label:'Net', cellClass:'num', perm:'finans', width:'9%',
+        sortValue:function(f){ return tutarOf(f).net; },
+        exportValue:function(f){ return tutarOf(f).net; },
+        render:function(f){ return GV.cell.mny(tutarOf(f).net); } },
+
+      { key:'kdv', label:'KDV', cellClass:'num', perm:'finans', width:'9%',
+        sortValue:function(f){ return tutarOf(f).kdv; },
+        exportValue:function(f){ return tutarOf(f).kdv; },
+        render:function(f){
+          var t = tutarOf(f);
+          /* Faturada oran ALANI yoktur; oran tutardan türetilir
+             (domain.js:1402). Ters yönde okumak çift KDV'yi doğuruyordu. */
+          return GV.cell.mny(t.kdv) + (t.oran == null ? '' : GV.cell.sub('%' + t.oran));
+        } },
+
+      { key:'brut', label:'Brüt', cellClass:'num', perm:'finans', width:'10%',
+        sortValue:function(f){ return tutarOf(f).brut; },
+        exportValue:function(f){ return tutarOf(f).brut; },
+        render:function(f){
+          var t = tutarOf(f);
+          if(t.tutarli !== false) return GV.cell.mny(t.brut);
+          /* Çelişkide İKİ sayı da gösterilir; ekran birini seçmez. */
+          return GV.cell.mny(t.brut) +
+                 GV.cell.sub('kayıtlı brüt ' + F.money(t.kayitliBrut) + ' · net+KDV ' + F.money(t.brut));
+        } },
+
+      { key:'tahsil', label:'Tahsil edilen', cellClass:'num', perm:'finans', width:'10%',
+        sortValue:function(f){ return bakiyeOf(f).tahsil; },
+        exportValue:function(f){ return bakiyeOf(f).tahsil; },
+        render:function(f){
+          var b = bakiyeOf(f);
+          /* Kayıt var, tahsis yok → değer gerçekten SIFIR; "—" değil "0"
+             doğrudur (§10.1 ilk satır). */
+          return GV.cell.mny(b.tahsil) + (b.tahsil ? GV.cell.sub('%' + b.oran) : '');
+        } },
+
+      { key:'acikBakiye', label:'Açık bakiye', cellClass:'num', perm:'finans', width:'10%',
+        sortValue:function(f){ return bakiyeOf(f).acik; },
+        exportValue:function(f){ return bakiyeOf(f).acik; },
+        render:function(f){
+          var b = bakiyeOf(f);
+          if(!b.acik) return GV.cell.mny(0);
+          return GV.cell.mny(b.acik, { tone:gecikmisMi(f) ? 'danger' : 'warn' });
+        } },
+
+      /* ÖDEME ekseni — kayıttaki ayna alan değil, kanonik yordam okunur. */
+      GV.cols.durum('durum', 'Ödeme durumu', { width:'10%',
+        deger:function(f){ return odemeDurumOf(f); } }),
+
+      /* BELGE ekseni — `GV.flow` varlığı `invoice`, alan `belgeDurum`.
+         Geçiş fatura detayında yapılır; burada yalnız okunur. */
+      GV.cols.durum('belgeDurum', 'Belge durumu', { width:'10%' }),
+
+      /* Açık bakiyeli faturaların ödeme linki `DB.paymentLinks`ten okunur
+         (odeme.js) — bu ekran link üretmez, varlığını gösterir. */
+      { key:'odemeLinki', label:'Ödeme linki', visible:false, sortable:false,
+        exportValue:function(f){ var l = linkOf(f); return l ? l.kod : ''; },
+        render:function(f){
+          var l = linkOf(f);
+          if(!l) return GV.cell.faint('—');
+          return GV.cell.link('app-odeme-linki-detay.html?id=' + l.kod, l.kod);
+        } }
+    ],
+
+    filters:[
+      { key:'musteri', label:'Müşteri', type:'select',
+        options:tekil(tumu, function(f){ return f.musteri; },
+                            function(f){ return f.musteriAd || f.musteri; }) },
+      { key:'durum', label:'Ödeme durumu', type:'multi',
+        options:ODEME_EKSEN.map(function(d){ return { value:d, label:d }; }),
+        /* Süzgeç de kanonik eksenden okur — kayıttaki ayna alandan değil. */
+        test:function(f, v){ return v.indexOf(odemeDurumOf(f)) !== -1; } },
+      { key:'belgeDurum', label:'Belge durumu', type:'multi',
+        options:BELGE_EKSEN.map(function(d){ return { value:d, label:d }; }) },
+      { key:'tarih', label:'Fatura tarihi', type:'daterange' },
+      { key:'vade', label:'Vade', type:'daterange' },
+      { key:'sozlesme', label:'Sözleşme', type:'select',
+        options:tekil(tumu, function(f){ return f.sozlesme; },
+                            function(f){ return f.sozlesme; }) }
+    ],
+
+    /* Kendi içinde çelişen kayıt ve vadesi geçmiş fatura aynı `is-late`
+       şeridini alır — `ui.css`te satır için tek uyarı tonu var
+       (`is-late` · `is-passive`, ui.css:474-477). İkisini ayıran bilgi
+       hücrelerde ve listenin üstündeki iki ayrı şeritte durur; ikinci bir
+       satır sınıfı YAZILMADI, eksik olarak raporlandı. */
+    rowClass:function(f){
+      if(celiskiliMi(f)) return 'is-late';
+      if(gecikmisMi(f)) return 'is-late';
+      if(f.aktif === false) return 'is-passive';
+      return '';
+    },
+
+    card:function(f){
+      var b = bakiyeOf(f);
+      return '<div class="gv-rcard-top"><div>' +
+        '<a class="cell-main" href="app-fatura-detay.html?id=' + GV.esc(f.kod) + '">' + GV.esc(f.kod) + '</a>' +
+        '<div class="cell-code">' + GV.esc(f.musteriAd || f.musteri || '—') + '</div></div>' +
+        GV.badge(odemeDurumOf(f)) + '</div>' +
+        '<div class="gv-rcard-meta">' +
+          '<span>' + GV.esc(f.sozlesme || 'sözleşmesiz') + '</span>' +
+          '<span>belge: ' + GV.esc(f.belgeDurum || '—') + '</span>' +
+          (gecikmisMi(f) ? '<span>' + GV.fin.gecikmeGun(f) + ' gün gecikti</span>' : '') +
+        '</div>' +
+        '<div class="gv-rcard-foot">' +
+          (canFinans ? GV.cell.mny(tutarOf(f).brut) + GV.cell.sub('açık ' + F.money(b.acik))
+                     : '<span class="cell-mask">••••••</span>') +
+          GV.dateCell(f.vade, { done:b.acik === 0 }) +
+        '</div>';
+    },
+
+    /* 980px altında tablo yerine bu markup basılır (ui.js:1116-1133).
+       `GV.cell.mrow` ızgarayı kendi kurar — 390px'te yatay taşma yok. */
+    mobile:function(f){
+      var b = bakiyeOf(f);
+      return GV.cell.mrow(
+        '<a class="cell-main" href="app-fatura-detay.html?id=' + GV.esc(f.kod) + '">' + GV.esc(f.kod) + '</a>' +
+          GV.badge(odemeDurumOf(f)),
+        GV.esc(f.musteriAd || f.musteri || '—'),
+        [ GV.ico('i-calendar','ic-sm') + 'vade ' + (f.vade ? F.dateShort(f.vade) : '—'),
+          GV.ico('i-file','ic-sm') + GV.esc(f.belgeDurum || '—') ],
+        (canFinans
+          ? GV.cell.mny(tutarOf(f).brut) +
+            (b.acik ? GV.cell.sub('açık ' + F.money(b.acik)) : GV.cell.sub('kapandı'))
+          : '<span class="cell-mask">••••••</span>')
+      );
+    },
+
+    /* Durum geçişi burada YOK: belge geçişi fatura detayında `GV.flow`
+       ile, ödeme durumu ise hiçbir yerde ELLE yapılmaz — tahsis defterinden
+       türer. Buraya "Ödendi işaretle" düğmesi koymak ikinci bir mutasyon
+       noktası açardı (§7 yasak listesi). */
+    rowActions:[
+      { key:'ac', icon:'i-external', label:'Faturayı aç',
+        href:function(f){ return 'app-fatura-detay.html?id=' + f.kod; } },
+      /* Kapanmış faturada anlamsız olan aksiyon HİÇ basılmaz (UID-27). */
+      { key:'link', icon:'i-link', label:'Ödeme linki oluştur',
+        show:function(f){ return bakiyeOf(f).acik > 0; },
+        href:function(f){ return 'app-odeme-linki-form.html?fatura=' + f.kod; } }
+    ],
+
+    bulk:[
+      { key:'disa', label:'Dışa aktar', icon:'i-download', export:true }
+    ],
+
+    emptyState:{ icon:'i-receipt', title:'Bu görünümde fatura yok',
+      desc:'Sekmeyi ya da filtreleri değiştirebilirsiniz. Ödeme durumu sekmeleri ' +
+           'tahsis defterinden türetilir; "Vadesi geçmiş" ayrı bir eksendir ve ' +
+           'diğer sekmelerle örtüşebilir.' },
+
+    onRender:function(gorunen){ uyariCiz(gorunen); }
+  });
+
+  /* ---- Backend payı — brief §10.2 (b) biçimi ------------------------- */
+  document.getElementById('ftrBackend').innerHTML =
+    '<section class="gv-card u-mt-8"><div class="gc-head">' +
+      '<h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+      '<span class="u-faint u-sm">2 madde</span></div>' +
+      '<div class="gc-body">' +
+        '<ul class="odl-gap">' +
+          '<li><span class="odl-gap-kod">BE-S5</span>' +
+            '<span>Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır</span>' +
+            '<span class="odl-gap-bolum">§9 audit_event</span></li>' +
+          '<li><span class="odl-gap-kod">BE-F1</span>' +
+            '<span>e-Fatura entegrasyonu yok; belge durumu yalnız iç eksendir, ' +
+            'resmî bir gönderim yapılmaz</span>' +
+            '<span class="odl-gap-bolum">§17.7 belge ekseni</span></li>' +
+        '</ul>' +
+        '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+          '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+        '<p class="u-faint u-sm">Listedeki "Belge durumu" kolonu bir <b>iç</b> yaşam ' +
+          'döngüsüdür: "Gönderildi" değeri faturanın GİB\'e ya da müşteriye gerçekten ' +
+          'iletildiğini <b>söylemez</b>, iç akışta o adıma geçildiğini söyler.</p>' +
+      '</div>' +
+    '</section>';
+});
+</script>
+</body>
+</html>
