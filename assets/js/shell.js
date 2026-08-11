@@ -764,10 +764,13 @@
     'app-destek.html',
     'app-destek-detay.html',
     'app-destek-form.html',
-    /* Dilim 4 — Ekip ve Kaynaklar. `app-varlik.html` · personel detay/form ·
-       izin detay/form HENÜZ YAZILMADI ve bilerek listede değil. */
+    /* Dilim 4 — Ekip ve Kaynaklar. Personel detay/form ve izin formu HENÜZ
+       YAZILMADI ve bilerek listede değil; kabuk onları `markWip` ile kilitli
+       tutar, ölü bağlantı doğmaz. */
     'app-personel.html',
     'app-zaman.html',
+    'app-varlik.html',
+    'app-izin-detay.html',
     'app-odeme-linki.html',
     'app-odeme-linki-form.html',
     'app-odeme-linki-detay.html',

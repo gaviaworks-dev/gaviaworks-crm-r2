@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Demirbaş ve Filo — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="ekip" data-screen="varlik">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/hr.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   DEMİRBAŞ · ZİMMET · FİLO — ekran brief §4 · §8 · §20.7
+
+   ŞARTNAME §20.7 — TEK LİSTE, KAYITLI GÖRÜNÜM. Demirbaş / Zimmet / Filo
+   AYRI EKRAN AİLESİ DEĞİLDİR ve üç ayrı `GV.list` kurmak YASAKTIR: üç arama
+   kutusu, üç kolon yöneticisi, üç sayfalama durumu doğar. Bu ekran TEK bir
+   liste mount'u (`#varlikListe`) kurar; yüzey değişince o mount'a YENİDEN
+   `GV.list(cfg)` çağrılır — kaynak, kolonlar, KPI'lar, filtreler, satır
+   aksiyonları ve boş durum yüzeye göre değişir, bileşenin kendisi değişmez.
+   Bu yüzden `GV.list` üç ayrı yerde SIMULTANE kurulmaz; her an yalnız BİR
+   örnek DOM'dadır (satınalma/zaman ekranlarındaki "4 sekme = 4 eşzamanlı
+   liste" deseninden BİLEREK FARKLIDIR — o desen burada yasaklanmıştır).
+
+   `GV.list`in KENDİ sekme mekanizması (`cfg.tabs`) tek bir `source()`
+   içinde FİLTRE yapar; kaynağı/kolonu değiştiremez (`ui.js:922-924`,
+   `colDef` hep `cfg.columns`den okur). Üç yüzey heterojen koleksiyon
+   olduğu için (`DB.assets` · `DB.assignments` · `DB.vehicles`) yüzey
+   anahtarı `?t=` BU EKRANIN KENDİ sekme şeridiyle (satınalma/zaman'daki
+   "YÜZEYLER" desenininin aynısı) yönetilir, `GV.list`in İÇ sekme sistemi
+   BU AMAÇLA KULLANILMAZ (kullanılsaydı kolon/kaynak değişmezdi).
+
+   Yüzey anahtarı `?t=` BU SAYFANIN malıdır, listenin değil. Bileşene bu
+   `urlKeep:['t']` ile bildirilir; `GV.list` o anahtarı ne okur ne yazar ne
+   siler. (Eskiden `writeURL` yedi anahtarı da koşulsuz siliyor ve `t`yi
+   yalnız `cfg.tabs` varsa geri yazıyordu; sayfa her aramada yüzeyini
+   kaybediyordu. Ekranda telafi yaması yazmak omurgayı çatallardı — kusur
+   `ui.js`te, tek yerde düzeltildi.)
+
+   K-33 — `aktif` ALANI HİÇBİR VARLIKTA OKUNMAZ. `DB.assets` · `DB.assignments`
+   · `DB.vehicles` üçü de `durum` eksenli koleksiyondur; `aktif` üçünde de
+   TUZAKTIR (okuyan `undefined` alır, `DB.bayatAktif.sayac` artar). Pasiflik
+   YALNIZ `GV.arsivli(r, pasif)` ile sorulur. Bu ekran `r.aktif` YAZMAZ,
+   OKUMAZ.
+
+   ENVANTER TÜRETİLMİŞTİR — `a.durum` ve `a.zimmetli` `DB.assignments`
+   defterinden türetilir (`domain.js` `Varlik.tazeleHepsi()`, veri yüklenirken
+   koşar). Bu ekran `DB.assets` üstünde DOĞRUDAN ATAMA yapmaz; tek mutasyon
+   noktası `GV.varlik.kabulEt` / `.kabulGeriAl`dir.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F = GV.fmt;
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var canFinans = GV.perm.can('finans');
+  /* Zimmet kabulü/kabul geri alması `GV.varlik.kabulEt/.kabulGeriAl` içinde
+     AYNI yetki kümesiyle korunur: kaydın sahibi personel ya da `personel`/
+     `duzenle` yetkisi olan biri. Ekran burada AYNI birincil kapıyı kendi
+     düğme görünürlüğü için okur (kuralı tekrar TANIMLAMAZ, yalnız aynı
+     `GV.perm.can` ilkellerini okur); nihai karar yine yordamdadır — bu satır
+     yalnız ölü buton göstermemek içindir. */
+  var canZimmetYetki = GV.perm.can('personel') || GV.perm.can('duzenle');
+  var me = (GV.session && GV.session.emp) || null;
+
+  function bos(v){ return v == null || v === '' ? null : v; }
+  function empAd(kod){ return kod ? (DB.empName ? DB.empName(kod) : kod) : null; }
+  function empDep(kod){ var e = kod && DB.emp ? DB.emp(kod) : null; return e ? e.dep : null; }
+  function demirbasKaydi(kod){ return GV.varlik.kayit(kod); }
+  function zimmetKaydi(kod){
+    return (DB.assignments || []).filter(function(z){ return z.kod === kod; })[0] || null;
+  }
+  function aracKaydi(kod){
+    return (DB.vehicles || []).filter(function(v){ return v.kod === kod; })[0] || null;
+  }
+  function benzersiz(list, alan){
+    return list.reduce(function(acc, r){
+      var v = typeof alan === 'function' ? alan(r) : r[alan];
+      if(v != null && v !== '' && acc.indexOf(v) === -1) acc.push(v);
+      return acc;
+    }, []);
+  }
+
+  var DEMIRBAS = DB.assets       || [];
+  var ZIMMET   = DB.assignments  || [];
+  var FILO     = DB.vehicles     || [];
+
+  /* ⚠️ SIRA — `GV.pageHead` `GV.list`ten ÖNCE (brief §2.4). */
+  GV.pageHead({
+    eyebrow:'Ekip ve Kaynaklar',
+    title:'Demirbaş ve Filo',
+    sub:DEMIRBAS.length + ' demirbaş · ' + ZIMMET.length + ' zimmet kaydı · ' +
+        FILO.length + ' araç · üçü tek listede yüzey olarak taşınır',
+    actions:[]
+  });
+
+  /* ================================================================
+     YÜZEY ŞERİDİ — üç heterojen koleksiyon, TEK liste bileşeni
+     ================================================================ */
+  var YUZEYLER = [
+    { key:'demirbas', label:'Demirbaş', icon:'i-package' },
+    { key:'zimmet',   label:'Zimmet',   icon:'i-user-check' },
+    { key:'filo',     label:'Filo',     icon:'i-car' }
+  ];
+  var YUZEY_ANAHTAR = YUZEYLER.map(function(y){ return y.key; });
+
+  function urlYuzey(){
+    var q = new URLSearchParams(location.search);
+    var t = q.get('t');
+    return YUZEY_ANAHTAR.indexOf(t) !== -1 ? t : 'demirbas';
+  }
+
+  mount.innerHTML =
+    '<div class="gv-tabs" role="tablist" id="varlikYuzey">' +
+      YUZEYLER.map(function(y){
+        return '<button type="button" class="gv-tab" role="tab" data-yuzey="' + y.key + '"' +
+          ' aria-selected="false">' + GV.ico(y.icon,'ic-sm') + GV.esc(y.label) + '</button>';
+      }).join('') +
+    '</div>' +
+    '<div id="varlikListe"></div>' +
+    '<div id="varlikBackend" class="u-mt-8"></div>';
+
+  var tabBtns = Array.prototype.slice.call(mount.querySelectorAll('#varlikYuzey [data-yuzey]'));
+  function isaretle(key){
+    tabBtns.forEach(function(b){ b.setAttribute('aria-selected', b.dataset.yuzey === key ? 'true' : 'false'); });
+  }
+  var aktifYuzey = urlYuzey();
+  tabBtns.forEach(function(b){
+    b.addEventListener('click', function(){
+      var k = b.dataset.yuzey;
+      if(k === aktifYuzey) return;
+      aktifYuzey = k;
+      var q = new URLSearchParams();
+      q.set('t', k);
+      history.pushState(null, '', location.pathname + '?' + q.toString());
+      isaretle(k);
+      ciz(k);
+    });
+  });
+  /* Geri/ileri tuşu — kalıcı düğüm (`window`) olduğu için `GV.on` ile
+     tekil anahtar üzerinden bağlanır (brief §2.6, L-16). */
+  GV.on(window, 'popstate', function(){
+    aktifYuzey = urlYuzey();
+    isaretle(aktifYuzey);
+    ciz(aktifYuzey);
+  }, 'varlik-popstate');
+
+  /* ================================================================
+     ÇEKMECELER — tek çekmece açık tutulur (L-18: markup document.body'ye
+     basılır, ekran kendi overlay'ini kurmaz).
+     ================================================================ */
+  var acikCekmece = null;
+  function cekmeceAc(baslik, html, bagla){
+    if(acikCekmece && acikCekmece.close) acikCekmece.close();
+    acikCekmece = GV.drawer({ title:baslik, body:'',
+      onMount:function(govde){ govde.innerHTML = html; if(bagla) bagla(govde); } });
+  }
+
+  /* K-30 — düşen zimmet iddiası satırı. Veriye YAZILMAZ, görüntü anında
+     defterden türetilir; demirbaş bağlamında VARSA basılması ZORUNLUDUR.
+     `dusenIddiaSatiri` `icon:'i-alert-triangle'` döndürüyor ama bu ad 113
+     sembollük sprite'ta YOK (brief §3) — sahte/boş ikon basmamak için burada
+     geçerli bir sprite adıyla (`i-alert`) elle basılır; bu bir ORTAK KATMAN
+     eksikliğidir, raporda bildirildi, `domain.js` değiştirilmedi. */
+  function dusenIddiaHtml(demirbasKod){
+    var satir = GV.varlik.dusenIddiaSatiri(demirbasKod);
+    if(!satir) return '';
+    return GV.notice({ tone:'warn', icon:'i-alert',
+      title:'Envanterdeki eski zimmet iddiası düşürüldü (K-30)',
+      text:satir.metin });
+  }
+
+  /* ---- ÇEKMECE — DEMİRBAŞ ------------------------------------------- */
+  function demirbasDrawer(a){
+    if(!a) return;
+    var z = GV.varlik.zimmetOf(a.kod);
+    var satirlar = [
+      ['Kategori', GV.esc(a.kategori) + (bos(a.altKategori) ? GV.cell.sub(GV.esc(a.altKategori)) : '')],
+      ['Marka / Model', GV.esc([a.marka, a.model].filter(Boolean).join(' ')) +
+        (bos(a.seri) ? GV.cell.sub('Seri: ' + GV.esc(a.seri)) : '')],
+      ['Özellik', bos(a.ozellik) ? GV.esc(a.ozellik) : null],
+      ['Barkod', bos(a.barkod) ? '<span class="cell-code">' + GV.esc(a.barkod) + '</span>' : null],
+      ['Durum', GV.badge(a.durum)],
+      ['Zimmetli personel', a.zimmetli ? GV.user(a.zimmetli, { sm:true }) : '<span class="u-faint">—</span>' +
+        GV.cell.sub(a.durum === 'Hurda' ? 'hurdaya ayrıldı, zimmet ekseni geçerli değil' : 'depoda, kimseye zimmetli değil')],
+      ['Lokasyon', GV.esc(a.lokasyon)],
+      ['Departman', bos(a.dep) ? '<span class="cell-code">' + GV.esc(a.dep) + '</span>' : null],
+      ['Alış tarihi', a.alisTarihi ? '<span class="cell-date">' + F.date(a.alisTarihi) + '</span>' : null],
+      ['Alış fiyatı (NET)', canFinans ? GV.cell.mny(a.alisFiyati) : '<span class="cell-mask">••••••</span>'],
+      ['Tedarikçi', bos(a.tedarikci) ? '<span class="cell-code">' + GV.esc(a.tedarikci) + '</span>' : null],
+      ['Garanti', (a.garantiBas || a.garantiBit)
+        ? GV.esc((a.garantiBas ? F.date(a.garantiBas) : '—') + ' → ' + (a.garantiBit ? F.date(a.garantiBit) : '—'))
+        : null],
+      ['Sipariş', a.siparis
+        ? '<span class="cell-code">' + GV.esc(a.siparis) + '</span>'
+        : '<span class="u-faint">—</span>' + GV.cell.sub('bu alım bir siparişten türetilmedi (2026 öncesi alım ya da tedarikçi eşleşmesi bağ yerine geçmez)')]
+    ];
+
+    var zimmetBlok;
+    if(z){
+      zimmetBlok =
+        '<p class="u-sm u-muted">Bu demirbaşın yaşayan bir zimmet tutanağı var. Envanterdeki ' +
+        '"' + GV.esc(a.durum) + '" durumu bu tutanaktan TÜRETİLİR.</p>' +
+        '<div class="lh-acts u-mt-4">' +
+          '<button type="button" class="btn btn-line btn-sm" data-zimmet="' + GV.esc(z.kod) + '">' +
+            GV.ico('i-user-check','ic-sm') + ' Zimmet tutanağını aç</button>' +
+        '</div>';
+    } else {
+      zimmetBlok = '<p class="u-sm u-muted">Bu demirbaşın yaşayan (iade edilmemiş) bir zimmet kaydı yok.</p>';
+    }
+
+    var iddia = dusenIddiaHtml(a.kod);
+
+    var html =
+      '<section class="gv-card"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-package') + GV.esc(a.kod) + '</h3>' +
+        '<span class="gc-meta">' + GV.esc(a.kategori) + '</span></div>' +
+        '<div class="gc-body">' + GV.dl(satirlar, { skipEmpty:true }) + '</div></section>' +
+
+      (iddia ? '<div class="u-mt-8">' + iddia + '</div>' : '') +
+
+      '<section class="gv-card u-mt-8"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-user-check') + 'Zimmet</h3></div>' +
+        '<div class="gc-body">' + zimmetBlok + '</div></section>';
+
+    cekmeceAc('Demirbaş ' + a.kod, html, baglaCekmece);
+  }
+
+  /* ---- ÇEKMECE — ZİMMET TUTANAĞI ------------------------------------- */
+  function zimmetDrawer(z){
+    if(!z) return;
+    var a = demirbasKaydi(z.demirbas);
+    var iade = z.durum === 'İade edildi';
+
+    var satirlar = [
+      ['Demirbaş', a
+        ? '<span class="cell-main">' + GV.esc([a.marka, a.model].filter(Boolean).join(' ') || a.kod) + '</span>' +
+          GV.cell.sub(GV.esc(a.kod))
+        : '<span class="u-faint">' + GV.esc(z.demirbas || '—') + '</span>' + GV.cell.sub('demirbaş kaydı defterde yok')],
+      ['Personel', GV.user(z.personel, { sm:true })],
+      ['Teslim tarihi', z.teslimTarihi ? '<span class="cell-date">' + F.date(z.teslimTarihi) + '</span>' : null],
+      ['Durum', GV.badge(z.durum)],
+      ['Personel onayı', GV.badge(z.personelOnay) +
+        (z.onayTarihi ? GV.cell.sub('onay tarihi: ' + GV.esc(F.date(z.onayTarihi))) : GV.cell.sub('henüz onaylanmadı'))],
+      ['Tutanak dosyası', bos(z.tutanak)
+        ? '<span class="cell-code">' + GV.esc(z.tutanak) + '</span>' + GV.cell.sub('indirilemez — gerçek dosya deposuna yazılmaz (BE-K2)')
+        : '<span class="u-faint">—</span>' + GV.cell.sub('tutanak dosya adı kayıtlı değil')],
+      ['Hasar', bos(z.hasar) ? GV.esc(z.hasar) : null],
+      ['İade tarihi', iade && z.iadeTarihi ? '<span class="cell-date">' + F.date(z.iadeTarihi) + '</span>' : null],
+      ['İade kontrolü', iade && bos(z.iadeKontrol) ? GV.badge(z.iadeKontrol) : null],
+      ['Eksik ekipman', iade && bos(z.eksik) ? GV.esc(z.eksik) : null],
+      ['İade alan', iade && z.iadeAlan ? GV.user(z.iadeAlan, { sm:true }) : null]
+    ];
+
+    var yetkili = canZimmetYetki || (me && me === z.personel);
+    var aksiyon;
+    if(!yetkili){
+      aksiyon = GV.notice({ tone:'neutral', icon:'i-lock', title:'Bu işlem için yetkiniz yok',
+        text:'Kabul ve kabul geri alma zimmetli personel, İK ya da düzenleme yetkisi olan bir rol gerektirir.' });
+    } else if(iade){
+      aksiyon = '<p class="u-sm u-muted">Bu zimmet iade edilmiş; kabul/geri alma ekseni artık geçerli değil.</p>';
+    } else if(z.personelOnay === 'Onaylandı'){
+      aksiyon =
+        '<p class="u-sm u-muted">Kabul, envanteri "Zimmetli" yapan TEK koşuldur. Geri alma gerekçe ister ve ' +
+        'envanteri yeniden "Zimmet bekliyor"a döndürür.</p>' +
+        '<div class="lh-acts u-mt-4">' +
+          '<button type="button" class="btn btn-danger-line btn-sm" data-geri-al="' + GV.esc(z.kod) + '">' +
+            GV.ico('i-refresh','ic-sm') + ' Kabulü geri al</button>' +
+        '</div>';
+    } else {
+      aksiyon =
+        '<p class="u-sm u-muted">Tutanak yazıldı ama personel henüz kabul etmedi; envanter bu yüzden ' +
+        '"Zimmet bekliyor" durumundadır. Kabul, envanteri "Zimmetli" yapan TEK koşuldur — tutanağın ' +
+        'yazılması değil.</p>' +
+        '<div class="lh-acts u-mt-4">' +
+          '<button type="button" class="btn btn-ok btn-sm" data-kabul="' + GV.esc(z.kod) + '">' +
+            GV.ico('i-check-circle','ic-sm') + ' Zimmeti kabul et</button>' +
+        '</div>';
+    }
+
+    var iddia = a ? dusenIddiaHtml(a.kod) : '';
+
+    var html =
+      '<section class="gv-card"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-user-check') + GV.esc(z.kod) + '</h3>' +
+        '<span class="gc-meta">' + GV.esc(z.durum) + '</span></div>' +
+        '<div class="gc-body">' + GV.dl(satirlar, { skipEmpty:true }) +
+          (a ? '<div class="lh-acts u-mt-4">' +
+                 '<button type="button" class="btn btn-line btn-sm" data-demirbas="' + GV.esc(a.kod) + '">' +
+                   GV.ico('i-package','ic-sm') + ' Demirbaşı aç</button></div>' : '') +
+        '</div></section>' +
+
+      (iddia ? '<div class="u-mt-8">' + iddia + '</div>' : '') +
+
+      '<section class="gv-card u-mt-8"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-stamp') + 'Kabul / geri alma</h3></div>' +
+        '<div class="gc-body">' + aksiyon + '</div></section>';
+
+    cekmeceAc('Zimmet ' + z.kod, html, baglaCekmece);
+  }
+
+  /* ---- ÇEKMECE — ARAÇ -------------------------------------------------- */
+  function aracDrawer(v){
+    if(!v) return;
+    var kiralik = v.mulkiyet === 'Kiralık';
+    var satirlar = [
+      ['Plaka', '<span class="cell-code">' + GV.esc(v.plaka) + '</span>'],
+      ['Marka / Model', GV.esc([v.marka, v.model].filter(Boolean).join(' ')) +
+        GV.cell.sub(GV.esc([v.modelYili, v.tip].filter(Boolean).join(' · ')))],
+      ['Yakıt / Vites', GV.esc([v.yakit, v.vites].filter(Boolean).join(' · '))],
+      ['Motor / Şasi', bos(v.motorNo) || bos(v.sasi)
+        ? GV.esc(['Motor: ' + (v.motorNo || '—'), 'Şasi: ' + (v.sasi || '—')].join(' · ')) : null],
+      ['Renk', bos(v.renk) ? GV.esc(v.renk) : null],
+      ['Mülkiyet', GV.esc(v.mulkiyet)],
+      kiralik
+        ? ['Kiralama', GV.esc(v.kiralamaFirmasi || '—') +
+            GV.cell.sub(GV.esc((v.sozlesmeBas ? F.date(v.sozlesmeBas) : '—') + ' → ' +
+              (v.sozlesmeBit ? F.date(v.sozlesmeBit) : '—')) + ' · ' +
+              (v.aylikKira != null ? (canFinans ? F.money(v.aylikKira) + '/ay' : '••••••') : 'aylık kira kayıtlı değil'))]
+        : ['Alış', v.alisTarihi
+            ? F.date(v.alisTarihi) + GV.cell.sub((canFinans ? GV.cell.mny(v.alisBedeli) : '<span class="cell-mask">••••••</span>') +
+                (v.satici ? ' · ' + GV.esc(v.satici) : ''))
+            : null],
+      ['Sipariş', v.siparis
+        ? '<span class="cell-code">' + GV.esc(v.siparis) + '</span>'
+        : '<span class="u-faint">—</span>' + GV.cell.sub(kiralik
+            ? 'kiralık araç, satın alma siparişi hiç doğmaz'
+            : 'bu alım satın alma modülünün veri penceresinden (2025+) önce yapıldı')],
+      ['Kullanım', GV.esc(v.kullanim)],
+      ['Ana sürücü', v.anaSurucu ? GV.user(v.anaSurucu, { sm:true }) : '<span class="u-faint">—</span>' + GV.cell.sub('ortak kullanım, sabit sürücü atanmadı')],
+      ['Yedek sürücü', v.yedekSurucu ? GV.user(v.yedekSurucu, { sm:true }) : null],
+      ['Departman', bos(v.dep) ? '<span class="cell-code">' + GV.esc(v.dep) + '</span>' : null],
+      ['Proje', v.proje ? '<span class="cell-code">' + GV.esc(v.proje) + '</span>' : '<span class="u-faint">—</span>' + GV.cell.sub('projeye bağlı değil (4/4 araçta boş)')],
+      ['Durum', GV.badge(v.durum)],
+      ['Güncel km', GV.cell.num(v.guncelKm)],
+      ['Son bakım', v.sonBakimTarihi
+        ? F.date(v.sonBakimTarihi) + GV.cell.sub(v.sonBakimKm != null ? GV.cell.num(v.sonBakimKm) + ' km\'de' : '')
+        : null],
+      ['Sonraki bakım', v.sonrakiBakimTarihi
+        ? F.date(v.sonrakiBakimTarihi) + GV.cell.sub(v.sonrakiBakimKm != null ? GV.cell.num(v.sonrakiBakimKm) + ' km\'de' : '')
+        : null]
+    ];
+
+    var html =
+      '<section class="gv-card"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-car') + GV.esc(v.kod) + '</h3>' +
+        '<span class="gc-meta">' + GV.esc(v.plaka) + '</span></div>' +
+        '<div class="gc-body">' + GV.dl(satirlar, { skipEmpty:true }) + '</div></section>' +
+
+      '<div class="u-mt-8">' + GV.notice({ tone:'neutral', icon:'i-info',
+        title:'Bakım / yakıt / sigorta / kaza defterleri bu ekranda değil',
+        text:(DB.maintenance || []).filter(function(m){ return m.arac === v.kod; }).length + ' bakım · ' +
+             (DB.fuelLogs || []).filter(function(f){ return f.arac === v.kod; }).length + ' yakıt · ' +
+             (DB.policies || []).filter(function(p){ return p.arac === v.kod; }).length + ' poliçe · ' +
+             (DB.accidents || []).filter(function(k){ return k.arac === v.kod; }).length + ' kaza kaydı ölçüldü; ' +
+             'bu defterler araç DETAYINA aittir (app-arac-detay.html), bu listede tekrar basılmaz.',
+        actions:[{ label:'Araç detayını aç', href:'app-arac-detay.html?id=' + encodeURIComponent(v.kod), cls:'btn-line' }] }) +
+      '</div>';
+
+    cekmeceAc('Araç ' + v.kod, html, null);
+  }
+
+  /* Çekmece içi dinleyiciler — çekmece kapanınca onlarla birlikte ölür. */
+  function baglaCekmece(govde){
+    govde.addEventListener('click', function(ev){
+      var d = ev.target.closest('[data-demirbas]');
+      if(d){ demirbasDrawer(demirbasKaydi(d.dataset.demirbas)); return; }
+
+      var z = ev.target.closest('[data-zimmet]');
+      if(z){ zimmetDrawer(zimmetKaydi(z.dataset.zimmet)); return; }
+
+      var k = ev.target.closest('[data-kabul]');
+      if(k && !k.disabled){ kabulEtBaslat(zimmetKaydi(k.dataset.kabul)); return; }
+
+      var g = ev.target.closest('[data-geri-al]');
+      if(g && !g.disabled){ kabulGeriAlBaslat(zimmetKaydi(g.dataset.geriAl)); return; }
+    });
+  }
+
+  /* ================================================================
+     MUTASYONLAR — TEK yordam: `GV.varlik.kabulEt` / `.kabulGeriAl`.
+     Ekran `DB.assets` üstüne DOĞRUDAN yazmaz.
+     ================================================================ */
+  function kabulEtBaslat(z){
+    if(!z) return;
+    GV.confirm({
+      title:'Zimmeti kabul et',
+      text:z.kod + ' — kabul, envanteri "Zimmetli" yapan tek koşuldur.',
+      tone:'ok', okLabel:'Kabul et'
+    }).then(function(ok){
+      if(!ok) return;
+      var r = GV.varlik.kabulEt(z.kod);
+      if(r.ok === false){ GV.toast(GV.flowHata(r), 'danger'); return; }
+      GV.toast(z.kod + ' kabul edildi · envanter "' + (r.demirbas ? r.demirbas.durum : '?') + '"', 'ok');
+      GV.refresh();
+    });
+  }
+
+  function kabulGeriAlBaslat(z){
+    if(!z) return;
+    GV.action({
+      eylem:'Geri Çek',
+      kayit:{ kod:z.kod, baslik:'Zimmet kabulü' },
+      sonuc:'Bu zimmetin kabulü geri alınacak; envanter yeniden "Zimmet bekliyor" durumuna döner.',
+      gerekce:true,
+      nedenTuru:'geri',
+      run:function(v){
+        var r = GV.varlik.kabulGeriAl(z.kod, v.not);
+        if(r.ok === false) return { ok:false, mesaj:GV.flowHata(r) };
+        GV.refresh();
+        return { mesaj:z.kod + ' kabulü geri alındı · envanter "' + (r.demirbas ? r.demirbas.durum : '?') + '"' };
+      }
+    });
+  }
+
+  /* ================================================================
+     YÜZEY YAPILANDIRMALARI — kaynak/kolon/KPI/filtre/aksiyon/boş durum
+     yüzeye göre değişir; liste bileşeninin kendisi değişmez (§20.7).
+     ================================================================ */
+  function cfgDemirbas(){
+    var kategoriler = benzersiz(DEMIRBAS, 'kategori');
+    var lokasyonlar = benzersiz(DEMIRBAS, 'lokasyon');
+    return {
+      mount:'#varlikListe', id:'varlik-demirbas', key:'kod',
+      source:function(){ return DB.assets; },
+      exportName:'demirbaslar', exportTitle:'Demirbaş Listesi',
+      pageSize:10, views:['table','card'], urlSync:true, urlKeep:['t'],
+      defaultSort:'kod', defaultDir:'asc',
+      passive:['Hurda'],
+
+      search:{ placeholder:'Demirbaş no, marka, model, seri ya da barkod ara',
+               fields:['kod','marka','model','seri','barkod','kategori','altKategori'],
+               extra:function(a){ return empAd(a.zimmetli) || ''; } },
+
+      /* `musteri` kapsamı bildirilmez: demirbaş kaydında müşteri alanı yok
+         ve `ekip` bölümü `musteri` rolüne zaten kapalı (shell.js SEC_BY_ROLE),
+         var olmayan bir eşlemeyi bildirmek süzgeci sessizce yanlış kurardı. */
+      scopeField:{ kendi:'zimmetli', departman:'dep' },
+
+      kpis:[
+        { label:'Toplam demirbaş', icon:'i-package', calc:function(base){ return base.length; } },
+        { label:'Zimmetli', icon:'i-user-check', tone:'info',
+          meta:function(base){ return base.filter(function(a){ return a.durum === 'Zimmetli'; }).length + ' / ' + base.length; },
+          calc:function(base){ return base.filter(function(a){ return a.durum === 'Zimmetli'; }).length; } },
+        { label:'Depoda', icon:'i-package', tone:'neutral',
+          calc:function(base){ return base.filter(function(a){ return a.durum === 'Depoda'; }).length; } },
+        { label:'Zimmet bekliyor', icon:'i-hourglass', tone:'warn',
+          meta:function(){ return 'tutanak yazıldı, personel henüz kabul etmedi (durum "Zimmetli" değil)'; },
+          metaTone:'warn',
+          calc:function(base){ return base.filter(function(a){ return a.durum === 'Zimmet bekliyor'; }).length; } },
+        { label:'Toplam alış değeri', icon:'i-wallet', perm:'finans', format:F.moneyK,
+          meta:function(){ return 'NET · KDV hariç, siparişin netiyle aynı eksen'; },
+          calc:function(base){ return base.reduce(function(s, a){ return s + (a.alisFiyati || 0); }, 0); } }
+      ],
+
+      columns:[
+        GV.cols.kod('kod', 'Demirbaş', { width:'11%', locked:true }),
+        { key:'kategori', label:'Kategori', cellClass:'cell-wrap',
+          exportValue:function(a){ return [a.kategori, a.altKategori].filter(Boolean).join(' · '); },
+          render:function(a){
+            return '<span class="cell-main">' + GV.esc(a.kategori) + '</span>' +
+              (bos(a.altKategori) ? GV.cell.sub(GV.esc(a.altKategori)) : ''); } },
+        { key:'model', label:'Marka / Model', cellClass:'cell-wrap',
+          sortValue:function(a){ return [a.marka, a.model].filter(Boolean).join(' '); },
+          exportValue:function(a){ return [a.marka, a.model].filter(Boolean).join(' '); },
+          render:function(a){
+            return '<span class="cell-main">' + GV.esc([a.marka, a.model].filter(Boolean).join(' ') || '—') + '</span>' +
+              (bos(a.seri) ? GV.cell.sub('Seri: ' + GV.esc(a.seri)) : ''); } },
+        GV.cols.durum('durum', 'Durum'),
+        GV.cols.kisi('zimmetli', 'Zimmetli personel', { bosMetin:'—' }),
+        { key:'lokasyon', label:'Lokasyon', cellClass:'cell-wrap',
+          exportValue:function(a){ return a.lokasyon || ''; },
+          render:function(a){ return a.lokasyon
+            ? '<span class="cell-main">' + GV.esc(a.lokasyon) + '</span>' : GV.cell.faint('—'); } },
+        { key:'dep', label:'Departman', visible:false, cellClass:'center',
+          exportValue:function(a){ return a.dep || ''; },
+          render:function(a){ return a.dep ? '<span class="cell-code">' + GV.esc(a.dep) + '</span>' : GV.cell.faint('—'); } },
+        GV.cols.money('alisFiyati', 'Alış fiyatı', { perm:'finans', visible:false, sub:function(){ return 'NET'; } }),
+        GV.cols.date('alisTarihi', 'Alış tarihi', { plain:true, visible:false }),
+        GV.cols.date('garantiBit', 'Garanti bitiş', { plain:true, visible:false }),
+        { key:'siparis', label:'Sipariş', visible:false, cellClass:'center',
+          exportValue:function(a){ return a.siparis || ''; },
+          render:function(a){ return a.siparis
+            ? '<span class="cell-code">' + GV.esc(a.siparis) + '</span>'
+            : GV.cell.faint('—') + GV.cell.sub('siparişten türetilmedi'); } }
+      ],
+
+      filters:[
+        /* `DB.assetCategories` bir SÖZLÜKTÜR (20 değer) — kayıtlardan değil
+           sözlükten türetilir (§10.1'in tersi: sözlük VARSA sözlük kullanılır). */
+        { key:'kategori', label:'Kategori', type:'multi',
+          options:(DB.assetCategories || kategoriler).map(function(k){ return { value:k, label:k }; }) },
+        { key:'durum', label:'Durum', type:'multi',
+          options:(DB.assetStatuses || []).map(function(d){ return { value:d, label:d }; }) },
+        /* `lokasyon` alanının sözlüğü YOK; seçenekler mevcut kayıtlardan
+           türetildi (§10.1) — 4 farklı değer ölçüldü. */
+        { key:'lokasyon', label:'Lokasyon (mevcut kayıtlardan türetildi)', type:'select',
+          options:lokasyonlar.map(function(l){ return { value:l, label:l }; }) }
+      ],
+
+      rowClass:function(a){ return GV.arsivli(a, ['Hurda']) ? 'is-passive' : ''; },
+
+      card:function(a){
+        return '<div class="gv-rcard-top"><div>' +
+          '<span class="cell-main">' + GV.esc(a.kod) + '</span>' +
+          '<div class="cell-code">' + GV.esc(a.kategori) + '</div></div>' +
+          GV.badge(a.durum) + '</div>' +
+        '<div class="gv-rcard-meta">' +
+          '<span>' + GV.esc([a.marka, a.model].filter(Boolean).join(' ') || '—') + '</span>' +
+          '<span>' + GV.esc(a.lokasyon || '—') + '</span>' +
+        '</div>' +
+        '<div class="gv-rcard-foot">' +
+          (a.zimmetli ? GV.user(a.zimmetli, { sm:true }) : '<span class="u-faint u-xs">zimmetsiz</span>') +
+        '</div>';
+      },
+
+      mobile:function(a){
+        return GV.cell.mrow(
+          '<span class="cell-main">' + GV.esc(a.kod) + '</span>' + GV.badge(a.durum),
+          GV.esc(a.kategori + (a.model ? ' · ' + [a.marka, a.model].filter(Boolean).join(' ') : '')),
+          [ GV.ico('i-user-check','ic-sm') + GV.esc(empAd(a.zimmetli) || '—'),
+            GV.ico('i-home','ic-sm') + GV.esc(a.lokasyon || '—') ]
+        );
+      },
+
+      rowActions:[
+        { key:'ac', icon:'i-eye', label:'Demirbaşı aç', run:function(a){ demirbasDrawer(a); } }
+      ],
+      bulk:[{ key:'disa', label:'Dışa aktar', icon:'i-download', export:true }],
+
+      emptyState:{ icon:'i-package', title:'Bu görünümde demirbaş yok',
+        desc:'Filtreleri değiştirebilirsiniz. Kaynak veride ' + DEMIRBAS.length + ' demirbaş var; ' +
+             'hurdaya ayrılanlar varsayılan görünümde gizlidir.' }
+    };
+  }
+
+  function cfgZimmet(){
+    var personeller = benzersiz(ZIMMET, 'personel');
+    var durumlar = benzersiz(ZIMMET, 'durum');
+    var onaylar = benzersiz(ZIMMET, 'personelOnay');
+    return {
+      mount:'#varlikListe', id:'varlik-zimmet', key:'kod',
+      source:function(){ return DB.assignments; },
+      exportName:'zimmetler', exportTitle:'Zimmet Kayıtları',
+      pageSize:10, views:['table','card'], urlSync:true, urlKeep:['t'],
+      defaultSort:'teslimTarihi', defaultDir:'desc',
+      passive:['İade edildi'],
+
+      search:{ placeholder:'Zimmet no, demirbaş ya da personel ara',
+               fields:['kod','demirbas'],
+               extra:function(z){
+                 var a = demirbasKaydi(z.demirbas);
+                 return [empAd(z.personel) || '', a ? [a.marka, a.model].filter(Boolean).join(' ') : '']
+                   .filter(Boolean).join(' '); } },
+
+      scopeField:{ kendi:'personel', departman:function(z){ return empDep(z.personel); } },
+
+      kpis:[
+        { label:'Toplam zimmet kaydı', icon:'i-user-check', calc:function(base){ return base.length; } },
+        { label:'Aktif zimmet', icon:'i-check-circle', tone:'ok',
+          calc:function(base){ return base.filter(function(z){ return z.durum === 'Aktif'; }).length; } },
+        { label:'Kabul bekleyen', icon:'i-hourglass', tone:'warn',
+          meta:function(){ return 'tutanak yazıldı, personel henüz onaylamadı — envanter "Zimmet bekliyor" gösterir'; },
+          metaTone:'warn',
+          calc:function(base){
+            return base.filter(function(z){ return z.durum !== 'İade edildi' && z.personelOnay !== 'Onaylandı'; }).length; } },
+        { label:'Hasar bildirilen', icon:'i-alert', tone:'danger',
+          meta:function(){ return 'iade sırasında hasar kaydı düşülen zimmet'; },
+          calc:function(base){ return base.filter(function(z){ return !!bos(z.hasar); }).length; } }
+      ],
+
+      columns:[
+        GV.cols.kod('kod', 'Zimmet', { width:'11%', locked:true,
+          sub:function(z){ return GV.esc(z.demirbas || ''); } }),
+        { key:'demirbas', label:'Demirbaş', cellClass:'cell-wrap',
+          sortValue:function(z){ return z.demirbas || ''; },
+          exportValue:function(z){
+            var a = demirbasKaydi(z.demirbas);
+            return a ? [a.marka, a.model].filter(Boolean).join(' ') : (z.demirbas || ''); },
+          render:function(z){
+            var a = demirbasKaydi(z.demirbas);
+            if(!a) return GV.cell.faint(z.demirbas || '—') + GV.cell.sub('demirbaş kaydı defterde yok');
+            return '<span class="cell-main">' + GV.esc([a.marka, a.model].filter(Boolean).join(' ') || a.kod) + '</span>' +
+                   GV.cell.sub(GV.esc(a.kod)); } },
+        GV.cols.kisi('personel', 'Personel'),
+        GV.cols.date('teslimTarihi', 'Teslim tarihi', { plain:true }),
+        GV.cols.durum('durum', 'Durum'),
+        GV.cols.durum('personelOnay', 'Personel onayı'),
+        GV.cols.date('iadeTarihi', 'İade tarihi', { plain:true, visible:false, bosMetin:'iade edilmedi' }),
+        { key:'tutanak', label:'Tutanak', visible:false,
+          exportValue:function(z){ return z.tutanak || ''; },
+          render:function(z){ return bos(z.tutanak)
+            ? '<span class="cell-code">' + GV.esc(z.tutanak) + '</span>' + GV.cell.sub('indirilemez (BE-K2)')
+            : GV.cell.faint('—'); } },
+        { key:'hasar', label:'Hasar', visible:false, cellClass:'cell-wrap',
+          exportValue:function(z){ return z.hasar || ''; },
+          render:function(z){ return bos(z.hasar) ? GV.esc(z.hasar) : GV.cell.faint('—'); } }
+      ],
+
+      filters:[
+        { key:'personel', label:'Personel', type:'select',
+          options:personeller.map(function(k){ return { value:k, label:empAd(k) }; }) },
+        /* Zimmet ve onay eksenlerinin sözlüğü YOK; seçenekler kayıtlardan
+           türetildi (§10.1). */
+        { key:'durum', label:'Durum (mevcut kayıtlardan türetildi)', type:'multi',
+          options:durumlar.map(function(d){ return { value:d, label:d }; }) },
+        { key:'personelOnay', label:'Personel onayı (mevcut kayıtlardan türetildi)', type:'select',
+          options:onaylar.map(function(d){ return { value:d, label:d }; }) },
+        { key:'teslimTarihi', label:'Teslim tarihi', type:'daterange' }
+      ],
+
+      rowClass:function(z){ return GV.arsivli(z, ['İade edildi']) ? 'is-passive' : ''; },
+
+      card:function(z){
+        var a = demirbasKaydi(z.demirbas);
+        return '<div class="gv-rcard-top"><div>' +
+          '<span class="cell-main">' + GV.esc(z.kod) + '</span>' +
+          '<div class="cell-code">' + GV.esc(a ? a.kod : (z.demirbas || '—')) + '</div></div>' +
+          GV.badge(z.durum) + '</div>' +
+        '<div class="gv-rcard-meta">' +
+          '<span>' + GV.esc(empAd(z.personel) || '—') + '</span>' +
+          '<span>' + GV.badge(z.personelOnay) + '</span>' +
+        '</div>';
+      },
+
+      mobile:function(z){
+        var a = demirbasKaydi(z.demirbas);
+        return GV.cell.mrow(
+          '<span class="cell-main">' + GV.esc(z.kod) + '</span>' + GV.badge(z.durum),
+          GV.esc(a ? [a.marka, a.model].filter(Boolean).join(' ') : (z.demirbas || '—')),
+          [ GV.ico('i-user-check','ic-sm') + GV.esc(empAd(z.personel) || '—'),
+            GV.ico('i-stamp','ic-sm') + GV.esc(z.personelOnay || '—') ]
+        );
+      },
+
+      rowActions:[
+        { key:'ac', icon:'i-eye', label:'Tutanağı aç', run:function(z){ zimmetDrawer(z); } },
+        { key:'demirbas', icon:'i-package', label:'Demirbaşı aç',
+          show:function(z){ return !!demirbasKaydi(z.demirbas); },
+          run:function(z){ demirbasDrawer(demirbasKaydi(z.demirbas)); } }
+      ],
+      bulk:[{ key:'disa', label:'Dışa aktar', icon:'i-download', export:true }],
+
+      emptyState:{ icon:'i-user-check', title:'Bu görünümde zimmet kaydı yok',
+        desc:'Filtreleri değiştirebilirsiniz. Kaynak veride ' + ZIMMET.length + ' zimmet kaydı var; ' +
+             'iade edilenler varsayılan görünümde gizlidir.' }
+    };
+  }
+
+  function cfgFilo(){
+    var durumlar = benzersiz(FILO, 'durum');
+    var kullanimlar = benzersiz(FILO, 'kullanim');
+    var mulkiyetler = benzersiz(FILO, 'mulkiyet');
+    var tipler = benzersiz(FILO, 'tip');
+    var suruculer = benzersiz(FILO, 'anaSurucu');
+
+    return {
+      mount:'#varlikListe', id:'varlik-filo', key:'kod',
+      source:function(){ return DB.vehicles; },
+      exportName:'filo-araclari', exportTitle:'Filo — Araçlar',
+      pageSize:10, views:['table','card'], urlSync:true, urlKeep:['t'], archive:false,
+      defaultSort:'kod', defaultDir:'asc',
+      /* Filo yüzeyinde `passive` VERİLMEZ (§20.7): "Serviste" bir aracın
+         emekliliği değil, geçici bir durumdur ve listede görünmelidir.
+         Arşivlenmiş durum ekseni de yok, o yüzden arşiv toggle'ı KAPATILIR —
+         hiçbir zaman bir şey gizlemeyen bir düğme göstermek yasak değil ama
+         yanıltıcıdır (§10.1 ile aynı dürüstlük gerekçesi). */
+
+      search:{ placeholder:'Plaka, marka, model ya da şasi ara',
+               fields:['kod','plaka','marka','model','sasi','motorNo'],
+               extra:function(v){ return [empAd(v.anaSurucu) || '', empAd(v.yedekSurucu) || ''].filter(Boolean).join(' '); } },
+
+      scopeField:{ kendi:'anaSurucu', departman:'dep' },
+
+      kpis:[
+        { label:'Toplam araç', icon:'i-car', calc:function(base){ return base.length; } },
+        { label:'Serviste', icon:'i-wrench', tone:'warn',
+          calc:function(base){ return base.filter(function(v){ return v.durum === 'Serviste'; }).length; } },
+        { label:'Bakımı yaklaşan', icon:'i-calendar-check', tone:'warn',
+          meta:function(){ return 'sonrakiBakimTarihi bugüne (' + DB.today + ') 30 gün ya da daha az kalan araç · DB.vehicles alanından ölçüldü'; },
+          metaTone:'warn',
+          calc:function(base){
+            return base.filter(function(v){
+              var d = F.days(v.sonrakiBakimTarihi);
+              return d != null && d <= 30; }).length; } },
+        { label:'Toplam alış bedeli', icon:'i-wallet', perm:'finans', format:F.moneyK,
+          meta:function(){ return 'yalnız satın alınan araçlar; kiralık araçların alış bedeli yok'; },
+          calc:function(base){ return base.reduce(function(s, v){ return s + (v.alisBedeli || 0); }, 0); } }
+      ],
+
+      columns:[
+        GV.cols.kod('kod', 'Araç', { width:'10%', locked:true,
+          sub:function(v){ return GV.esc(v.plaka); } }),
+        { key:'plaka', label:'Plaka', visible:false, cellClass:'center',
+          exportValue:function(v){ return v.plaka || ''; },
+          render:function(v){ return '<span class="cell-code">' + GV.esc(v.plaka) + '</span>'; } },
+        { key:'model', label:'Marka / Model', cellClass:'cell-wrap',
+          sortValue:function(v){ return [v.marka, v.model].filter(Boolean).join(' '); },
+          exportValue:function(v){ return [v.marka, v.model].filter(Boolean).join(' '); },
+          render:function(v){
+            return '<span class="cell-main">' + GV.esc([v.marka, v.model].filter(Boolean).join(' ')) + '</span>' +
+              GV.cell.sub(GV.esc([v.modelYili, v.tip].filter(Boolean).join(' · '))); } },
+        { key:'kullanim', label:'Kullanım', cellClass:'cell-wrap',
+          exportValue:function(v){ return v.kullanim || ''; },
+          render:function(v){ return v.kullanim
+            ? '<span class="cell-main">' + GV.esc(v.kullanim) + '</span>' : GV.cell.faint('—'); } },
+        GV.cols.kisi('anaSurucu', 'Ana sürücü', { bosMetin:'—' }),
+        GV.cols.durum('durum', 'Durum'),
+        GV.cols.num('guncelKm', 'Güncel km', { basamak:0 }),
+        GV.cols.date('sonrakiBakimTarihi', 'Sonraki bakım', { plain:true, visible:false }),
+        { key:'mulkiyet', label:'Mülkiyet', visible:false, cellClass:'center',
+          exportValue:function(v){ return v.mulkiyet || ''; },
+          render:function(v){ return v.mulkiyet ? GV.esc(v.mulkiyet) : GV.cell.faint('—'); } },
+        { key:'tip', label:'Tip', visible:false, cellClass:'center',
+          exportValue:function(v){ return v.tip || ''; },
+          render:function(v){ return v.tip ? GV.esc(v.tip) : GV.cell.faint('—'); } },
+        { key:'yakit', label:'Yakıt', visible:false, cellClass:'center',
+          exportValue:function(v){ return v.yakit || ''; },
+          render:function(v){ return v.yakit ? GV.esc(v.yakit) : GV.cell.faint('—'); } },
+        GV.cols.money('alisBedeli', 'Alış bedeli', { perm:'finans', visible:false,
+          sub:function(v){ return v.mulkiyet === 'Kiralık' ? 'kiralık, alış bedeli yok' : null; } })
+      ],
+
+      filters:[
+        /* Dört alanın da (`durum`/`kullanim`/`mulkiyet`/`tip`) sözlüğü YOK —
+           `vehicleStatuses` gibi sözlükler bu depoda tanımlı değil (§20.4).
+           Seçenekler mevcut 4 kayıttan türetildi, uydurulmadı (§10.1). */
+        { key:'durum', label:'Durum (mevcut 4 araçtan türetildi)', type:'multi',
+          options:durumlar.map(function(d){ return { value:d, label:d }; }) },
+        { key:'kullanim', label:'Kullanım (mevcut kayıtlardan türetildi)', type:'select',
+          options:kullanimlar.map(function(d){ return { value:d, label:d }; }) },
+        { key:'mulkiyet', label:'Mülkiyet (mevcut kayıtlardan türetildi)', type:'select',
+          options:mulkiyetler.map(function(d){ return { value:d, label:d }; }) },
+        { key:'tip', label:'Tip (mevcut kayıtlardan türetildi)', type:'select',
+          options:tipler.map(function(d){ return { value:d, label:d }; }) },
+        { key:'anaSurucu', label:'Ana sürücü', type:'select',
+          options:suruculer.map(function(k){ return { value:k, label:empAd(k) }; }) }
+      ],
+
+      card:function(v){
+        return '<div class="gv-rcard-top"><div>' +
+          '<span class="cell-main">' + GV.esc(v.kod) + '</span>' +
+          '<div class="cell-code">' + GV.esc(v.plaka) + '</div></div>' +
+          GV.badge(v.durum) + '</div>' +
+        '<div class="gv-rcard-meta">' +
+          '<span>' + GV.esc([v.marka, v.model].filter(Boolean).join(' ')) + '</span>' +
+          '<span>' + GV.esc(v.kullanim || '—') + '</span>' +
+        '</div>' +
+        '<div class="gv-rcard-foot">' +
+          (v.anaSurucu ? GV.user(v.anaSurucu, { sm:true }) : '<span class="u-faint u-xs">ortak kullanım</span>') +
+          '<span>' + GV.cell.num(v.guncelKm) + ' km</span>' +
+        '</div>';
+      },
+
+      mobile:function(v){
+        return GV.cell.mrow(
+          '<span class="cell-main">' + GV.esc(v.kod) + '</span>' + GV.badge(v.durum),
+          GV.esc(v.plaka + ' · ' + [v.marka, v.model].filter(Boolean).join(' ')),
+          [ GV.ico('i-user-check','ic-sm') + GV.esc(empAd(v.anaSurucu) || 'ortak kullanım'),
+            GV.ico('i-gauge','ic-sm') + GV.esc(F.num(v.guncelKm) + ' km') ]
+        );
+      },
+
+      rowActions:[
+        { key:'ac', icon:'i-eye', label:'Aracı aç', run:function(v){ aracDrawer(v); } }
+      ],
+      bulk:[{ key:'disa', label:'Dışa aktar', icon:'i-download', export:true }],
+
+      emptyState:{ icon:'i-car', title:'Bu görünümde araç yok',
+        desc:'Filtreleri değiştirebilirsiniz. Kaynak veride ' + FILO.length + ' araç var.' }
+    };
+  }
+
+  var YUZEY_CFG = { demirbas:cfgDemirbas, zimmet:cfgZimmet, filo:cfgFilo };
+
+  function ciz(key){
+    GV.list(YUZEY_CFG[key]());
+  }
+
+  isaretle(aktifYuzey);
+  ciz(aktifYuzey);
+
+  /* ================================================================
+     BACKEND PAYI BEYANI — §10.2(b) biçimi, §20.6 tablosundan KOPYALANDI.
+     Yalnız bu ekranla ilgili maddeler: BE-P1 · BE-K2 · BE-S4 · BE-S5.
+     ================================================================ */
+  var BACKEND = [
+    { kod:'BE-P1', madde:'Durum geçişi ve zimmet kabul/geri alma sunucuda yeniden doğrulanmaz; yetki kontrolü istemcide koşar.' },
+    { kod:'BE-K2', madde:'Zimmet tutanağı ıslak/e-imza taşımaz; kabul yalnız bir bayraktır (`personelOnay`).' },
+    { kod:'BE-S4', madde:'Belge yükleme (tutanak) gerçek depoya yazmaz; yalnız dosya adı bellekte tutulur, indirilemez.' },
+    { kod:'BE-S5', madde:'Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır.' }
+  ];
+  document.getElementById('varlikBackend').innerHTML =
+    '<section class="gv-card"><div class="gc-head">' +
+      '<h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+      '<span class="u-faint u-sm">' + BACKEND.length + ' madde</span></div>' +
+      '<div class="gc-body">' +
+        GV.dl(BACKEND.map(function(b){
+          return ['<span class="cell-code">' + GV.esc(b.kod) + '</span>', GV.esc(b.madde)];
+        })) +
+        '<p class="u-sm u-muted u-mt-8">Bu maddeler prototipte <b>uygulanmadı</b> ve <b>taklit edilmedi</b>. ' +
+        'Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+      '</div></section>';
+});
+</script>
+</body>
+</html>

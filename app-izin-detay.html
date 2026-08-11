@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>İzin talebi — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="ekip" data-screen="zaman">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/hr.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   İZİN TALEBİ DETAYI — brief §20.0 · §20.5 · §20.6
+
+   `app-zaman.html`in İzin yüzeyindeki "İzin detayını aç" hedefi:
+   app-izin-detay.html?id=IZN-…
+
+   DURUM MOTORU: bu ekran kendi durum listesini YAZMAZ, `l.durum = …` demez.
+   Butonlar `GV.flow.adimlar('leave', kod)`ten doğar, geçiş yalnız
+   `GV.flow.gec('leave', kod, hedef, ek, opts)` ile uygulanır — aynı motor
+   `app-zaman.html`in İzin yüzeyinde de bu şekilde çağrılıyor.
+
+   ⚠️ BAKİYE KAPISI HEDEFE BAĞLIDIR (`DB.transitions.leave.Onaylandı.girisKapi
+   === 'izinBakiye'`), KAYNAĞA DEĞİL: bakiyesi yetmeyen bir talep ONAYLANAMAZ
+   ama REDDEDİLEBİLİR ve İPTAL EDİLEBİLİR (org.js:667-684). `adimlar()` bunu
+   `eksik` alanında değil, `a.kapi` üzerinden bildirir — bu ekran o kapıyı
+   `GV.gates[a.kapi](l)` ile kendi okur ve YALNIZ o hedefi kapatır.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var esc = GV.esc, ico = GV.ico, F = GV.fmt;
+  var EYEBROW = 'Ekip ve Kaynaklar · İzin';
+  var kod = new URLSearchParams(location.search).get('id');
+
+  function izin(){ return (DB.leaves || []).filter(function(x){ return x.kod === kod; })[0] || null; }
+
+  /* --- 1) Kayıt yok → pageHead + errorState, ÇIK (brief §6 adım 1) ---- */
+  if(!izin()){
+    GV.pageHead({ eyebrow:EYEBROW, title:'Kayıt bulunamadı', sub:kod || 'Adreste izin talebi kodu yok' });
+    mount.innerHTML = '<div class="gv-card">' + GV.errorState({
+      title:'İzin talebi bulunamadı',
+      desc:(kod ? '“' + kod + '” kodlu ' : 'Aradığınız ') + 'izin talebi defterde yok. ' +
+           'Adres yanlış olabilir ya da kayıt bu prototipte üretilmedi (defterde 7 izin talebi var).',
+      action:'<a class="btn btn-acc" href="app-zaman.html#izin">İzin listesine dön</a>'
+    }) + '</div>';
+    return;
+  }
+
+  /* --- 2) Kayıt sahipliği kapısı (brief §6 adım 2) --------------------
+     İzin talebinde `musteri` alanı yoktur — bu saf bir iç İK kaydıdır.
+     Personel oturumunda kapı zaten geçer; bir müşteri oturumu buraya
+     adres çubuğundan gelirse (kayıtta eşleşecek `musteri` olmadığı için)
+     yetkisiz ekranı basar. Aynı yordam, aynı yerde durur (26 detay
+     ekranıyla aynı kural, tekrar yazılmaz). */
+  if(!GV.guardRecord({ mount:'#rec', musteri:null, kod:izin().kod,
+                       eyebrow:EYEBROW, title:'İzin talebi',
+                       geriHref:'app-zaman.html#izin', geriLabel:'İzin listesine dön' })) return;
+
+  function faint(s){ return '<span class="u-faint">' + esc(s) + '</span>'; }
+  function satir(lbl, val){
+    return '<div class="gv-summary-row"><span class="gv-summary-lbl">' + esc(lbl) + '</span>' +
+           '<span class="gv-summary-val">' + val + '</span></div>';
+  }
+  function kisiLink(k, opt){
+    if(!k) return null;
+    return '<a href="app-personel-detay.html?id=' + esc(k) + '">' + GV.user(k, opt || { sm:true }) + '</a>';
+  }
+
+  ciz();
+
+  /* =================================================================== */
+  function ciz(){
+    var l        = izin();
+    var e        = (DB.employees || []).filter(function(x){ return x.kod === l.personel; })[0] || null;
+    var vekilE   = l.vekil ? (DB.employees || []).filter(function(x){ return x.kod === l.vekil; })[0] || null : null;
+    var isGun    = GV.calendar.isGunu(l.baslangic, l.bitis);
+    /* Geçiş tablosu EKRANDAN okunmaz — `GV.flow.durumBilgi` tek başvuru
+       noktasıdır (terminal mi, hangi roller çıkabilir). */
+    var kural    = GV.flow.durumBilgi('leave', l.kod) || { terminal:false, yetki:[] };
+    var adimlar  = GV.flow.adimlar('leave', l.kod) || [];
+    var onayKuy  = (DB.approvals || []).filter(function(a){ return a.kayit === l.kod; });
+    var akisTan  = GV.approval.akisTanim('İzin talebi');
+    var gecmis   = GV.audit.oku(l.kod, 30);
+
+    GV.pageHead({
+      eyebrow:EYEBROW,
+      title:l.tur + ' talebi',
+      sub:l.kod + ' · ' + (e ? e.ad : l.personel) + ' · ' +
+          F.dateShort(l.baslangic) + ' → ' + F.dateShort(l.bitis),
+      actions:[
+        { label:'İzin listesi',  icon:'i-arrow-left', href:'app-zaman.html#izin' },
+        { label:'Personel profili', icon:'i-user',    href:'app-personel-detay.html?id=' + esc(l.personel) }
+      ]
+    });
+
+    mount.innerHTML =
+      '<div class="gv-grid gv-grid-main">' +
+
+      /* ============ ANA SÜTUN ============ */
+      '<div class="u-col">' +
+
+        /* --- Durum ve geçişler --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-refresh') + 'Durum ve yapılabilir işlemler</h3>' +
+          '<span class="gc-head-acts">' + GV.badge(l.durum) + '</span></div>' +
+          '<div class="gc-body u-col">' +
+
+            (adimlar.length
+              ? '<div class="u-row u-wrap">' + adimlar.map(adimBtn).join('') + '</div>'
+              : '<p class="u-faint u-sm u-mb-0">' +
+                  (kural.terminal
+                    ? '"' + esc(l.durum) + '" geçiş tablosunda terminal bir durumdur; talebin yaşam ' +
+                      'döngüsü kapanmıştır.'
+                    : '"' + esc(l.durum) + '" durumundan bu oturuma açık bir hedef bulunmuyor.') + '</p>') +
+
+            (adimlar.length && !adimlar[0].izin
+              ? GV.notice({ tone:'warn', icon:'i-lock', title:'Bu geçişleri uygulama yetkiniz yok',
+                  text:'"' + esc(l.durum) + '" durumundan çıkışı yapabilecekler: ' +
+                       (kural.yetki || []).join(' · ') +
+                       ' — “onaylayan” bir rol değil, bu talebin bağlı yöneticisi/onay mercii ilişkisidir.' })
+              : '') +
+
+            (adimlar.some(bakiyeKapali)
+              ? GV.notice({ tone:'warn', icon:'i-alert-circle', title:'Onaylama bakiye kapısına takılıyor',
+                  text:bakiyeMesaj(l) + ' Bakiye yalnız ONAYLAMAYI bağlar — bu talep yine de reddedilebilir ' +
+                       've iptal edilebilir; ret/iptal bakiye harcamaz, yalnız iade eder.' })
+              : '') +
+          '</div>' +
+        '</section>' +
+
+        /* --- Künye --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-calendar') + 'Künye</h3><span class="gc-meta">' + esc(l.kod) + '</span></div>' +
+          '<div class="gc-body">' +
+            GV.dl([
+              ['İzin türü', esc(l.tur)],
+              ['Durum', GV.badge(l.durum)],
+              ['Tarih aralığı', '<span class="cell-date">' + F.date(l.baslangic) + ' → ' + F.date(l.bitis) + '</span>'],
+              ['Süre (kayıt)', GV.fmt.num(l.gun) + ' gün'],
+              ['Süre (iş günü, GV.calendar.isGunu)', GV.fmt.num(isGun) + ' gün' +
+                (l.gun === isGun
+                  ? ' <span class="cell-sub">kayıttaki gün sayısıyla aynı</span>'
+                  : ' <span class="cell-sub">kayıtta ' + l.gun + ' gün yazıyor — hafta sonu/tatil farkı</span>')],
+              ['Talep eden', kisiLink(l.personel) || faint('—')],
+              ['Departman', e && e.depAd ? esc(e.depAd) : faint('kayıtta yok')],
+              ['Bağlı yönetici / onay mercii', kisiLink(l.onaylayan) || faint('atanmamış')],
+              ['Vekil', l.vekil
+                ? kisiLink(l.vekil) + (vekilE && vekilE.depAd ? '<span class="cell-sub">' + esc(vekilE.depAd) + '</span>' : '')
+                : faint('vekil atanmadı')],
+              ['Talep tarihi', l.talepTarihi ? '<span class="cell-date">' + F.date(l.talepTarihi) + '</span>' : faint('—')],
+              ['Karar tarihi', l.onayTarihi ? '<span class="cell-date">' + F.date(l.onayTarihi) + '</span>' : faint('karar verilmedi')],
+              ['Proje takvimi çakışması', l.cakisma
+                ? GV.badge('Çakışıyor', 'is-warn') +
+                  '<span class="cell-sub">proje takvimi çakışması — personel çakışması DEĞİL (hr.js)</span>'
+                : faint('çakışma işaretlenmemiş')],
+              ['Talep gerekçesi', l.gerekce ? esc(l.gerekce) : faint('gerekçe yazılmamış')]
+            ]) +
+          '</div>' +
+        '</section>' +
+
+        /* --- Bakiye --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-wallet') + 'İzin bakiyesi</h3></div>' +
+          '<div class="gc-body">' +
+            (e
+              ? GV.dl([
+                  ['Güncel bakiye (DB.employees.izinBakiye)', e.izinBakiye != null
+                    ? GV.fmt.num(e.izinBakiye) + ' gün' : faint('bakiye alanı kayıtta yok')],
+                  ['Bu talebin düştüğü gün', l.dusenGun
+                    ? GV.fmt.num(l.dusenGun) + ' gün ' + faint('onaylandığında bu oturumda düşüldü')
+                    : faint('henüz düşülmedi')],
+                  ['Bakiye kapısı', l.tur === 'Ücretsiz izin'
+                    ? faint('“Ücretsiz izin” türü bakiyeden düşmez, kapı bu talebi bağlamaz')
+                    : (GV.gates.izinBakiye(l).ok
+                        ? '<span class="badge is-ok">Yeterli</span> <span class="cell-sub">' +
+                          isGun + ' gün isteniyor, ' + (e.izinBakiye || 0) + ' gün kalan</span>'
+                        : '<span class="badge is-warn">Yetersiz</span> <span class="cell-sub">' +
+                          esc(GV.gates.izinBakiye(l).why) + '</span>')]
+                ])
+              : faint('personel kaydı defterde yok — bakiye ölçülemedi')) +
+            '<p class="u-faint u-sm u-mb-0">Bakiye defterden okunur; bu ekran alana yazmaz. Onay bakiyeyi ' +
+              'düşer, iptal geri yükler — düşümü/iadeyi <code>GV.flow.yanEtki</code> yapar (org.js:690-705). ' +
+              'Sayfa yenilenince bellekteki değer kaynak veriye döner (BE-P1).</p>' +
+          '</div>' +
+        '</section>' +
+
+        /* --- Ret / karar gerekçesi --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-x-circle') + 'Ret / karar gerekçesi</h3></div>' +
+          '<div class="gc-body">' +
+            GV.dl([
+              ['Kayıttaki ret notu', l.ret
+                ? esc(l.ret)
+                : faint(l.durum === 'Reddedildi'
+                    ? 'reddedildi ama defterde ret notu yok'
+                    : 'talep reddedilmedi — 7 talebin yalnız 1’inde (IZN-2026-033) bu alan dolu')],
+              ['Son karar gerekçesi (sonNedenKodu)', l.sonNedenKodu
+                ? esc(l.sonNedenKodu) + (l.sonNedenAciklama ? ' — ' + esc(l.sonNedenAciklama) : '') +
+                  '<span class="cell-sub">bu oturumda uygulanan gerekçeli geçişle yazıldı</span>'
+                : faint('bu kayıtta gerekçeli bir geçiş bu oturumda uygulanmadı')]
+            ], { skipEmpty:false }) +
+            '<p class="u-faint u-xs u-mb-0">İki alan ayrı kaynaktır: “ret” seed veride elle yazılmış eski bir ' +
+              'metindir; “sonNedenKodu/sonNedenAciklama” <code>GV.flow.gec</code>in gerekçeli geçişte yazdığı ' +
+              'alandır (domain.js:672). Biri diğerinin yerine geçmez, karıştırılmadı.</p>' +
+          '</div>' +
+        '</section>' +
+
+        /* --- Onay zinciri --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-stamp') + 'Onay zinciri</h3>' +
+          (akisTan ? '<span class="gc-meta">' + esc(akisTan.kod) + ' · sürüm ' + akisTan.surum + '</span>' : '') +
+          '</div>' +
+          '<div class="gc-body u-col">' +
+            (akisTan
+              ? '<ul class="gv-checklist">' + akisTan.adimlar.map(function(s){
+                  var tetik = s.kosul === 'hep' ? true : (s.kosul === 'gun' ? isGun > s.esik : null);
+                  return '<li><span class="cell-main">' + esc(s.ad) +
+                    '<span class="cell-sub">adım ' + s.sira + ' · rol: ' + esc(s.rol) + ' · koşul: ' +
+                    (s.kosul === 'hep' ? 'her talepte' : esc(s.kosul) + ' > ' + s.esik + ' iş günü') +
+                    ' · bu talepte ' + isGun + ' iş günü' +
+                    (s.kosul === 'hep' ? '' : (tetik ? ' — tetiklendi' : ' — tetiklenmedi')) + '</span></span>' +
+                    (s.kosul === 'hep' ? GV.badge('Her talepte geçerli', 'is-ok')
+                      : (tetik ? GV.badge('Tetiklendi', 'is-warn') : GV.badge('Tetiklenmedi', ''))) +
+                    '</li>';
+                }).join('') + '</ul>'
+              : '<p class="u-faint u-sm u-mb-0">"İzin talebi" için yayında bir akış tanımı bulunamadı.</p>') +
+
+            '<p class="u-sm u-muted u-mb-0">Ölçüldü: 7 talebin 7’sinde <code>onaylayan</code> alanı, talep ' +
+              'sahibinin <code>DB.employees.yonetici</code> alanıyla birebir aynı (Bağlı Yönetici adımı) — ' +
+              'hiçbirinde 10 iş gününü aşan bir talep yok, İK adımı bu defterde hiç tetiklenmedi. Kayıt ve onay ' +
+              'kuyruğu tek bir <code>onaylayan</code>/<code>durum</code> çifti taşıyor; adım bazlı ilerleme ' +
+              '(hangi adımın ne zaman sonuçlandığı) ayrı bir alanda tutulmuyor, bu yüzden burada iki ayrı adım ' +
+              'durumu olarak DEĞİL, tanım + tek karar olarak gösterildi.</p>' +
+
+            (onayKuy.length
+              ? '<ul class="gv-checklist">' + onayKuy.map(function(a){
+                  return '<li><span class="cell-main">' + esc(a.baslik) +
+                    '<span class="cell-sub">' + esc(a.kod) + ' · talep eden: ' + esc(DB.empName(a.talepEden)) +
+                    ' · onaylayacak: ' + esc(DB.empName(a.onaylayan)) + ' · aciliyet: ' + esc(a.aciliyet) +
+                    '</span></span>' + GV.badge(a.durum) + '</li>';
+                }).join('') + '</ul>' +
+                '<p class="u-faint u-sm u-mb-0">Onay kuyruğu kaydı burada yalnız okunur; karar bu ekrandaki ' +
+                'düğmelerden verilir, kaynak kaydın geçişini aynı motor uygular.</p>'
+              : '<p class="u-faint u-sm u-mb-0">Bu talep için onay kuyruğunda (<code>DB.approvals</code>) kayıt ' +
+                'yok — 7 izin talebinin 3’ünde kuyruk satırı var (038 · 039 · 035), kalan 4’ü kuyruğa hiç ' +
+                'girmeden karara bağlanmış.</p>') +
+          '</div>' +
+        '</section>' +
+
+        /* --- Aktivite --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-activity') + 'Aktivite</h3>' +
+          '<span class="gc-meta">' + gecmis.length + ' hareket</span></div>' +
+          '<div class="gc-body">' + GV.activity(gecmis) + '</div>' +
+        '</section>' +
+
+      '</div>' +
+
+      /* ============ YAN SÜTUN ============ */
+      '<aside class="u-col">' +
+
+        /* --- Özet --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-target') + 'Özet</h3></div>' +
+          '<div class="gc-body">' +
+            '<div class="gv-summary">' +
+              satir('Personel', kisiLink(l.personel) || faint('—')) +
+              satir('Tür', esc(l.tur)) +
+              satir('Tarih aralığı', F.dateShort(l.baslangic) + ' → ' + F.dateShort(l.bitis)) +
+              satir('Süre', GV.fmt.num(isGun) + ' iş günü') +
+              satir('Vekil', l.vekil ? (kisiLink(l.vekil) || esc(l.vekil)) : faint('atanmadı')) +
+              satir('Bakiye', e && e.izinBakiye != null ? GV.fmt.num(e.izinBakiye) + ' gün' : faint('—')) +
+            '</div>' +
+          '</div>' +
+        '</section>' +
+
+        /* --- Backend payı (brief §20.6) --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-shield') + 'Backend payı</h3><span class="gc-meta">2 madde</span></div>' +
+          '<div class="gc-body flush"><ul class="gv-checklist">' +
+            [['BE-P1','Durum geçişi sunucuda yeniden doğrulanmaz; yetki, zorunlu alan ve bakiye kapısı istemcide koşar','§9'],
+             ['BE-S5','Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır','§9 audit_event']
+            ].map(function(g){
+              return '<li><span class="cell-main">' + esc(g[1]) +
+                '<span class="cell-sub">' + esc(g[0]) + ' · ' + esc(g[2]) + '</span></span></li>';
+            }).join('') +
+          '</ul></div>' +
+          '<div class="gc-body u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+            '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</div>' +
+        '</section>' +
+
+      '</aside>' +
+      '</div>';
+
+    bagla(l);
+
+    /* ---- geçiş düğmesi işaretlemesi ---- */
+    function bakiyeMesaj(rec){
+      var g = GV.gates.izinBakiye(rec);
+      return g.ok ? '' : g.why;
+    }
+    function bakiyeKapali(a){
+      if(a.kapi !== 'izinBakiye' || !a.izin) return false;
+      var g = GV.gates.izinBakiye(l);
+      return g.ok === false;
+    }
+    function adimBtn(a){
+      var eksik  = a.eksik || [];
+      var kapiSonuc = (a.kapi && GV.gates[a.kapi]) ? GV.gates[a.kapi](l) : null;
+      var kapiKapali = !!(kapiSonuc && kapiSonuc.ok === false);
+      var kapali = !a.izin || eksik.length > 0 || kapiKapali;
+      var ipucu  = !a.izin ? 'Bu geçiş için yetkiniz yok'
+                 : eksik.length ? 'Eksik alan: ' + eksik.join(', ')
+                 : kapiKapali ? kapiSonuc.why
+                 : '';
+      return '<button type="button" class="btn ' + (a.tone || 'btn-line') + ' btn-sm" ' +
+        'data-hedef="' + esc(a.hedef) + '" data-gerekce="' + (a.gerekce ? '1' : '0') + '"' +
+        (kapali ? ' disabled' : '') + (ipucu ? ' title="' + esc(ipucu) + '"' : '') +
+        '>' + esc(a.etiket) + '</button>';
+    }
+  }
+
+  /* =================================================================== */
+  function bagla(l){
+    /* Geçiş düğmeleri — tek mutasyon noktası GV.flow.gec (§20 uyarısı:
+       ekran `l.durum = …` demez). Aynı desen `app-zaman.html`in İzin
+       yüzeyindeki `izinIlerlet` ile birebir aynıdır. */
+    mount.querySelectorAll('[data-hedef]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var hedef     = b.dataset.hedef;
+        var gerekceli = b.dataset.gerekce === '1';
+
+        if(!gerekceli){
+          var r = GV.flow.gec('leave', l.kod, hedef);
+          if(r.ok === false){ GV.toast(GV.flowHata(r), 'danger'); return; }
+          GV.toast(l.kod + ' → ' + hedef, 'ok');
+          GV.refresh();
+          return;
+        }
+
+        GV.action({
+          eylem:hedef === 'Reddedildi' ? 'Reddet' : hedef === 'İptal edildi' ? 'İptal Et' : hedef,
+          tone:(hedef === 'Reddedildi' || hedef === 'İptal edildi') ? 'danger' : 'ok',
+          kayit:{ kod:l.kod, baslik:l.tur + ' · ' + DB.empName(l.personel) },
+          sonuc:'Bu talep "' + hedef + '" durumuna geçecek.' +
+            (hedef === 'İptal edildi' && l.durum === 'Onaylandı'
+              ? ' Onaylı bir iznin iptali, düşülen günü bakiyeye GERİ YÜKLER (GV.flow.yanEtki).'
+              : ''),
+          gerekce:true,
+          nedenTuru:hedef === 'Reddedildi' ? 'ret' : hedef === 'İptal edildi' ? 'iptal' : 'revizyon',
+          run:function(v){
+            var r = GV.flow.gec('leave', l.kod, hedef, null, { neden:v.neden, not:v.not });
+            if(r.ok === false) return { ok:false, mesaj:GV.flowHata(r) };
+            GV.refresh();
+            return { mesaj:l.kod + ' → ' + hedef };
+          }
+        });
+      });
+    });
+  }
+});
+</script>
+</body>
+</html>
