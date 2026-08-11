@@ -34,6 +34,83 @@
     'Sahiplik süzgeci bu prototipte istemcide çalışır. Gerçek sistemde ' +
     'her okuma ve yazma sunucuda owner_user_id ile doğrulanır.';
 
+  /* =====================================================================
+     TEMBEL YÜKLEME — karar K-11 (ADR-R2-01)
+
+     R1'de kişisel not verisi ayrı dosyadaydı ve 148 ekranın yalnız 2'sinde
+     yükleniyordu (ADR-21): sızıntı yolu FİZİKSEL olarak kapalıydı. Şartname
+     §4.2 "tüm sayfalarda Not Al düğmesi" isteyince o garanti düşecekti —
+     her sayfa `notes.js`i yüklemek zorunda kalırdı.
+
+     K-11 bunu düz bırakmayı reddetti. Yeni sözleşme:
+       · Sayfa yüklenirken HİÇBİR not belleğe girmez. `notes.js` hiçbir
+         HTML dosyasında `<script>` ile yüklenmez.
+       · Veri ancak kullanıcı AÇIK BİR EYLEMLE istediğinde çekilir.
+       · Çekildiği anda SAHİPLİK SÜZGECİ UYGULANIR: oturum sahibine ait
+         olmayan kayıtlar bellekten ATILIR, ekranda gizlenmez.
+
+     Fark önemlidir: R1'de süzgeç okuma anındaydı (`GV.notes.benim`), yani
+     başkasının notu bellekte DURUYORDU ve yalnız gösterilmiyordu. Burada
+     bellekte hiç durmaz. Bu, backend izolasyonunun yerini TUTMAZ — ama
+     istemcide yapılabilecek en güçlü şeydir ve ekran bunu söylemeye
+     devam eder.
+     ===================================================================== */
+  var VERI_YOLU = 'assets/data/notes.js';
+  var yukleSozu = null;
+
+  /* Sahiplik süzgeci — YÜKLEME ANINDA, yıkıcı. */
+  function sahipSuz(){
+    var emp = (GV.session && GV.session.emp) || null;
+    if(!window.DB) return 0;
+    if(!emp){
+      /* Oturum yoksa hiçbir not tutulmaz. "Oturum yoksa hepsini göster"
+         yedeği tam olarak kapatılan açıktır. */
+      DB.personalNotes = [];
+      DB.personalNoteChecklistItems = [];
+      return 0;
+    }
+    var once = (DB.personalNotes || []).length;
+    DB.personalNotes = (DB.personalNotes || []).filter(function(n){ return n.owner === emp; });
+    var kalanKodlar = DB.personalNotes.map(function(n){ return n.kod; });
+    DB.personalNoteChecklistItems = (DB.personalNoteChecklistItems || []).filter(function(m){
+      return m.owner === emp && kalanKodlar.indexOf(m.not) !== -1;
+    });
+    return once - DB.personalNotes.length;   /* bellekten atılan yabancı kayıt */
+  }
+
+  function yukle(){
+    if(yukleSozu) return yukleSozu;
+    /* Veri zaten yüklüyse (ör. sayfa elle yüklemişse) yalnız süz. */
+    if(window.DB && DB.personalNotes){
+      sahipSuz();
+      yukleSozu = Promise.resolve(true);
+      return yukleSozu;
+    }
+    yukleSozu = new Promise(function(res){
+      var s = document.createElement('script');
+      s.src = VERI_YOLU;
+      s.onload = function(){
+        var atilan = sahipSuz();
+        if(atilan > 0 && window.console && console.debug){
+          console.debug('[quicknote] ' + atilan + ' yabancı not bellekten atıldı');
+        }
+        res(true);
+      };
+      s.onerror = function(){
+        /* Yüklenemedi — "not yok" DENMEZ, "okunamadı" denir. Sıfır ölçüm
+           temiz değildir (R1 dersi). */
+        res(false);
+      };
+      document.head.appendChild(s);
+    });
+    return yukleSozu;
+  }
+
+  /* Veri bellekte mi — ekranlar buna bakıp yükleme çağrısı yapar. */
+  function hazir(){
+    return !!(window.DB && DB.personalNotes);
+  }
+
   /* Tamamlanan not 24 saat sonra varsayılan listeden gizlenir (§4.2).
      Kayıt SİLİNMEZ — arama ile bulunabilir. */
   var GIZLEME_SAAT = 24;
@@ -151,19 +228,35 @@
       return;
     }
     if(!GV.notes){
-      if(GV.toast) GV.toast('Hızlı Not için domain.js ve notes.js gerekli.', 'warn');
+      if(GV.toast) GV.toast('Hızlı Not için domain.js gerekli.', 'warn');
       return;
     }
-    if(!GV.notes.sahip()){
+    if(!GV.session || !GV.session.emp){
       if(GV.toast) GV.toast('Hızlı Not yalnız personel oturumunda kullanılır.', 'info');
       return;
     }
 
-    GV.drawer({
+    /* Çekmece ÖNCE açılır, veri SONRA gelir — kullanıcı boş ekrana bakmaz.
+       Yükleme bitene kadar iskelet basılır. */
+    var d = GV.drawer({
       title:'Hızlı Notlar',
-      body:govdeHtml(),
-      onMount:function(body){ bagla(body); }
+      body:'<div class="qn-yukleniyor">' + ico('i-file','ic-xl') +
+           '<p>Notlarınız yükleniyor…</p></div>',
+      onMount:function(body){
+        yukle().then(function(basarili){
+          if(!body.isConnected) return;        /* çekmece bu arada kapandıysa */
+          if(!basarili){
+            body.innerHTML = '<div class="qn-empty">' + ico('i-alert','ic-xl') +
+              '<p>Not verisi okunamadı. Bu bir hata durumudur — ' +
+              '&laquo;notunuz yok&raquo; anlamına gelmez.</p></div>';
+            return;
+          }
+          body.innerHTML = govdeHtml();
+          bagla(body);
+        });
+      }
     });
+    return d;
   }
 
   function yenile(body){
@@ -264,10 +357,14 @@
 
   GV.quickNote = {
     ac:ac,
-    /* Panelin Hızlı Notlar kartı bu yordamı çağırır — liste tanımı TEK
+    /* Panelin Hızlı Notlar kartı bu yordamları çağırır — liste tanımı TEK
        yerdedir, kart kendi süzgecini yazmaz (R1 dersi L-40). */
     gorunenler:gorunenler,
     basligiCikar:basligiCikar,
-    backendNotu:BACKEND_NOTU
+    backendNotu:BACKEND_NOTU,
+    /* Tembel yükleme yüzeyi — karar K-11 */
+    yukle:yukle,
+    hazir:hazir,
+    veriYolu:VERI_YOLU
   };
 })();

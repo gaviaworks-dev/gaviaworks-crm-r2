@@ -24,7 +24,6 @@
 <script src="assets/data/misc.js"></script>
 <script src="assets/data/ops.js"></script>
 <script src="assets/data/hr.js"></script>
-<script src="assets/data/notes.js"></script>
 <script src="assets/data/lifecycle.js"></script>
 <script src="assets/js/shell.js"></script>
 <script src="assets/js/ui.js"></script>
@@ -154,33 +153,53 @@ document.addEventListener('gv:ready', function(){
     return kart('Öncelikli iş kuyruğu', 'i-tasks', alt, body);
   }
 
-  /* ---- 3a. KART — Hızlı Notlar (§4.2) ----------------------------- */
+  /* ---- 3a. KART — Hızlı Notlar (§4.2) -----------------------------
+     ⚠️ TEMBEL YÜKLEME — karar K-11 (ADR-R2-01).
+     Panel açılırken not verisi belleğe GİRMEZ. Kart önce bir kapak basar;
+     kullanıcı açıkça isterse `GV.quickNote.yukle()` çağrılır ve veri o an
+     çekilip sahiplik süzgecinden geçirilir. Yani "bugün ne yapmalıyım"
+     panelini açmak, kişisel notları belleğe almak DEMEK DEĞİLDİR. */
   function notHtml(){
-    if(!GV.quickNote || !GV.notes || !GV.notes.sahip()){
+    if(!GV.quickNote || !GV.notes || !GV.session.emp){
       return kart('Hızlı Notlar', 'i-file', '—',
         GV.empty({ icon:'i-file', title:'Hızlı Not kullanılamıyor',
                    desc:'Bu oturumda kişisel not alanı yok.' }));
     }
-    /* Liste tanımı TEK yerde: quicknote.js. Panel kendi süzgecini yazmaz (L-40). */
-    var g = GV.quickNote.gorunenler('');
+
     var body;
-    if(!g.acik.length && !g.tamam.length){
-      body = '<div class="pn-pad">' + GV.empty({ icon:'i-file', title:'Henüz notunuz yok',
-              desc:'Sağ üstteki Not Al düğmesinden ekleyebilirsiniz.' }) + '</div>';
+    if(!GV.quickNote.hazir()){
+      body = '<div class="pn-pad qn-kapak">' + GV.ico('i-lock','ic-xl') +
+        '<p>Kişisel notlarınız sayfa açılırken yüklenmez. ' +
+        'Göstermek için aşağıdaki düğmeye basın — veri o anda çekilir ve ' +
+        'yalnız size ait kayıtlar bellekte tutulur.</p>' +
+        '<button type="button" class="btn btn-line btn-sm" id="pnNoteYukle">' +
+          GV.ico('i-file','ic-sm') + ' Notlarımı göster</button></div>';
     }else{
-      body = '<ul class="pn-list">' + g.acik.concat(g.tamam).slice(0, 7).map(function(n){
-        var tamam = n.durum === 'Tamamlandı';
-        var baslik = n.baslik || GV.quickNote.basligiCikar(n.body) || '(boş not)';
-        return '<li class="pn-row' + (tamam ? ' is-done' : '') + '">' +
-          '<span class="pn-main"><b>' + GV.esc(baslik) + '</b>' +
-          (n.bitis ? '<span class="pn-sub">' + F.date(n.bitis) + '</span>' : '') + '</span>' +
-        '</li>';
-      }).join('') + '</ul>';
+      /* Liste tanımı TEK yerde: quicknote.js. Panel kendi süzgecini yazmaz (L-40). */
+      var g = GV.quickNote.gorunenler('');
+      if(!g.acik.length && !g.tamam.length){
+        body = '<div class="pn-pad">' + GV.empty({ icon:'i-file', title:'Henüz notunuz yok',
+                desc:'Sağ üstteki Not Al düğmesinden ekleyebilirsiniz.' }) + '</div>';
+      }else{
+        body = '<ul class="pn-list">' + g.acik.concat(g.tamam).slice(0, 7).map(function(n){
+          var tamam = n.durum === 'Tamamlandı';
+          var baslik = n.baslik || GV.quickNote.basligiCikar(n.body) || '(boş not)';
+          return '<li class="pn-row' + (tamam ? ' is-done' : '') + '">' +
+            '<span class="pn-main"><b>' + GV.esc(baslik) + '</b>' +
+            (n.bitis ? '<span class="pn-sub">' + F.date(n.bitis) + '</span>' : '') + '</span>' +
+          '</li>';
+        }).join('') + '</ul>';
+      }
     }
+
     body += '<div class="pn-foot"><button type="button" class="btn btn-line btn-sm" id="pnNoteOpen">' +
             GV.ico('i-file','ic-sm') + ' Not Al</button>' +
             '<span class="pn-hint">' + GV.esc(GV.quickNote.backendNotu) + '</span></div>';
-    return kart('Hızlı Notlar', 'i-file', g.acik.length + ' açık not', body);
+
+    var alt = GV.quickNote.hazir()
+      ? GV.quickNote.gorunenler('').acik.length + ' açık not'
+      : 'yüklenmedi';
+    return kart('Hızlı Notlar', 'i-file', alt, body);
   }
 
   /* ---- 3b. KART — Son bildirimler --------------------------------- */
@@ -336,6 +355,22 @@ document.addEventListener('gv:ready', function(){
 
     var btn = document.getElementById('pnNoteOpen');
     if(btn) btn.addEventListener('click', function(){ GV.quickNote.ac(); });
+
+    /* Tembel yükleme tetiği — yalnız kullanıcı isterse veri çekilir (K-11). */
+    var yukleBtn = document.getElementById('pnNoteYukle');
+    if(yukleBtn) yukleBtn.addEventListener('click', function(){
+      yukleBtn.disabled = true;
+      yukleBtn.textContent = 'Yükleniyor…';
+      GV.quickNote.yukle().then(function(basarili){
+        if(!basarili){
+          GV.toast('Not verisi okunamadı — bu bir hata, "notunuz yok" demek değil.', 'danger');
+          yukleBtn.disabled = false;
+          yukleBtn.textContent = 'Yeniden dene';
+          return;
+        }
+        ciz();   /* location.reload YOK — kart yerinde yeniden çizilir (L-15) */
+      });
+    });
   }
 
   ciz();

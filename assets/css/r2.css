@@ -487,3 +487,9 @@ body.ops-odak .ops-sag{ background:var(--paper); }
   color:var(--warn); font-size:var(--fs-2xs);
 }
 .odl-gap-bolum{ flex:0 0 auto; color:var(--faint); font-size:var(--fs-2xs); }
+
+/* Hızlı Not — tembel yükleme kapağı ve yükleniyor durumu (karar K-11) */
+.qn-kapak{ text-align:center; color:var(--muted); }
+.qn-kapak p{ margin:var(--sp-6) 0 var(--sp-7); font-size:var(--fs-xs); line-height:var(--lh-base); }
+.qn-yukleniyor{ text-align:center; color:var(--muted); padding:var(--sp-13) var(--sp-7); }
+.qn-yukleniyor p{ margin:var(--sp-6) 0 0; font-size:var(--fs-sm); }
