@@ -1097,6 +1097,20 @@
         .filter(function(a){ return a.fatura === faturaKod; });
     },
 
+    /* ---- TAHSİS DEFTERİ KAPISI (K-25) ---------------------------------
+       Tek yerde tanımlı, İKİ YÖNDE de aynı: `tahsisEt` de `tahsisKaldir` da
+       bunu çağırır. Küme `DB.tahsisYetkiRolleri` (org.js) — rol adları
+       sözlükten doğrulandı, uydurulmadı.
+
+       `permMatrix.finans` bayrağı BU İŞ İÇİN KULLANILMAZ: o bayrak "parayı
+       görebilir" demektir ve sekiz rolde açıktır (maskeleme kuralı UID-11
+       onu o anlamda okur). Tahsilatı bir faturaya yazmak ayrı bir iştir. */
+    tahsisYetkisi:function(){
+      var rol = (GV.perm && GV.perm.role) ? GV.perm.role() : null;
+      var kume = (window.DB && DB.tahsisYetkiRolleri) || ['muhasebe','sahip','genelmudur'];
+      return kume.indexOf(rol) !== -1;
+    },
+
     /* ---- NET OKUMA — ters kayıt defteri (K-25) ------------------------
        Şartname §8.5: "tahsilat kaydı SİLİNMEZ, ters işlem üretilir."
        Bu yüzden geri alınmış bir tahsis defterden çıkmaz; yanına eksi
@@ -1207,7 +1221,9 @@
     tahsisEt:function(tahsilatKod, faturaKod, tutar, opts){
       opts = opts || {};
       if(!window.DB) return { ok:false, why:'veri yok' };
-      if(!can('finans')) return { ok:false, why:'yetki', roller:['finans'] };
+      /* K-25 — tahsis defteri kapısı. GERİ ALMAYLA AYNI küme (bkz. tahsisYetkisi). */
+      if(!Fin.tahsisYetkisi())
+        return { ok:false, why:'yetki', roller:(DB.tahsisYetkiRolleri || []).slice() };
       var p = (DB.payments || []).filter(function(x){ return x.kod === tahsilatKod; })[0];
       var f = (DB.invoices || []).filter(function(x){ return x.kod === faturaKod; })[0];
       if(!p) return { ok:false, why:'tahsilat kaydı yok: ' + tahsilatKod };
@@ -1283,19 +1299,23 @@
        okunabiliyordu. Artık asıl satır yerinde kalır, yanına eksi tutarlı
        ve gerekçeli bir TERS SATIR yazılır; net sıfırlanır.
 
-       YETKİ — bilerek `can('finans')`, yani tahsis KURMAKLA AYNI kapı.
-       K-25 "Finans yöneticisi" diyor; 27 rollük sözlükte o adda rol YOK
-       ve `finans` yetkisi 8 rolde açık (sahip · genelmudur · sistem ·
-       operasyon · satismudur · pm · muhasebe · satinalma). Geri almayı bu
-       kümeden dar bir role bağlamak, tahsisi kuran kullanıcının kendi
-       hatasını düzeltememesi demekti: geri alma, yapmaktan daha ağır
-       koşula bağlanamaz. Daraltma kararı Beyar'a soruldu ve kapı ŞU AN
-       eşit tutuluyor — daraltılacaksa değişecek tek yer bu satırdır.
-       Gerekçe zorunluluğu ise yetki değil kayıt koşuludur; kimseyi
-       kilitlemez, yalnız işlemi defterde adlandırır. */
+       YETKİ — `DB.tahsisYetkiRolleri` = **muhasebe · sahip · genelmudur**
+       (Beyar kararı, K-25 düzeltmesi). "Finans yöneticisi" diye bir rol 27
+       rollük sözlükte YOKTU; kapı var olan üç rol adına kuruldu.
+
+       ⚠️ AYNI KÜME `tahsisEt`e de uygulandı. Geri almayı kurmaktan dar bir
+       role bağlamak, tahsisi kuran kullanıcıyı kendi kaydının içine
+       hapsederdi — bir işi geri almak, onu yapmaktan daha ağır koşula
+       bağlanamaz. Daraltma bu yüzden iki yönde birden yapıldı; `finans`
+       bayrağı (8 rol) artık bu iş için okunmuyor, o bayrak "parayı
+       görebilir" demektir ve maskeleme kuralına aittir.
+
+       Gerekçe zorunluluğu yetki değil KAYIT koşuludur; kimseyi kilitlemez,
+       yalnız işlemi defterde adlandırır. */
     tahsisKaldir:function(tahsilatKod, faturaKod, gerekce){
       if(!window.DB || !DB.paymentAllocations) return { ok:false, why:'veri yok' };
-      if(!can('finans')) return { ok:false, why:'yetki', roller:['finans'] };
+      if(!Fin.tahsisYetkisi())
+        return { ok:false, why:'yetki', roller:(DB.tahsisYetkiRolleri || []).slice() };
       var cift = DB.paymentAllocations.filter(function(a){
         return a.tahsilat === tahsilatKod && a.fatura === faturaKod; });
       if(!cift.length) return { ok:false, why:'tahsis kaydı yok' };

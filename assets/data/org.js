@@ -190,6 +190,25 @@ DB.permMatrix = {
   musteri:      { gor:'musteri', ekle:'musteri', duzenle:'yok', sil:'yok', onay:true,  rapor:'musteri', finans:false, maas:false, personel:'yok', log:false, disaAktar:false }
 };
 
+/* ---- TAHSİS DEFTERİ YETKİSİ (K-25) ------------------------------------
+   Tahsis defterine yazma yetkisi, `permMatrix.finans` bayrağından AYRI ve
+   ondan DAR bir kümedir. Gerekçesi ölçüldü: `finans:true` sekiz rolde açık
+   (`sahip · genelmudur · sistem · operasyon · satismudur · pm · muhasebe ·
+   satinalma`) ama o bayrak "parayı GÖREBİLİR" demektir — maskeleme kuralı
+   (UID-11) onu bu anlamda kullanır. Tahsilatı bir faturaya YAZMAK ayrı bir
+   iştir ve muhasebe işidir.
+
+   ⚠️ KÜME İKİ YÖNDE DE AYNIDIR — tahsis KURMA ile GERİ ALMA aynı kapıdan
+   geçer. Geri almayı kurmaktan dar bir role bağlamak, tahsisi kuran
+   kullanıcıyı kendi kaydının içine hapsederdi: bir işi geri almak, onu
+   yapmaktan daha ağır koşula bağlanamaz. Bu yüzden K-25'in getirdiği
+   daraltma her iki yordama BİRLİKTE uygulandı.
+
+   Rol anahtarları `DB.roles` sözlüğünden doğrulandı (27 rol): üçü de var. */
+DB.tahsisYetkiRolleri = ['muhasebe', 'sahip', 'genelmudur'];
+DB.tahsisYetkiNot = 'Tahsis defterine yazma ve geri alma yetkisi Muhasebe, ' +
+  'Şirket Sahibi ve Genel Müdür rollerindedir. Kurma ve geri alma AYNI kapıdan geçer.';
+
 /* ---- Personel (PROMPT.md §14 — personel kartı) ----------------------- */
 /* ---- Çalışma tipi (REVİZE 16) ----------------------------------------
    Freelancer ve dış kaynak DEPARTMAN DEĞİL, **istihdam ilişkisidir**.

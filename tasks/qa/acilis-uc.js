@@ -258,6 +258,63 @@ function ol(ad, gercek, beklenen, karsilastir){
      k25.nakitGeriAl, true);
 
   /* ================================================================
+     K-25b — TAHSİS DEFTERİ KAPISI: HANGİ ROL, HANGİ YÖN
+     ----------------------------------------------------------------
+     İki şey birden ölçülür:
+       1. Kapı DOĞRU ROLLERE kurulu mu (`DB.tahsisYetkiRolleri`).
+       2. Kapı DOĞRU TARAFTA mı — kurma ile geri almanın kümesi AYNI mı.
+          Geri alma kurmaktan dar olsaydı, tahsisi kuran kullanıcı kendi
+          kaydını geri alamaz, kaydın içine hapsolurdu.
+     Sözlükte olmayan rol adı kullanılmadığı da doğrulanır.
+     ================================================================ */
+  console.log('\n[K-25b] Tahsis defteri kapısı — rol ve yön');
+  await pg.goto(U('app-tahsilat.html?role=sahip'), { waitUntil:'networkidle' });
+  await pg.waitForTimeout(400);
+
+  const kapi = await pg.evaluate(() => {
+    const kume = DB.tahsisYetkiRolleri || [];
+    const sozlukte = kume.filter(r => (DB.roles || []).some(x => x.key === r));
+    /* Rolü geçici olarak değiştirip iki yordamı da dener; hiçbir kayıt
+       kalıcı olarak bozulmasın diye her denemeden sonra defter eski hâline
+       döndürülür. */
+    const gercekRol = GV.perm.role;
+    const dene = (rol) => {
+      GV.perm.role = () => rol;
+      const a = (DB.paymentAllocations || []).filter(x => !x.ters);
+      const hedef = a.find(x => GV.fin.ciftNet(x.tahsilat, x.fatura) > 0.01);
+      if(!hedef) return { rol, kur:null, geri:null };
+      const oncekiUzunluk = DB.paymentAllocations.length;
+      /* GERİ ALMA denemesi */
+      const g = GV.fin.tahsisKaldir(hedef.tahsilat, hedef.fatura, 'kapı sınaması');
+      if(g.ok) DB.paymentAllocations.length = oncekiUzunluk;   /* ters kaydı geri al */
+      /* KURMA denemesi — zaten tahsisli çifte, yetki dışındaysa 'yetki' döner */
+      const k = GV.fin.tahsisEt(hedef.tahsilat, hedef.fatura, 1);
+      if(k.ok) DB.paymentAllocations.length = oncekiUzunluk;
+      return { rol, kur:k.ok === true ? 'gecti' : k.why, geri:g.ok === true ? 'gecti' : g.why };
+    };
+    const icerde = kume.map(dene);
+    const disarda = ['pm','satismudur','satinalma','operasyon','satistemsilci'].map(dene);
+    GV.perm.role = gercekRol;
+    return { kume, sozlukte, icerde, disarda };
+  });
+
+  ol('kapı kümesi tanımlı', kapi.kume.join(','), 'muhasebe,sahip,genelmudur');
+  ol('kümedeki her rol adı sözlükte var (uydurma rol yok)',
+     kapi.sozlukte.length, kapi.kume.length);
+  kapi.icerde.forEach(r => {
+    ol('İÇERDE ' + r.rol + ' — tahsis KURABİLİR', r.kur !== 'yetki', true);
+    ol('İÇERDE ' + r.rol + ' — tahsis GERİ ALABİLİR', r.geri !== 'yetki', true);
+  });
+  kapi.disarda.forEach(r => {
+    ol('DIŞARDA ' + r.rol + ' — kuramaz', r.kur, 'yetki');
+    ol('DIŞARDA ' + r.rol + ' — geri alamaz', r.geri, 'yetki');
+  });
+  /* KAPI YÖNÜ — kurabilen her rol geri de alabilmeli, tersi de doğru. */
+  const yonBozuk = kapi.icerde.concat(kapi.disarda)
+    .filter(r => (r.kur === 'yetki') !== (r.geri === 'yetki'));
+  ol('kapı doğru tarafta — kurma ve geri alma kümesi AYNI', yonBozuk.length, 0);
+
+  /* ================================================================
      SONUÇ
      ================================================================ */
   if(hata.length) bulgu.push(...hata.map(h => 'sayfa hatası — ' + h));
@@ -266,7 +323,7 @@ function ol(ad, gercek, beklenen, karsilastir){
     console.log('✗ BULGU: ' + bulgu.length);
     bulgu.forEach(x => console.log('   · ' + x));
   }else{
-    console.log(`✓ TEMİZ · ${kontrol} kontrol koşuldu · 3 eksen (K-24 · K-23 · K-25) · ` +
+    console.log(`✓ TEMİZ · ${kontrol} kontrol koşuldu · 4 eksen (K-24 · K-23 · K-25 · K-25b) · ` +
                 'her eksende en az bir olumlu ve bir olumsuz vaka');
   }
   await b.close(); srv.close();

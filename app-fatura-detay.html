@@ -666,14 +666,25 @@ document.addEventListener('gv:ready', function(){
                've motor fazlasını reddeder. Yeni bir tahsis alanı açılmadı.' }) + '</div>' +
       '</section>';
     }
-    if(!canFinans){
+    /* ⚠️ KAPI `finans` BAYRAĞI DEĞİL (K-25). Tahsis defterine yazma yetkisi
+       `DB.tahsisYetkiRolleri` kümesidir ve `permMatrix.finans`ten DARDIR:
+       o bayrak "parayı görebilir" demektir (maskeleme kuralı UID-11), tahsis
+       yazmak ayrı bir iştir. Ekran motorun kapısını birebir okur — kendi
+       kopyasını kurmaz; yoksa form basılır, motor reddeder ve kullanıcı
+       tıkladıktan sonra öğrenirdi. */
+    if(!GV.fin.tahsisYetkisi()){
+      var yetkililer = (DB.tahsisYetkiRolleri || []).map(function(r){
+        var rk = (DB.roles || []).filter(function(x){ return x.key === r; })[0];
+        return rk ? rk.ad : r;
+      }).join(' · ');
       return '<section class="gv-card">' +
         kartBasi('i-lock', 'Tahsilat tahsis et') +
         '<div class="gc-body">' + GV.notice({ tone:'info', icon:'i-lock',
           title:'Bu işlem rolünüze kapalı',
-          text:'Tahsis yalnız finans yetkisi olan rollerde yapılabilir; motor yetkisiz ' +
-               'çağrıyı zaten reddeder. Kullanılamayacak bir form basmak yerine sebebi ' +
-               'yazıldı.' }) + '</div>' +
+          text:'Tahsis defterine yazma yetkisi şu rollerdedir: ' + GV.esc(yetkililer) +
+               '. Aynı küme tahsisi GERİ ALMA için de geçerlidir — kuran geri de ' +
+               'alabilir. Motor yetkisiz çağrıyı zaten reddeder; kullanılamayacak ' +
+               'bir form basmak yerine sebebi yazıldı.' }) + '</div>' +
       '</section>';
     }
 

@@ -383,7 +383,7 @@ document.addEventListener('gv:ready', function(){
         '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-refresh') + 'Tahsisi geri al</h3>' +
           '<span class="u-faint u-sm">' + canliCiftler.length + ' çift</span></div>' +
         '<div class="gc-body">' +
-          (canFinans
+          (GV.fin.tahsisYetkisi()
             ? '<p class="u-sm u-muted u-mb-4">Geri alma kaydı <b>silmez</b>: eksi tutarlı bir ters ' +
                 'kayıt üretir, fatura durumu tahsis toplamından kendiliğinden geri düşer. ' +
                 'Gerekçe zorunludur.</p>' +
@@ -397,8 +397,12 @@ document.addEventListener('gv:ready', function(){
               }).join('')
             : GV.notice({ tone:'info', icon:'i-lock',
                 title:'Tahsis geri alma yetkiniz yok',
-                text:'Bu işlem finans yetkisi ister. Tahsisi kuran yetki ile geri alan yetki ' +
-                     'bilerek AYNI tutuldu: bir kaydı kurabilen kullanıcı onu geri de alabilmelidir.' })) +
+                text:'Tahsis defterine yazma ve geri alma yetkisi şu rollerdedir: ' +
+                     GV.esc((DB.tahsisYetkiRolleri || []).map(function(r){
+                       var rk = (DB.roles || []).filter(function(x){ return x.key === r; })[0];
+                       return rk ? rk.ad : r; }).join(' · ')) +
+                     '. Kurma ile geri alma bilerek AYNI kapıdan geçer: bir kaydı ' +
+                     'kurabilen kullanıcı onu geri de alabilmelidir.' })) +
         '</div>';
     }
 
