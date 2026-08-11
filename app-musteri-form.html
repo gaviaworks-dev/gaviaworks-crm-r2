@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Yeni Müşteri — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="satis" data-screen="musteri">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/data/firsat.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   MÜŞTERİ FORMU — şartname §5.2 · §5.3
+
+   §5.2: "İlk kayıt formunda YALNIZ şu alanlar istenmelidir: firma/unvan
+   veya kişi adı, müşteri tipi, yaşam evresi, telefon veya e-posta,
+   sorumlu ve kısa ihtiyaç notu. Vergi bilgisi, adres, sektör, kaynak,
+   yönlendiren, web, risk ve büyüklük DAHA FAZLA BİLGİ altında ve KAPALI
+   gelmelidir."  → iki sekme; ikinci sekme kendiliğinden açılmaz.
+
+   §5.2 son cümlesi: "Kayıt Aday evresinde doğar. Müşteri evresine
+   geçirilirken eksik yasal/fatura alanları DOĞRULANMALIDIR."
+   Kapı UYARMAZ, REDDEDER — ve eksik alan listesi bu ekranda YAZILI DEĞİL:
+   `GV.lifecycle.eksikAlanlar` tek kaynaktır (L-40).
+
+   §5.3 son paragrafı: "Mükerrer kontrolü vergi numarası, normalize
+   telefon, e-posta ve unvan benzerliği üzerinden yapılmalı; OTOMATİK
+   BİRLEŞTİRME yerine kullanıcıya EŞLEŞME ÖNERİSİ verilmelidir."
+   Tarama `GV.sales.hesapMukerrer` ile beş eksende koşar, sonuç sağ
+   panelde canlı basılır, karar kullanıcınındır.
+
+   ⚠️ EVRE DEĞİŞİMİNİN İKİNCİ KAPISI AÇILMADI: bu ekran evreyi YALNIZ yeni
+   kaydın doğum değeri olarak yazar. Düzenleme kipinde alan salt okunurdur;
+   evre değişimi müşteri detayında `GV.lifecycle.gec` üzerinden yürür.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var q   = new URLSearchParams(location.search);
+  var kod = q.get('id');
+  var rec = kod ? (DB.accounts || []).filter(function(x){ return x.kod === kod; })[0] : null;
+
+  /* ---- Kayıt yok durumu (§10) ------------------------------------- */
+  if(kod && !rec){
+    GV.pageHead({
+      eyebrow:'Müşteri ve Satış', title:'Kayıt bulunamadı', sub:kod,
+      actions:[{ label:'Müşteri listesine dön', icon:'i-arrow-left', href:'app-musteri.html' }]
+    });
+    mount.innerHTML = GV.errorState({
+      title:kod + ' bulunamadı',
+      desc:'Bu kod hiçbir hesap kaydıyla eşleşmedi. Adres çubuğundaki kaydı kontrol edin ' +
+           'ya da müşteri listesinden hesabı seçin.' });
+    return;
+  }
+
+  /* ---- Yetki kapısı ----------------------------------------------- */
+  var izinli = rec ? GV.perm.can('duzenle') : GV.perm.can('ekle');
+  if(!izinli){
+    GV.pageHead({
+      eyebrow:'Müşteri ve Satış',
+      title:rec ? rec.unvan : 'Yeni Müşteri',
+      sub:'Bu ekran için yetkiniz yok',
+      actions:[{ label:'Müşteri listesine dön', icon:'i-arrow-left', href:'app-musteri.html' }]
+    });
+    mount.innerHTML = GV.empty({
+      icon:'i-lock',
+      title:rec ? 'Hesap kaydını düzenleme yetkiniz yok' : 'Yeni hesap açma yetkiniz yok',
+      desc:'Rolünüz (' + GV.perm.role() + ') bu işlem için yetkili değil. ' +
+           'Hesapları görüntülemeye devam edebilirsiniz.',
+      action:'<a class="btn btn-line" href="app-musteri.html">Müşteri listesine dön</a>' });
+    return;
+  }
+
+  /* =================================================================
+     SÖZLÜK ÖLÇÜMÜ — uydurma seçenek yok
+     -----------------------------------------------------------------
+     Müşteri tipi sözlüğü (customerTypes) YOK (ölçüldü: veri katmanında
+     hiçbir dosyada tanımlı değil) ve `DB.customers` kayıtlarının
+     hiçbirinde `tip` alanı DOLU DEĞİL — `lifecycle.js:112` alanı taşıyor
+     ama kaynakta değer olmadığı için 20 hesabın 20'sinde `null`.
+     Bu yüzden `tip` bir seçim listesi olarak KURULAMAZ: iki değer
+     ('Kurumsal'/'Bireysel') uydurmak, olmayan bir sözlüğü varmış gibi
+     göstermek olurdu. Alan serbest metne düşer ve nedeni ipucunda yazar.
+     Sözlük ortak katmana eklendiğinde bu blok kendiliğinden select'e
+     döner — ekranda ikinci bir liste tutulmuyor.
+
+     `risk` ve `buyukluk` için de sözlük yok; ikisinin de MEVCUT DEĞERLERİ
+     var, o yüzden seçenekler defterden TÜRETİLİR (kaynağı yazılı).
+     `sektor` → `DB.sectors`, `kaynak` → `DB.refTypes`,
+     `referans` → `DB.referrers`: bunlar gerçek sözlüklerdir.
+     ================================================================= */
+  function benzersiz(list){
+    return (list || []).filter(function(v, i, s){
+      return v != null && v !== '' && s.indexOf(v) === i; });
+  }
+  var tipDegerleri  = benzersiz((DB.accounts || []).map(function(h){ return h.tip; }));
+  var riskDegerleri = benzersiz((DB.accounts || []).map(function(h){ return h.risk; }));
+  var buyuklukDegerleri = benzersiz((DB.customers || []).map(function(c){ return c.buyukluk; }))
+    .sort(function(a, b){ return parseInt(a, 10) - parseInt(b, 10); });
+
+  /* Evre adı ve rozeti ORTAK KATMANDA (L-40) — üç ekranda üç kopya yerine
+     tek yordam; sözlük değişince üçü birden doğru kalır. */
+  function evreAdi(k){ return GV.lifecycle.ad(k) || (k || '—'); }
+  function evreRozeti(k){ return GV.lifecycle.rozet(k); }
+
+  /* =================================================================
+     DÜZENLEME KİPİNDE ALANLARIN KAYNAĞI
+     -----------------------------------------------------------------
+     `DB.accounts` kaydı vergi dairesi · adres · web · kaynak · referans ·
+     büyüklük alanlarını TAŞIMIYOR (`lifecycle.js:104-129`): türetme onları
+     kopyalamadı. Boş göstermek "bu bilgi yok" demek olurdu — oysa bilgi
+     kaydın KAYNAĞINDA duruyor. Bu yüzden hesap kaydında karşılığı olmayan
+     alan `legacy_id` üzerinden kaynak müşteri kaydından OKUNUR; okunduğu
+     bölümün altında yazar. Kaydetme tek deftere, `DB.accounts`a yazar —
+     aynı olgu iki yere yazılmaz (BE-S2).
+     ================================================================= */
+  var kaynakKayit = (rec && rec.legacy_kaynak === 'DB.customers')
+    ? (DB.customers || []).filter(function(c){ return c.kod === rec.legacy_id; })[0] || null
+    : null;
+
+  function deger(alan){
+    if(!rec) return '';
+    if(rec[alan] != null && rec[alan] !== '') return rec[alan];
+    if(kaynakKayit && kaynakKayit[alan] != null && kaynakKayit[alan] !== '') return kaynakKayit[alan];
+    return '';
+  }
+
+  var EK_ALANLAR = ['vergiNo','vergiDairesi','adres','sektor','buyukluk','kaynak','referans','web','risk'];
+  var TEMEL_ALANLAR = ['unvan','tip','tel','eposta','sorumlu','ihtiyac'];
+
+  /* Form taslağı — kaydın KENDİSİ değil, bileşenin okuyacağı başlangıç
+     değerleri. `evre` burada YAZILMAZ, kopyalanır: düzenleme kipinde alan
+     salt okunurdur ve kaydetme ona hiç dokunmaz (aşağıda `GUNCEL_ALANLAR`).
+     Ayrı bir `formKayit.evre = …` satırı, satış ekseni eksenini (S9) haklı
+     olarak tetikliyordu — kural "kayda evre yazma"ydı, taslak nesne değil,
+     ama iki şeyi ayırt etmek okuyanın işi olmamalı. */
+  var formKayit = {};
+  if(rec){
+    TEMEL_ALANLAR.concat(EK_ALANLAR).forEach(function(k){ formKayit[k] = deger(k); });
+    formKayit = Object.assign({ evre:rec.evre || '' }, formKayit);
+  }
+
+  /* ---- Sayfa başlığı — form bileşeninden ÖNCE (§2.4) --------------- */
+  GV.pageHead({
+    eyebrow:'Müşteri ve Satış',
+    title:rec ? rec.unvan : 'Yeni Müşteri',
+    sub:rec
+      ? rec.kod + ' · ' + evreAdi(rec.evre) + ' · yaşam evresi bu ekrandan değiştirilmez'
+      : 'Yeni hesap · yaşam evresi Aday olarak başlar',
+    actions:[
+      { label:'Vazgeç', icon:'i-arrow-left', href:'app-musteri.html' },
+      { label:'Kaydet', icon:'i-check', cls:'btn-acc', run:function(){ kaydet(); } }
+    ]
+  });
+
+  mount.innerHTML = '<div id="musForm"></div><div id="musBackend"></div>';
+
+  /* =================================================================
+     ALANLAR — §5.2 birebir
+     İLK GÖRÜNÜM: altı madde (unvan · tip · evre · telefon VEYA e-posta ·
+     sorumlu · kısa ihtiyaç). Dördüncü madde iki ayrı girdi taşır çünkü
+     doğrulama biçimleri ayrıdır (`tel` ≥10 hane, `eposta` biçim) ve
+     şartname ikisini "veya" ile bağlıyor — birini boş bırakmak serbest,
+     ikisini birden boş bırakmak değil.
+     ================================================================= */
+  var tipAlan = { key:'tip', label:'Müşteri tipi', cols:6 };
+  if(tipDegerleri.length){
+    tipAlan.type = 'select';
+    tipAlan.options = tipDegerleri;
+    tipAlan.hint = 'Ortak sözlük yok; seçenekler mevcut hesap kayıtlarındaki değerlerden türetildi.';
+  }else{
+    tipAlan.type = 'text';
+    tipAlan.placeholder = 'Örn. kurumsal ya da bireysel';
+    tipAlan.hint = 'Müşteri tipi için ortak sözlük yok ve ' + (DB.accounts || []).length +
+                   ' hesabın hiçbirinde tip değeri dolu değil — liste türetilemedi, alan serbest metin. ' +
+                   'Sözlük ortak katmana eklendiğinde seçim listesine döner.';
+  }
+
+  var form = GV.form({
+    mount:'#musForm',
+    id:'musteriForm',
+    record:formKayit,
+    tabs:[
+      { key:'temel', label:'Temel bilgiler',   icon:'i-building' },
+      { key:'ek',    label:'Daha fazla bilgi', icon:'i-list' }
+    ],
+    aside:function(veri){ return yanPanel(veri); },
+    sections:[
+      { title:'Kimlik ve ilk temas', icon:'i-building', tab:'temel',
+        desc:'Şartname §5.2 — ilk kayıtta yalnız bu bilgiler istenir. Vergi, adres, sektör ve ' +
+             'ticari bağlam alanları "Daha fazla bilgi" sekmesindedir ve zorunlu değildir.',
+        fields:[
+          { key:'unvan', label:'Firma / unvan veya kişi adı', type:'text', cols:12, required:true,
+            placeholder:'Örn. Deniz Lojistik A.Ş.',
+            hint:'Mükerrer kontrolü bu alanı normalize ederek (ltd · a.ş · şti · san · tic ekleri atılarak) tarar.' },
+
+          tipAlan,
+
+          { key:'evre', label:'Yaşam evresi', type:'select', cols:6,
+            required:!rec, readonly:!!rec, value:'ADAY',
+            options:(DB.lifecycleOrder || []).map(function(k){
+              return { value:k, label:DB.lifecycleStages[k].ad }; }),
+            hint:rec
+              ? 'Yaşam evresi müşteri detayından değiştirilir — geçiş kuralı, yetki kapısı ve denetim izi oradaki tek yordamda yürür.'
+              : 'Yeni kayıt Aday evresinde doğar. Müşteri seçilirse vergi numarası, sorumlu ve iletişim bilgisi zorunlu olur; eksikse kaydetme reddedilir.' },
+
+          { key:'tel', label:'Telefon', type:'tel', cols:6, placeholder:'+90 ...',
+            hint:'Telefon ya da e-postadan en az biri dolu olmalıdır.',
+            validate:function(v, veri){
+              if(String(v || '').trim()) return '';
+              if(String(veri.eposta || '').trim()) return '';
+              return 'Telefon ya da e-posta alanlarından en az biri dolu olmalıdır.';
+            } },
+
+          { key:'eposta', label:'E-posta', type:'email', cols:6, placeholder:'ad@firma.com' },
+
+          { key:'sorumlu', label:'Sorumlu', type:'select', cols:6,
+            value:(GV.session && GV.session.emp) || '',
+            options:(DB.employees || []).map(function(e){ return { value:e.kod, label:e.ad }; }),
+            hint:rec ? '' : 'Varsayılan olarak oturum sahibi atandı; değiştirebilirsiniz.' },
+
+          { key:'ihtiyac', label:'Kısa ihtiyaç / not', type:'textarea', cols:12, rows:3,
+            placeholder:'Müşterinin dile getirdiği ihtiyaç — bir iki cümle yeter.' }
+        ] },
+
+      { title:'Yasal ve fatura bilgileri', icon:'i-file', tab:'ek',
+        desc:'Bu alanlar ilk aday kaydında zorunlu değildir; hesap Müşteri evresine geçerken ' +
+             'vergi numarası zorunlu hâle gelir (§5.2).',
+        fields:[
+          { key:'vergiNo', label:'Vergi numarası', type:'text', cols:6,
+            hint:'Mükerrer kontrolünde KESİN kanıttır — birebir eşleşme yeni kayıt açmayı gerekçeye bağlar.' },
+          { key:'vergiDairesi', label:'Vergi dairesi', type:'text', cols:6 },
+          { key:'adres', label:'Adres', type:'textarea', cols:12, rows:2 }
+        ] },
+
+      { title:'Ticari bağlam', icon:'i-briefcase', tab:'ek',
+        desc:kaynakKayit
+          ? 'Hesap kaydı bu alanların bir kısmını taşımıyor; değerler kaynak müşteri kaydından (' +
+            kaynakKayit.kod + ') okundu ve kaydedince hesap kaydına yazılır.'
+          : 'Sektör ve kaynak sözlükten gelir; büyüklük ve risk seçenekleri mevcut kayıtlardan türetildi.',
+        fields:[
+          { key:'sektor', label:'Sektör', type:'select', cols:6, options:DB.sectors || [] },
+          { key:'buyukluk', label:'Büyüklük (çalışan sayısı)', type:'select', cols:6,
+            options:buyuklukDegerleri,
+            hint:buyuklukDegerleri.length
+              ? 'Sözlük yok; aralıklar mevcut müşteri kayıtlarından türetildi.'
+              : 'Mevcut kayıtlarda büyüklük değeri yok — seçenek türetilemedi.' },
+          { key:'kaynak', label:'Kaynak', type:'select', cols:6, options:DB.refTypes || [],
+            hint:'Kaydın nereden geldiği. Yönlendiren kişi ayrı alandır.' },
+          { key:'referans', label:'Yönlendiren / referans', type:'select', cols:6,
+            options:(DB.referrers || []).map(function(r){
+              return { value:r.kod, label:r.ad + ' · ' + r.tur }; }) },
+          /* `type:'url'` DEĞİL — ölçüldü: 12 müşteri kaydının 12'si web adresini
+             şemasız tutuyor ('denizlojistik.com'). Bileşenin url doğrulaması
+             `http(s)://` dayatır ve mevcut HER kaydın düzenlenmesini kilitlerdi.
+             Mükerrer taraması zaten şemayı ve `www.` önekini kendisi atıyor. */
+          { key:'web', label:'Web sitesi', type:'text', cols:6, placeholder:'ornek.com',
+            hint:'Mevcut kayıtlarla aynı biçimde, şemasız alan adı yazılır. ' +
+                 'Mükerrer kontrolü e-posta alan adıyla birlikte bu adresi de tarar.' },
+          { key:'risk', label:'Risk', type:'select', cols:6, options:riskDegerleri,
+            hint:'Risk yaşam evresinden AYRI bir eksendir; evreyi değiştirmez.' }
+        ] }
+    ]
+  });
+
+  if(!form){
+    mount.innerHTML = GV.errorState({ title:'Form çizilemedi',
+      desc:'Form bileşeni bağlanamadı. Sayfayı yeniden açmayı deneyin.' });
+    return;
+  }
+
+  /* =================================================================
+     MÜKERRER KONTROLÜ — §5.3 son paragrafı
+     -----------------------------------------------------------------
+     Tarama ekranda YAZILI DEĞİL: `GV.sales.hesapMukerrer` beş ekseni
+     (vergi no · unvan · e-posta · normalize telefon · e-posta alan adı)
+     tek yerden koşar ve her eşleşmeyi GEREKÇESİYLE döndürür. Ekranın işi
+     nedenleri okunur basmak ve KARARI KULLANICIYA BIRAKMAK.
+     Otomatik birleştirme yok; "yine de yeni kayıt" kesin eşleşmede
+     gerekçeye bağlıdır ve denetim izine yazılır.
+     ================================================================= */
+  var istisna = null;          /* { neden, not, eslesen[] } — yalnız kesin eşleşmede dolar */
+
+  function adaydan(v){
+    return { unvan:v.unvan, vergiNo:v.vergiNo, tel:v.tel, eposta:v.eposta, web:v.web,
+             haric:rec ? rec.kod : null };
+  }
+  function eslesmeler(v){ return GV.sales.hesapMukerrer(adaydan(v)) || []; }
+  function kesinler(list){ return list.filter(function(e){ return e.kesin; }); }
+
+  /* Evre kapısının ölçtüğü kayıt — henüz kaydedilmemiş taslak. */
+  function taslakHesap(v){
+    return { kod:rec ? rec.kod : null, unvan:v.unvan, vergiNo:v.vergiNo,
+             sorumlu:v.sorumlu, tel:v.tel, eposta:v.eposta };
+  }
+
+  /* ---- Sağ panel: canlı özet + kapı durumu + mükerrer önerisi ------ */
+  function yanPanel(v){
+    var evreKod = rec ? rec.evre : (v.evre || 'ADAY');
+    var firsatlar = rec ? DB.accountOpportunities(rec.kod) : [];
+
+    var out = '<div class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-building') + 'Kayıt özeti</h3></div>' +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Kayıt no', rec
+            ? '<span class="cell-code">' + GV.esc(rec.kod) + '</span>'
+            : '<span class="u-faint">kaydederken üretilir</span>'],
+          ['Yaşam evresi', evreRozeti(evreKod)],
+          ['Sorumlu', v.sorumlu
+            ? GV.esc(DB.empName(v.sorumlu))
+            : '<span class="u-faint">—</span>'],
+          ['Kayıt kaynağı', rec
+            ? '<span class="cell-code">' + GV.esc(rec.legacy_id) + ' · ' + GV.esc(rec.legacy_kaynak) + '</span>'
+            : '<span class="cell-code">form</span>'],
+          ['Bağlı fırsat', rec
+            ? (firsatlar.length
+                ? '<span class="u-num">' + firsatlar.length + '</span>'
+                : '<span class="u-faint">yok</span>')
+            : '<span class="u-faint">henüz yok</span>']
+        ]) +
+      '</div></div>';
+
+    /* MÜŞTERİ evresi kapısı — liste `GV.lifecycle.eksikAlanlar`tan gelir. */
+    if(evreKod === 'MUSTERI'){
+      var eksik = GV.lifecycle.eksikAlanlar(taslakHesap(v), 'MUSTERI');
+      out += eksik.length
+        ? GV.notice({ tone:'danger', icon:'i-alert',
+            title:'Müşteri evresi için ' + eksik.length + ' alan eksik',
+            text:'Bu hâliyle kaydetme REDDEDİLİR. Eksik: ' + eksik.join(', ') + '.' })
+        : GV.notice({ tone:'ok', icon:'i-check-circle',
+            title:'Müşteri evresinin zorunlu alanları tamam',
+            text:'Unvan, vergi numarası, sorumlu ve iletişim bilgisi dolu.' });
+    }
+
+    /* Mükerrer önerisi */
+    var list = eslesmeler(v);
+    if(!String(v.unvan || '').trim() && !String(v.vergiNo || '').trim() &&
+       !String(v.tel || '').trim() && !String(v.eposta || '').trim()){
+      out += GV.notice({ tone:'info', icon:'i-users',
+        title:'Mükerrer kontrolü bekliyor',
+        text:'Unvan, vergi numarası, telefon ya da e-posta yazdıkça ' + (DB.accounts || []).length +
+             ' hesap beş eksende taranır.' });
+    }else if(!list.length){
+      out += GV.notice({ tone:'ok', icon:'i-users',
+        title:'Benzer hesap bulunamadı',
+        text:'Vergi numarası, unvan, e-posta, telefon ve e-posta alan adı eksenlerinde ' +
+             (DB.accounts || []).length + ' hesap tarandı.' });
+    }else{
+      var kesin = kesinler(list);
+      out += '<div class="gv-card">' +
+        '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-users') + 'Benzer hesap</h3>' +
+          '<span class="gc-meta">' + list.length + ' eşleşme' +
+            (kesin.length ? ' · ' + kesin.length + ' kesin' : '') + '</span></div>' +
+        '<div class="gc-body">' +
+          list.map(function(e){
+            return GV.notice({
+              tone:e.kesin ? 'danger' : 'warn',
+              icon:e.kesin ? 'i-alert' : 'i-info',
+              title:(e.kesin ? 'Kesin eşleşme — ' : '') + e.hesap.kod + ' · ' + e.hesap.unvan,
+              text:'Eşleşme nedeni: ' + e.nedenler.join(' · ') +
+                   (e.kesin
+                     ? '. Vergi numarası tek başına kesin kanıttır.'
+                     : '. Bu işaretler kesin kanıt değildir; karar sizindir.'),
+              actions:[{ label:'Mevcut hesabı aç', cls:'btn-line',
+                         href:'app-musteri-detay.html?id=' + encodeURIComponent(e.hesap.kod) }]
+            });
+          }).join('') +
+          '<p class="u-faint u-sm">Kayıtlar otomatik BİRLEŞTİRİLMEZ. Ya yukarıdaki hesabı ' +
+            'açıp üzerine çalışırsınız, ya da yeni kayıt açmayı gerekçesiyle üstlenirsiniz.</p>' +
+        '</div>' +
+        (rec ? '' :
+          '<div class="gv-form-actions">' +
+            '<button type="button" class="btn btn-line" data-muk-yeni>' +
+              GV.ico('i-user-plus') + ' Yine de yeni kayıt oluştur</button>' +
+          '</div>') +
+      '</div>';
+    }
+    return out;
+  }
+
+  /* Sağ panel her alan değişiminde yeniden çizilir; içindeki düğme de
+     yeniden doğar. Bu yüzden dinleyici düğmeye değil, MOUNT'a bağlanır.
+     Mount `#rec` içindedir ve `GV.refresh()` onu değiştirir — `GV.on`
+     gerekmez (§2.6: yalnız kalıcı düğümler için).
+
+     ⚠️ `click` DEĞİL, `mousedown` — ölçüldü: kullanıcı bir alana yazdıktan
+     sonra doğrudan bu düğmeye bastığında `mousedown` odağı düşürür, düşen
+     odak `change` atar, `change` sağ paneli yeniden çizer ve düğme düğümü
+     `mouseup`tan ÖNCE ölür. `click` ortak ataya düşer, düğmeye hiç ulaşmaz;
+     kullanıcı ilk tıklamasının yutulduğunu görür. `mousedown` redraw'dan
+     önce koşar. Klavye yolu ayrıca bağlıdır ki düğme fareye mahkûm olmasın. */
+  function mukerrerTetik(ev){
+    var b = ev.target.closest && ev.target.closest('[data-muk-yeni]');
+    if(!b) return;
+    if(ev.type === 'keydown' && ev.key !== 'Enter' && ev.key !== ' ') return;
+    ev.preventDefault();
+    yineDeYeniKayit();
+  }
+  form.el.addEventListener('mousedown', mukerrerTetik);
+  form.el.addEventListener('keydown', mukerrerTetik);
+
+  /* =================================================================
+     "YİNE DE YENİ KAYIT" — kesin eşleşmede gerekçe ZORUNLU
+     Ortak eylem penceresi neden kodu + açıklamayı kendisi doğrular
+     (`nedenTuru:'istisna'` → Yönetici istisnası · Diğer).
+     ================================================================= */
+  function yineDeYeniKayit(){
+    var v = form.submit();
+    if(!v) return;
+    var kesin = kesinler(eslesmeler(v));
+    if(!kesin.length){ istisna = null; kaydet(); return; }
+
+    GV.action({
+      eylem:'Onayla', tone:'warn',
+      kayit:{ baslik:v.unvan + ' — yeni hesap kaydı' },
+      sonuc:'Vergi numarası birebir eşleşen bir hesap var. Onaylarsanız kayıtlar BİRLEŞTİRİLMEZ; ' +
+            'ikinci bir hesap açılır ve karar gerekçesiyle denetim izine yazılır.',
+      gerekce:true, nedenTuru:'istisna',
+      etkilenen:kesin.map(function(e){ return e.hesap.kod + ' ' + e.hesap.unvan; }),
+      run:function(d){
+        istisna = { neden:d.neden, not:d.not,
+                    eslesen:kesin.map(function(e){ return e.hesap.kod; }) };
+        if(kaydet() === false){
+          istisna = null;
+          return { ok:false, mesaj:'Kayıt oluşturulamadı; form alanlarını kontrol edin.' };
+        }
+        return { mesaj:'Gerekçe alındı, yeni hesap oluşturuldu.' };
+      }
+    });
+  }
+
+  /* =================================================================
+     KAYDETME
+     ================================================================= */
+  function kodUret(){
+    /* Kod defterden türetilir, sabit yazılmaz (§13.2). */
+    var yil = String(DB.today).slice(0, 4), max = 0;
+    (DB.accounts || []).forEach(function(x){
+      var m = new RegExp('^MUS-' + yil + '-(\\d+)$').exec(x.kod || '');
+      if(m) max = Math.max(max, +m[1]);
+    });
+    return 'MUS-' + yil + '-' + String(max + 1).padStart(3, '0');
+  }
+  function bosNull(x){
+    var s = (x == null) ? '' : String(x).trim();
+    return s === '' ? null : s;
+  }
+
+  function kaydet(){
+    var v = form.submit();
+    if(!v) return false;
+
+    /* 1) Mükerrer kapısı — kesin eşleşmede gerekçesiz yeni kayıt YOK. */
+    if(!rec){
+      var kesin = kesinler(eslesmeler(v));
+      if(kesin.length && !istisna){
+        form.aside();
+        GV.toast('Vergi numarası birebir eşleşen hesap var: ' + kesin[0].hesap.kod +
+                 '. Mevcut hesabı açın ya da "Yine de yeni kayıt oluştur" ile gerekçe bildirin.', 'danger');
+        return false;
+      }
+    }
+
+    /* 2) Evre kapısı — liste ekranda yazılı değil (§5.2 · L-40). */
+    var hedefEvre = rec ? rec.evre : (v.evre || 'ADAY');
+    if(hedefEvre === 'MUSTERI'){
+      /* 2a) YETKİ — §10: "Müşteri evresini Müşteri yap → satış yöneticisi".
+         `GV.lifecycle.gec` bu kapıyı zaten tutuyor ama DOĞUM o yordamdan
+         geçmiyor; kapının etrafından dolaşılabiliyordu. Kural yine ortak
+         katmanda (`dogumIzni`), ekran yalnız çağırıp sonucu basıyor. */
+      var izin = GV.lifecycle.dogumIzni(hedefEvre);
+      if(!izin.ok){
+        form.tab('temel');
+        form.aside();
+        GV.toast(izin.mesaj, 'danger');
+        return false;
+      }
+      var eksik = GV.lifecycle.eksikAlanlar(taslakHesap(v), 'MUSTERI');
+      if(eksik.length){
+        form.tab('ek');
+        form.aside();
+        GV.toast('Müşteri evresi için şu alanlar dolu olmalı: ' + eksik.join(', '), 'danger');
+        return false;
+      }
+    }
+
+    var hedefKod;
+
+    if(!rec){
+      /* ---- YENİ KAYIT ---------------------------------------------
+         Türetilebilir ticari sayaçlar NULL doğar. `0` yazmak, ölçülmemiş
+         olanı "ölçtüm, sıfır çıktı" diye beyan etmektir (L-08 · L-13).
+         Kısa ad formda sorulmuyor — uydurulmaz, null kalır; liste ekranı
+         zaten `kisa || unvan` okur. */
+      hedefKod = kodUret();
+      var h = {
+        kod:hedefKod,
+        legacy_id:hedefKod,
+        legacy_kaynak:'form',
+        unvan:bosNull(v.unvan),
+        kisa:null,
+        evre:hedefEvre,
+        evreKaynak:'form: yeni kayıt',
+        tip:bosNull(v.tip),
+        sektor:bosNull(v.sektor),
+        sorumlu:bosNull(v.sorumlu),
+        tel:bosNull(v.tel),
+        eposta:bosNull(v.eposta),
+        vergiNo:bosNull(v.vergiNo),
+        vergiDairesi:bosNull(v.vergiDairesi),
+        adres:bosNull(v.adres),
+        web:bosNull(v.web),
+        buyukluk:bosNull(v.buyukluk),
+        kaynak:bosNull(v.kaynak),
+        referans:bosNull(v.referans),
+        risk:bosNull(v.risk),
+        durum:null,
+        sonIletisim:null,
+        aktifProje:null,
+        toplamCiro:null,
+        bekleyenTahsilat:null,
+        memnuniyet:null,
+        ihtiyac:bosNull(v.ihtiyac),
+        leadKodlari:[]
+      };
+      (DB.accounts || (DB.accounts = [])).unshift(h);
+
+      GV.audit.yaz({
+        kayit:hedefKod, modul:'Müşteri',
+        islem:'Hesap kaydı oluşturuldu (müşteri formu)',
+        yeni:evreAdi(hedefEvre), tone:'ok', icon:'i-plus' });
+
+      if(istisna){
+        GV.audit.yaz({
+          kayit:hedefKod, modul:'Müşteri',
+          islem:'Mükerrer uyarısına rağmen yeni kayıt [' + istisna.neden + '] — ' + istisna.not,
+          eski:istisna.eslesen.join(' · '), yeni:hedefKod,
+          tone:'warn', icon:'i-alert' });
+      }
+    }else{
+      /* ---- DÜZENLEME ----------------------------------------------
+         `evre` bilerek listede YOK: evre bu ekrandan değişmez. */
+      hedefKod = rec.kod;
+      /* İki ayrı olgu ayrı ayrı sayılır ve ayrı ayrı yazılır:
+         · DEĞİŞEN  — kullanıcı formda gördüğü değeri değiştirdi,
+         · TAŞINAN  — değer zaten kaynak müşteri kaydından okunmuştu, hesap
+                      kaydında karşılığı yoktu; kaydetme onu hesap kaydına
+                      taşıdı. Bunu "kullanıcı değiştirdi" diye yazmak, denetim
+                      izine yanlış fail atfetmek olurdu. */
+      var degisen = [], tasinan = [];
+      TEMEL_ALANLAR.concat(EK_ALANLAR).forEach(function(k){
+        var yeniD  = bosNull(v[k]);
+        var formD  = bosNull(formKayit[k]);
+        var kayitD = bosNull(rec[k]);
+        if(yeniD !== formD) degisen.push(k);
+        else if(yeniD !== kayitD) tasinan.push(k);
+        rec[k] = yeniD;
+      });
+
+      GV.audit.yaz({
+        kayit:hedefKod, modul:'Müşteri',
+        islem:(degisen.length
+                ? 'Hesap kaydı güncellendi — değişen alan: ' + degisen.join(', ')
+                : 'Hesap kaydı kaydedildi — kullanıcı alanı değişmedi') +
+              (tasinan.length
+                ? ' · kaynak kayıttan hesap kaydına taşınan alan: ' + tasinan.join(', ')
+                : ''),
+        tone:'info', icon:'i-edit' });
+    }
+
+    GV.afterSave({
+      kod:hedefKod,
+      liste:'app-musteri.html',
+      detay:'app-musteri-detay.html',
+      yeni:!rec,
+      mesaj:rec
+        ? 'Hesap bilgileri güncellendi; yaşam evresi değiştirilmedi.'
+        : 'Hesap oluşturuldu; yaşam evresi ' + evreAdi(hedefEvre) + ' olarak başladı. ' +
+          'Evre ilerletme müşteri detayından yürür.'
+    });
+    return true;
+  }
+
+  /* =================================================================
+     BACKEND PAYI — §10.2 (b): tek tek, gizlenmeden, taklit edilmeden
+     ================================================================= */
+  var backendMaddeleri = [
+    { kod:'BE-S1',
+      madde:'Mükerrer kontrolü yalnız istemcide koşar; sunucuda vergi numarası için ' +
+            'benzersizlik kısıtı yoktur. İki kullanıcı aynı anda aynı firmayı açarsa ' +
+            'prototip bunu göremez.',
+      bolum:'§5.3' },
+    { kod:'BE-S2',
+      madde:'PATCH /api/customers/:id/lifecycle-stage yok; yaşam evresi ve bu formun yazdığı ' +
+            'alanlar yalnız bellekte yaşar, kaynak müşteri kaydına aynalanmaz ve sayfa ' +
+            'yenilenince türetme baştan koşar.',
+      bolum:'§9' }
+  ];
+  document.getElementById('musBackend').innerHTML =
+    '<section class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+        '<span class="gc-meta">' + backendMaddeleri.length + ' madde</span></div>' +
+      '<div class="gc-body">' +
+        GV.dl(backendMaddeleri.map(function(g){
+          return ['<span class="cell-code">' + GV.esc(g.kod) + '</span>',
+                  GV.esc(g.madde) + ' <span class="u-faint u-sm">' + GV.esc(g.bolum) + '</span>'];
+        })) +
+        '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve <b>taklit edilmedi</b>. ' +
+          'Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+      '</div>' +
+    '</section>';
+});
+</script>
+</body>
+</html>
