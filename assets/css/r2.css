@@ -224,3 +224,178 @@
 .gv-menu-item.is-admin{ opacity:.72; font-size:var(--fs-xs); }
 .gv-menu-item.is-admin:hover,
 .gv-menu-item.is-admin[aria-current="page"]{ opacity:1; }
+
+/* =====================================================================
+   4. OPERASYON — şartname §6.2
+   Sol %35 iş kuyruğu · sağ %65 işlem paneli · sürüklenebilir ayırıcı.
+   Genişlik `--ops-sol` custom property'sinden gelir; JS sınırı 30..50
+   arasında tutar (sol ≥%30, sağ ≥%50).
+   ===================================================================== */
+.ops-split{
+  --ops-sol:35%;
+  display:grid;
+  grid-template-columns:var(--ops-sol) auto minmax(0,1fr);
+  gap:0;
+  border:1px solid var(--line); border-radius:var(--r-lg);
+  background:var(--paper); box-shadow:var(--sh-sm);
+  overflow:hidden;
+  /* Tam genişlikli masaüstü çalışma yüzeyi (§6.1) */
+  height:calc(100vh - var(--top-h) - var(--sp-17) * 1.6);
+  min-height:calc(var(--sp-17) * 6);
+}
+body.ops-suruklu{ user-select:none; cursor:col-resize; }
+
+.ops-sol{ display:flex; flex-direction:column; min-width:0; border-right:1px solid var(--line); }
+.ops-sag{ min-width:0; overflow:auto; background:var(--bg-sunk); }
+
+.ops-ayrac{
+  width:var(--sp-4); cursor:col-resize; background:var(--line);
+  border:0; padding:0; position:relative;
+}
+.ops-ayrac:hover, .ops-ayrac:focus-visible{ background:var(--acc); outline:none; }
+.ops-ayrac::after{
+  content:''; position:absolute; inset:0 calc(var(--sp-4) * -1);
+}
+
+/* --- Sol: arama, kayıtlı görünüm, çipler, liste --- */
+.ops-arama{
+  display:flex; align-items:center; gap:var(--sp-4);
+  padding:var(--sp-7); border-bottom:1px solid var(--line); color:var(--muted);
+}
+.ops-arama .inp{ height:var(--h-sm); font-size:var(--fs-sm); flex:1 1 auto; min-width:0; }
+
+.ops-gorunumler{
+  display:flex; flex-wrap:wrap; gap:var(--sp-3);
+  padding:var(--sp-6) var(--sp-7) 0;
+}
+.ops-gorunum{
+  display:inline-flex; align-items:center; gap:var(--sp-3);
+  padding:var(--sp-3) var(--sp-5);
+  border:1px solid var(--line-2); border-radius:var(--r-pill);
+  background:var(--paper); color:var(--ink-2);
+  font-size:var(--fs-2xs); font-weight:var(--fw-600); cursor:pointer;
+}
+.ops-gorunum:hover{ border-color:var(--acc); color:var(--acc-deep); }
+.ops-gorunum.is-yeni{ border-style:dashed; color:var(--muted); }
+.ops-gorunum-sil{ color:var(--muted); padding:0 var(--sp-1); }
+.ops-gorunum-sil:hover{ color:var(--danger); }
+
+.ops-cipler{
+  display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-3);
+  padding:var(--sp-6) var(--sp-7);
+}
+.ops-cip{
+  display:inline-flex; align-items:center; gap:var(--sp-3);
+  padding:var(--sp-3) var(--sp-5);
+  border:1px solid var(--line-2); border-radius:var(--r-pill);
+  background:var(--paper); color:var(--ink-2);
+  font-size:var(--fs-2xs); font-weight:var(--fw-600); cursor:pointer;
+}
+.ops-cip:hover{ border-color:var(--acc); }
+.ops-cip.is-on{ background:var(--acc-tint); border-color:var(--acc); color:var(--acc-deep); }
+.ops-cip-n{
+  font-family:var(--font-num); font-weight:var(--fw-700);
+  background:var(--bg-sunk); border-radius:var(--r-pill);
+  padding:0 var(--sp-3); font-size:var(--fs-2xs);
+}
+.ops-cip.is-on .ops-cip-n{ background:var(--paper); }
+.ops-cip-ayrac{ width:1px; height:var(--sp-8); background:var(--line-2); margin:0 var(--sp-2); }
+
+.ops-sayac{
+  padding:0 var(--sp-7) var(--sp-6);
+  font-size:var(--fs-2xs); color:var(--muted);
+}
+.ops-liste-sar{ flex:1 1 auto; overflow:auto; min-height:0; border-top:1px solid var(--line); }
+.ops-bos{ padding:var(--sp-11) var(--sp-7); }
+
+.ops-liste{ list-style:none; margin:0; padding:0; }
+.ops-satir{
+  display:flex; align-items:center; gap:var(--sp-5);
+  width:100%; text-align:left;
+  padding:var(--sp-6) var(--sp-7);
+  border:0; border-bottom:1px solid var(--line); background:var(--paper);
+  cursor:pointer; min-width:0;
+}
+.ops-satir:hover{ background:var(--bg-sunk); }
+.ops-satir.is-sec{ background:var(--acc-tint); box-shadow:inset var(--sp-1) 0 0 var(--acc); }
+.ops-satir.is-late{ box-shadow:inset var(--sp-1) 0 0 var(--danger); }
+.ops-satir.is-late.is-sec{ box-shadow:inset var(--sp-1) 0 0 var(--danger), inset 0 0 0 1px var(--acc); }
+.ops-satir-tip{ flex:0 0 auto; color:var(--muted); display:flex; }
+.ops-satir-ana{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:var(--sp-2); }
+.ops-satir-baslik{
+  font-size:var(--fs-sm); font-weight:var(--fw-600); color:var(--ink);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.ops-satir-alt{
+  font-size:var(--fs-2xs); color:var(--muted);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.ops-satir-tarih{
+  flex:0 0 auto; font-family:var(--font-num);
+  font-size:var(--fs-2xs); color:var(--muted);
+}
+
+/* --- Sağ: işlem paneli --- */
+.ops-panel-bos{ padding:var(--sp-13) var(--sp-9); }
+.ops-panel-ic{ display:flex; flex-direction:column; min-height:100%; }
+.ops-panel-head{
+  padding:var(--sp-8) var(--card-pad);
+  border-bottom:1px solid var(--line); background:var(--paper);
+  position:relative;
+}
+.ops-panel-tip{
+  display:flex; align-items:center; gap:var(--sp-3);
+  font-size:var(--fs-2xs); font-weight:var(--fw-600);
+  letter-spacing:var(--ls-caps); text-transform:uppercase; color:var(--muted);
+}
+.ops-panel-head h2{
+  margin:var(--sp-4) 0 0; font-size:var(--fs-lg); font-weight:var(--fw-800);
+  color:var(--ink); letter-spacing:var(--ls-tight); padding-right:var(--sp-16);
+}
+.ops-odak-btn{ position:absolute; top:var(--sp-8); right:var(--card-pad); }
+
+.ops-panel-govde{ flex:1 1 auto; padding:var(--sp-8) var(--card-pad); }
+.ops-blok + .ops-blok{ margin-top:var(--sp-9); }
+.ops-blok h3{
+  margin:0 0 var(--sp-6); font-size:var(--fs-2xs); font-weight:var(--fw-700);
+  letter-spacing:var(--ls-caps); text-transform:uppercase; color:var(--muted);
+}
+.ops-dl{
+  display:grid; grid-template-columns:auto minmax(0,1fr);
+  gap:var(--sp-4) var(--sp-8); margin:0;
+}
+.ops-dl dt{ font-size:var(--fs-xs); color:var(--muted); }
+.ops-dl dd{ margin:0; font-size:var(--fs-sm); color:var(--ink); font-weight:var(--fw-600); min-width:0; word-break:break-word; }
+
+.ops-eylemler{
+  display:flex; flex-wrap:wrap; gap:var(--sp-4);
+  padding:var(--sp-7) var(--card-pad);
+  border-top:1px solid var(--line); background:var(--paper);
+  position:sticky; bottom:0;
+}
+.ops-backend{
+  margin:0; padding:var(--sp-6) var(--card-pad) var(--sp-8);
+  font-size:var(--fs-2xs); color:var(--muted); line-height:var(--lh-base);
+  background:var(--paper);
+}
+
+/* --- Odak penceresi kipi (§6.4): yalnız içerik ve eylem çubuğu --- */
+body.ops-odak .gv-rail,
+body.ops-odak .gv-menu,
+body.ops-odak .gv-divider,
+body.ops-odak .gv-top,
+body.ops-odak .gv-crumb,
+body.ops-odak .ops-sol,
+body.ops-odak .ops-ayrac{ display:none; }
+body.ops-odak .gv-main{ grid-column:1 / -1; padding:var(--sp-7); }
+body.ops-odak .ops-split{ grid-template-columns:minmax(0,1fr); height:auto; border:0; box-shadow:none; }
+body.ops-odak .ops-sag{ background:var(--paper); }
+
+/* --- Dar kırılım: bölme dikeye döner --- */
+@media (max-width:900px){
+  .ops-split{ grid-template-columns:minmax(0,1fr); height:auto; }
+  .ops-ayrac{ display:none; }
+  .ops-sol{ border-right:0; border-bottom:1px solid var(--line); }
+  .ops-liste-sar{ max-height:calc(var(--sp-17) * 4); }
+  .ops-eylemler{ position:static; }
+}

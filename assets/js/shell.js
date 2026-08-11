@@ -736,7 +736,8 @@
   var BUILT = [
     'index.html',
     'app-panel.html',
-    'app-musteri.html'
+    'app-musteri.html',
+    'app-operasyon.html'
   ];
   GV.built = BUILT;
 

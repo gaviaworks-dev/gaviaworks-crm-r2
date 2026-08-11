@@ -30,7 +30,8 @@ const GENISLIK = [1600, 1440, 1280, 1024, 768, 390];
 const EKRANLAR = [
   { dosya: 'index.html',       ad: 'Giriş',            oturum: false },
   { dosya: 'app-panel.html',   ad: 'Gündem',           oturum: true },
-  { dosya: 'app-musteri.html', ad: 'Müşteriler',       oturum: true }
+  { dosya: 'app-musteri.html', ad: 'Müşteriler',       oturum: true },
+  { dosya: 'app-operasyon.html', ad: 'Operasyon',      oturum: true }
 ];
 
 const MIME = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8',
