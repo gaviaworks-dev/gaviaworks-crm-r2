@@ -413,6 +413,13 @@
     });
     var focusEl = scrim.querySelector('.btn-acc, .btn-danger, input, select, textarea, button');
     if(focusEl) focusEl.focus();
+    /* SAHTE BUTON YASAĞI OVERLAY İÇİNDE DE GEÇERLİ. Kabuğun WIP gözlemcisi
+       `.gv-main`i izliyor (shell.js:794) ama modal/çekmece `document.body`ye
+       basılıyor — yani pencere içindeki bağlantılar kilitlenmiyordu ve
+       ekranlar `GV.markWip(res.el)`i elle çağırmak zorunda kalıyordu.
+       Kural bileşende olmalı; çağıranın hatırlaması gereken bir kural,
+       er geç unutulan kuraldır. */
+    if(GV.markWip) GV.markWip(scrim);
     /* GV.refresh() açık overlay'i kapatabilsin diye kapatıcıyı düğüme asıyoruz. */
     /* L-18 — overlay üreten bileşen kapatıcısını DÜĞÜME asar; `GV.refresh()`
        dışarıdan kapatabilsin diye. Scrim'e asılıydı, modal kutusuna değildi. */
@@ -480,10 +487,16 @@
     'Onayla':'ok', 'Reddet':'danger', 'İade Et':'warn', 'Revizyon İste':'warn',
     'İptal Et':'danger', 'Geri Çek':'warn', 'Devret':'accent', 'Yeniden Aç':'accent'
   };
+  /* ⚠️ Bu harita SPRITE'LA HİZALI OLMAK ZORUNDA. Üç ad 113 sembollük
+     sprite'ta hiç yoktu (`i-corner-up-left` · `i-rotate` · geri düşüş
+     `i-help`) ve sonuç sessizdi: `<use href="#i-help">` hedefi bulamayınca
+     hata vermez, BOŞLUK çizer. Üç ekran birden bunu bağımsız olarak bildirdi
+     ve üçü de sözlük dışı bir `eylem` adı kullanmaktan kaçındı — yani kusur
+     ekranların dilini daraltıyordu. Adlar sprite'ta var olanlarla eşlendi. */
   var EYLEM_IKON = {
     'Onayla':'i-check-circle', 'Reddet':'i-x-circle', 'İade Et':'i-refresh',
-    'Revizyon İste':'i-refresh', 'İptal Et':'i-x-circle', 'Geri Çek':'i-corner-up-left',
-    'Devret':'i-users', 'Yeniden Aç':'i-rotate'
+    'Revizyon İste':'i-refresh', 'İptal Et':'i-x-circle', 'Geri Çek':'i-arrow-left',
+    'Devret':'i-users', 'Yeniden Aç':'i-refresh'
   };
 
   GV.action = function(cfg){
@@ -538,7 +551,7 @@
     return GV.modal({
       title:eylem + (kayit.kod ? ' — ' + kayit.kod : ''),
       text:kayit.baslik || '',
-      icon:EYLEM_IKON[eylem] || 'i-help',
+      icon:EYLEM_IKON[eylem] || 'i-info',
       tone:ton, size:'sm', body:g.join(''),
       actions:[
         { label:'Vazgeç', cls:'btn-line' },
@@ -628,6 +641,7 @@
       }
     });
     if(cfg.onOpen) cfg.onOpen(d, close);
+    if(GV.markWip) GV.markWip(d);          /* modal ile aynı gerekçe */
     /* GV.refresh() açık paneli kapatabilsin diye kapatıcıyı iki düğüme de asıyoruz;
        kapatma iki kez çağrılsa da zararsızdır (düğüm zaten sökülmüş olur). */
     d.__gvClose = close; scrim.__gvClose = close;
@@ -706,14 +720,38 @@
       '</span></div>';
   };
 
+  /* ⚠️ "Tekrar dene" düğmesi ÖLÜ BUTONDU. `data-retry` yalnız `GV.list`
+     içinde bağlanıyor (`ui.js` wire); bileşen tek başına kullanıldığında —
+     kayıt bulunamayan her detay ekranında — düğme basılıyor ama hiçbir şey
+     yapmıyordu. Sahte buton yasağı bileşenin kendisi için de geçerlidir.
+     Yeni sözleşme: `retry` verilirse düğme onu çağırır; verilmezse
+     ÇAĞIRANIN kendi eylemi (`action`) basılır; ikisi de yoksa düğme HİÇ
+     basılmaz. `GV.list` davranışı değişmez — o `data-retry`yi kendi bağlıyor
+     ve `retry` göndermiyor, dolayısıyla eski yol olduğu gibi çalışır. */
   GV.errorState = function(c){
     c = c || {};
-    return '<div class="gv-state is-danger">' +
+    var acts;
+    if(c.action) acts = c.action;
+    else if(c.retry === false) acts = '';
+    else acts = '<button type="button" class="btn btn-line" data-retry>' +
+                ico('i-refresh') + ' Tekrar dene</button>';
+    var html = '<div class="gv-state is-danger">' +
       '<div class="gv-state-ico">' + ico('i-alert','ic-xl') + '</div>' +
       '<h3>' + esc(c.title || 'Veri yüklenemedi') + '</h3>' +
       '<p>' + esc(c.desc || 'Kayıtlar getirilirken bir sorun oluştu. Bağlantınızı kontrol edip tekrar deneyin.') + '</p>' +
-      '<div class="gv-state-acts"><button type="button" class="btn btn-line" data-retry>' +
-      ico('i-refresh') + ' Tekrar dene</button></div></div>';
+      (acts ? '<div class="gv-state-acts">' + acts + '</div>' : '') + '</div>';
+    /* Çağıran bir yordam verdiyse düğme DOM'a girdikten sonra bağlanır —
+       bileşen HTML döndürdüğü için tek yol budur. */
+    if(typeof c.retry === 'function'){
+      setTimeout(function(){
+        Array.prototype.forEach.call(document.querySelectorAll('[data-retry]'), function(b){
+          if(b.__gvRetry) return;
+          b.__gvRetry = true;
+          b.addEventListener('click', function(){ c.retry(); });
+        });
+      }, 0);
+    }
+    return html;
   };
 
   GV.skeleton = function(type, n){
@@ -2254,7 +2292,15 @@
         if(zorunlu && (val === '' || val == null || val === false)) msg = f.label + ' zorunlu alandır.';
         else if(val && f.type === 'email' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val)) msg = 'Geçerli bir e-posta adresi girin.';
         else if(val && f.type === 'tel' && String(val).replace(/\D/g,'').length < 10) msg = 'Telefon numarası en az 10 haneli olmalıdır.';
-        else if(val && f.type === 'url' && !/^https?:\/\//.test(val)) msg = 'Bağlantı http:// veya https:// ile başlamalıdır.';
+        /* ⚠️ ŞEMASIZ ADRES KABUL EDİLİR. Eski kural `http(s)://` dayatıyordu
+           ve ölçüldü: 12 müşteri kaydının 12'si web adresini şemasız tutuyor
+           (`denizlojistik.com`), yani MEVCUT HER KAYDIN DÜZENLENMESİ
+           kilitleniyordu — doğrulama var olan veriyi geçersiz ilan ediyordu.
+           Kural, adresin ŞEKLİNE bakar: en az bir nokta ve boşluksuz gövde.
+           Şema eklemek görüntüleme tarafının işidir, kullanıcının değil. */
+        else if(val && f.type === 'url' &&
+                !/^(https?:\/\/)?[^\s/$.?#][^\s]*\.[^\s.]{2,}(\/[^\s]*)?$/i.test(String(val).trim()))
+          msg = 'Geçerli bir web adresi girin (örnek: gaviaworks.com).';
         else if(val && f.min != null && Number(val) < f.min) msg = 'En küçük değer ' + f.min + '.';
         else if(val && f.max != null && Number(val) > f.max) msg = 'En büyük değer ' + f.max + '.';
         else if(f.validate){

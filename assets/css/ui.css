@@ -84,6 +84,14 @@
 }
 .gc-title .ic{ color:var(--acc-ink); }
 .gc-sub{ font-size:var(--fs-sm); color:var(--muted); margin-top:var(--sp-2); font-weight:var(--fw-500); }
+/* Kart başlığının sağındaki sayaç / künye. `app-odeme-linki-detay.html:169`
+   beş oturumdur bunu kullanıyor ve karşılığı YOKTU: biçimsiz, gövde
+   tipografisiyle basılıyordu. Yazılı ama uygulanmayan sınıf, yanlış sınıfın
+   sessiz hâlidir. */
+.gc-meta{
+  font-size:var(--fs-xs); color:var(--muted); font-weight:var(--fw-600);
+  font-variant-numeric:tabular-nums; white-space:nowrap;
+}
 .gc-head-acts{ display:flex; align-items:center; gap:var(--sp-4); }
 .gc-body{ padding:var(--card-pad); }
 .gc-body.flush{ padding:0; }
