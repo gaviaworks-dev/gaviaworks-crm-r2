@@ -506,3 +506,112 @@ kapanır. Dilim 1'de okuma ve durum ilerletme yazılmıştı, oluşturma eksikti
 listesi/detay/form, tahsilat listesi/form, satın alma. Sözleşme ve ödeme planı
 **ayrı ekran değildir** — şartname §3.3 gereği ilgili kaydın sekmesidir ve
 dilim 1'de müşteri detayının Finans sekmesine yerleşti.
+
+---
+
+## ADR-R2-22 · Tahsilat detayı ayrı ekran değildir, tahsis defteri drawer'dır
+
+**Karar (K-23).** `app-tahsilat-detay.html` **yazılmaz**. Tahsilat listesinde
+satıra tıklanınca tahsis defteri ve kayıt geçmişi drawer olarak açılır.
+Operasyon kuyruğunun tahsilat hedefi de buraya bağlandı.
+
+**Ne değişti.** `kuyruk.js` iki satırda `app-tahsilat-detay.html?id=` yazıyordu
+ve o dosya hiç doğmadı; hedef `app-tahsilat.html?ac=<kod>` oldu. Ekran açılışta
+parametreyi okur, çekmeceyi açar ve **parametreyi adresten siler** — silmeseydi
+`GV.refresh()` her tazelemede pencereyi yeniden açar, kullanıcı kapattığı
+pencereyi kapatamazdı.
+
+**Ortak katmana düşen pay.** `GV.list` satır tıklamasını desteklemiyordu ve iki
+ekran bunu kendi `addEventListener`'ıyla kurmak üzereydi. `cfg.rowOpen(kayit)`
+bileşene eklendi; satır işaretlemesi (`data-id`) tabloda, mobil satırda, kartta
+ve kanban kartında zaten vardı, tek delege dinleyici dördünü de karşılar. Satır
+İÇİNDEKİ etkileşimli düğüme (aksiyon, seçim kutusu, bağlantı) yapılan tıklama
+çekmeceyi **açmaz** — açsaydı kullanıcı her satır aksiyonunda istemediği bir
+pencere de alırdı.
+
+**Rota haritası 71** bu ADR ile kapandı; **V2-25** borcu kalktı.
+
+---
+
+## ADR-R2-23 · Satın alma alt kayıtları dört yüzey sekmesidir
+
+**Karar (K-24).** Teklif toplama, siparişler ve tedarikçiler **ayrı ekran
+ailesi açmaz**; satın alma ekranının yüzey sekmeleri olur. Rota haritası
+116-122 bununla kapanır, **V2-24** borcu kalkar.
+
+**Yapı.** Dört yüzey (`Talepler · Teklif Toplama · Siparişler · Tedarikçiler`)
+`GV.tabs` ile kurulur, her biri kendi `GV.list`ini taşır. Alt listeler **tembel
+çizilir**: sekmeye ilk basıldığında kurulurlar. Dördünü birden kurmak,
+kullanıcının hiç açmayacağı üç listeyi de her sayfa yüklemesinde çizmek olurdu.
+
+**URL senkronu yalnız ANA listede açık.** `GV.list` sayfa/sekme/filtre/sıralama
+durumunu adres çubuğunda saklar; dört liste bunu birden yaparsa aynı anahtarları
+yazar ve birbirini ezer. Rota 113'ün eski `app-satinalma.html?t=onay` bağlantısı
+ana listenin senkronu üzerinden çalışmaya devam ediyor. Yüzey sekmesi `#hash`te
+durur, iki mekanizma çakışmaz.
+
+**Ortak katmanda kapatılan kusur.** `urlSync:false` yalnız YAZMAYI
+susturuyordu, OKUMA her listede koşuyordu. Tek listeli sayfada bu fark etmezdi;
+dört listeli sayfada ana listenin `?t=onay` adresi üç alt listeye de sızıyordu
+ve hiçbirinde `onay` diye sekme olmadığı için üçü de sekmesiz açılıyordu.
+Bayrak artık iki yönlü: **yazmayan liste okumaz da.**
+
+**Satır kimliği türetildi, uydurulmadı.** `DB.supplierQuotes` bir birleşim
+kaydıdır (talep × tedarikçi) ve kaynak veride kodu yoktur; `GV.list` satır
+kimliğini bir alan adından okur. `id = talep · tedarikçi` tek yerde yazıldı —
+yeni bir `TKF-` kod dizisi uydurmak, karşılığı olmayan kayıt numarası üretmek
+olurdu. 9 satırın 9'unda benzersiz olduğu ölçüldü.
+
+**İki puan ekseni ayrı kaldı** (ops.js:259-268): teklif satırındaki `puan`
+"Teklif puanı", tedarikçi kartındakiler "Genel puan" etiketiyle basılır.
+**Ömür boyu sayaç kuralı** korundu: `toplamTutar` ve `siparisSayisi` kart
+değeri ile sistemden hesaplanan ayrı satırda verilir, biri diğerinin yerine
+yazılmaz.
+
+---
+
+## ADR-R2-24 · Tahsis geri alma ters kayıt üretir; kapı yapmakla aynı ağırlıkta
+
+**Karar (K-25).** Tahsis geri alma yüzeye çıktı. Şartname §8.5'in iade kuralı
+birebir uygulandı: **gerekçe zorunlu · kayıt SİLİNMEZ · ters işlem üretilir ·
+audit'e yazılır.**
+
+**Kapatılan kusur.** `GV.fin.tahsisKaldir` kaydı `splice` ile defterden
+**çıkarıyordu**. Bu §8.5'i doğrudan çiğniyordu; geri alınan tutar hiçbir yerde
+okunamıyordu ve denetim izi "bir şey geri alındı" derken defter onu hiç
+görmemiş gibi duruyordu. Artık asıl satır yerinde kalır, yanına eksi tutarlı,
+gerekçeli ve aktörlü bir ters satır yazılır; net sıfırlanır.
+
+**Ölçüt satır değil NET oldu — üç yerde.** Ters kayıttan sonra defterde iki
+satır durur. Satır sayısına bakan her kontrol geri alınmış bir tahsisi hâlâ
+duruyor sanardı: `tahsisEt` aynı çifte yeni tahsisi sonsuza dek reddederdi
+(geri alma işlemini geri alınamaz yapardı), `tahsilGeriAl` nakit olayını hiç
+serbest bırakmazdı. `GV.fin.ciftNet` ve `GV.fin.dagitimNet` bu soruyu tek
+yerden cevaplar.
+
+**YETKİ — bilerek `can('finans')`, yani tahsis KURMAKLA AYNI KAPI.**
+K-25 "Finans yöneticisi" diyor; 27 rollük sözlükte o adda bir rol **yok** ve
+`finans` yetkisi 8 rolde açık (`sahip · genelmudur · sistem · operasyon ·
+satismudur · pm · muhasebe · satinalma`). Geri almayı bu kümeden dar bir role
+bağlamak, tahsisi kuran kullanıcının kendi hatasını düzeltememesi demekti:
+**bir işi geri almak, onu yapmaktan daha ağır koşula bağlanamaz.** Kapı şu an
+eşit tutuluyor; daraltma kararı Beyar'a soruldu ve daraltılacaksa değişecek tek
+yer `domain.js` `tahsisKaldir` içindeki tek `can()` satırıdır. Gerekçe
+zorunluluğu yetki değil kayıt koşuludur — kimseyi kilitlemez, yalnız işlemi
+defterde adlandırır.
+
+**Ölçüm.** `tasks/qa/acilis-uc.js` üç ekseni de bir olumlu ve bir olumsuz
+vakayla sınar; 40 kontrol koşuyor.
+
+---
+
+## ADR-R2-25 · Sıradaki dilim Proje ve Operasyon
+
+**Karar (K-26).** Finanstan sonra Proje ve Operasyon gelir: proje listesi ve
+sekmeli detayı, görev listesi/detay/form, destek listesi/detay/form.
+
+**Neden bu.** Operasyon kuyruğunun 43 satırının 41'i hedefsizdi ve en ağır iki
+dosya bu dilimin içinde: `app-gorev-detay.html` tek başına 23 satırı,
+`app-destek-detay.html` 4 satırı kurtarıyor. Menüde kilitli 12 hedefin 5'i bu
+alanda. Proje alt kayıtları (rota 33-47, 15 satır) tek bir sekmeli detay
+ekranıyla kapanıyor — kalan rota satırlarının en yoğun bloğu.
