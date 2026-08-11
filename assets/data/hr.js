@@ -649,3 +649,67 @@ DB.onboarding = [
       { ad:'İlk hafta değerlendirmesi', tamam:true, sorumlu:'EMP-002' }
     ], aktif:true }
 ];
+
+/* =======================================================================
+   K-18 · BAYAT EKSEN — `DB.employees[].aktif` TUZAĞA ÇEVRİLDİ
+
+   Ölçüldü: alan 16 kaydın 16'sında `true`. Yani hiçbir şey ayırt etmiyordu.
+   Yedi ekran `e.aktif !== false` yazarak "çalışan personel" listesi kuruyor
+   ve `EMP-015`i (durum `Offboarding`, çıkış 2026-08-31) o listeye koyuyordu.
+
+   Yaşam döngüsü `durum` alanında yaşar (`DB.employeeStatuses`, 7 değer) ve
+   geçişleri `GV.flow` `employee` varlığı yürütür. Sorular artık türetilir:
+     GV.hr.istihdamda(e)  — bordroda mı
+     GV.hr.atanabilir(e)  — YENİ iş verilebilir mi
+     GV.hr.atanabilirler()— hazır atama listesi
+
+   Alan silinmedi, TUZAĞA çevrildi: okuyan olursa sayaç artar ve `undefined`
+   döner. `tasks/qa/ik-ekseni.js` tek bir okuma kalırsa kırmızı yanar.
+   Aynı disiplin `DB.customers[].durum` için K-21'de kuruldu (lifecycle.js).
+   ======================================================================= */
+(function(){
+  if(!window.DB || !DB.employees) return;
+
+  DB.ikBayat = { okuma:[], yazma:[], sayac:0 };
+
+  DB.employees.forEach(function(e){
+    if(!Object.getOwnPropertyDescriptor(e, 'aktif')) return;
+    delete e.aktif;
+    Object.defineProperty(e, 'aktif', {
+      configurable:true,
+      enumerable:false,
+      get:function(){
+        DB.ikBayat.okuma.push({ alan:'aktif', kod:e.kod });
+        DB.ikBayat.sayac++;
+        return undefined;
+      },
+      set:function(){
+        DB.ikBayat.yazma.push({ alan:'aktif', kod:e.kod });
+        DB.ikBayat.sayac++;
+      }
+    });
+  });
+})();
+
+/* =======================================================================
+   ZİMMET KABULÜ ÇELİŞKİSİ — TEK KAYNAK `DB.assignments` (K-18 eki)
+
+   Ölçüldü: envanter kaydı zimmet TUTANAĞI YAZILDIĞI AN güncelleniyordu,
+   personelin kabulü beklenmiyordu. Somut kanıt — `ZMT-2026-007`:
+     tutanak durumu   : Aktif
+     personel onayı   : **Bekliyor**
+     envanter kaydı   : `zimmetli:'EMP-006'` · `durum:'Zimmetli'`
+   Yani envanter "bu cihaz EMP-006'da" diyordu, tutanak "henüz kabul
+   etmedi" diyordu. İki defter aynı soruya iki cevap veriyordu.
+
+   KARAR: `DB.assets[].zimmetli` ve `[].durum` **TÜRETİLMİŞ görünümdür**;
+   tek kaynak zimmet defteridir. Değerler yükleme anında yeniden hesaplanır
+   ve elle yazılmış olan hayatta kalmaz — `GV.fin.tazeleHepsi`nin fatura
+   durumları için yaptığının aynısı.
+
+   KABUL KURALI: zimmet ancak personel onayladığında envanteri "Zimmetli"
+   yapar. Onay beklerken cihaz **`Zimmet bekliyor`** durumundadır — ne
+   depoda ne de teslim edilmiş sayılır. Bu ara durumu yok saymak, kabul
+   edilmemiş bir teslimi teslim edilmiş göstermek olurdu.
+   ======================================================================= */
+DB.assetStatuses = ['Depoda','Zimmet bekliyor','Zimmetli','Aktif','Hurda'];
