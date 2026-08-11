@@ -720,6 +720,7 @@ Kendi hata metnini yazma. `why` değerleri ve karşılıkları:
 | `'zorunlu'` | Boş zorunlu alan (`r.eksik`) | "Önce şu alanlar doldurulmalı: …" |
 | `'gerekce'` | Neden kodu + açıklama şart (`r.mesaj`) | mesajın kendisi |
 | `'kapi'` | Ek engel yordamı reddetti (`r.mesaj`, `r.istisnaMumkun`, `r.roller`) | mesajın kendisi |
+| `'kilit'` | **Kaydın tamamı donmuş** (ör. revize edilmiş teklif sürümü). `kapi`dan farkı: tek bir geçiş değil, hiçbir geçiş mümkün değil | mesajın kendisi |
 | `'tahsil'` / `'tahsis'` / `'kaynak'` | Finans/onay zinciri reddi | mesajın kendisi |
 | başka metin | "kayıt yok", "… durumuna geçilemez" | ham metin |
 
@@ -741,7 +742,7 @@ girmek** gerekçe ister (`domain.js:369-377`). İkisi ayrı şeydir.
 
 | `tur` | Koleksiyon | Durum alanı | Tablo |
 |---|---|---|---|
-| `quote` | `DB.quotes` | `durum` | `org.js:504-515` — 10 durum |
+| `quote` | `DB.quotes` | `durum` | `org.js:509-521` — 10 durum · **kayıt kilidi var**, bkz. §17.1 |
 | `analysis` | `DB.analyses` | `durum` | `org.js:518-527` |
 | `contract` | `DB.contracts` | `durum` | `org.js:492-502` |
 | `opportunity` | `DB.opportunities` | `asama` | **`assets/data/firsat.js`** — 15 aşama |
@@ -1168,6 +1169,130 @@ yordamları · türettiğin her kaydın kaynağı · boş bıraktığın alanlar
 eksik bulduğun bileşen (yazmadın, rapor ettin) · ölçemediğin şey.
 
 ---
+
+## 17. Dilim 2 — Finans zinciri (yeni ortak katman)
+
+Bu bölüm dilim 2'de eklenen yordamları taşır. Öncekiler geçerliliğini korur.
+
+### 17.1 `GV.teklif` — teklif sürümleme (K-17 · `domain.js:2870-3060`)
+
+R1'de üç tur boyunca sahteydi: `versiyon` sayacı artıyor, önceki sürümün
+kaydı hiçbir yerde durmuyordu. Artık gerçek.
+
+```js
+GV.teklif.zincir(kod)        // { kok, surum:[], adet, sira, guncel, sonuncuMu,
+                             //   kilit, devralinan, devralinanSayi }
+GV.teklif.surumler(kod)      // eskiden yeniye tüm sürümler
+GV.teklif.sonSurum(kod)      // zincirin güncel kaydı
+GV.teklif.kilitli(kod)       // null · ya da { why, ardil }
+GV.teklif.revizyonIzni(kod)  // { ok } · { ok:false, why:'kilit'|'terminal'|'yetki', mesaj }
+GV.teklif.revizyonAc(kod, { not })
+      // → { ok:true, yeni, eski, versiyon, kalem, kok }   YENİ KAYIT üretir
+GV.teklif.fark(kodA, kodB)   // { alan:[{alan,etiket,eski,yeni}], kalem:[{sira,tur,...}],
+                             //   tutarFarki, degisiklikSayisi }
+```
+
+**Kayıt kilidi.** Ardılı olan teklif **donar**: `GV.flow.adimlar('quote', kod)`
+boş döner ve `GV.flow.gec` `why:'kilit'` ile reddeder. Kilit bir alan değil,
+zincirden türetilir. Ekran sebebini `GV.flow.kilit('quote', kod)` ile okur:
+
+```js
+var kl = GV.flow.kilit('quote', q.kod);
+if(kl) mount.innerHTML += GV.notice({ tone:'warn', icon:'i-lock',
+         title:'Bu sürüm kilitli', text:kl.why });
+```
+
+⚠️ **Devralınan sayaç.** 8 teklifin dördü `versiyon > 1` taşıyor ama zincirde
+tek kayıt var — bu sayılar R1'den geldi ve karşılığı **yok**. `zincir()`
+bunu `devralinan:true` ile söyler; ekran iki farklı güvenilirlikteki sayıyı
+aynı biçimde basamaz (`GV.test.sayac` ile aynı disiplin).
+
+### 17.2 `GV.fin.tutar` — bağımsız çapa (`domain.js:1152-1215`)
+
+**ÇAPA = NET.** Brüt her yerde `net + kdv` olarak yeniden hesaplanır;
+kayıttaki brüt otoriter değil, **doğrulanandır**.
+
+```js
+GV.fin.tutar(kayit, tur)   // tur: 'quote' | 'contract' | 'invoice' | 'milestone'
+// → { net, oran, kdv, brut, kayitliBrut, kayitliKdv, sapma:[], tutarli, kaynak }
+```
+
+`tur` verilmezse alan imzasından çıkarılır. `sapma` doluysa kayıt **kendi
+içinde çelişiyordur** ve ekran bunu söyler — sessizce birini seçmek, hangi
+sayının doğru olduğuna kod adına karar vermektir.
+
+Alan adları koleksiyondan koleksiyona değişir ve bu **bilerek** korunur:
+`quotes` → `araToplam`/`indirim`/`vergiOran`/`vergi`/`toplam` ·
+`contracts` → `tutar`/`kdvOran`/`kdv`/`toplam` ·
+`invoices` → `tutar`/`vergi`/`toplam` (oran alanı **yok**, tutardan türer) ·
+`milestones` → `odeme` (**NET** eksende, ölçüldü: 19 taksitin 19'u).
+
+### 17.3 `GV.fin.zincirDenetim` — halka tutarlılığı (`domain.js:1217-1320`)
+
+```js
+GV.fin.zincirDenetim(sozlesmeKod)
+// → { sozlesme, halka:[{ ad, kapsam, sol, sag, fark, tutar, sapan, not }],
+//     olculen, halkaSayisi, sapan, tutarli }
+```
+
+Dört halka: **Teklif → Sözleşme** (NET) · **Sözleşme → Ödeme planı** (NET) ·
+**Ödeme planı → Fatura** (NET, taksit başına) · **Fatura → Tahsilat** (BRÜT).
+
+`kapsam:false` = **ölçülemedi**, "sıfır" değil. Sözleşmesi olmayan teklifi
+sapma saymak, henüz yapılmamış işi hata saymaktır.
+
+### 17.4 `GV.lifecycle` eklentileri
+
+```js
+GV.lifecycle.rozet(evre)      // evre rozeti — üç ekranın kopyası buraya alındı
+GV.lifecycle.ad(evre)         // sözlükten ad
+GV.lifecycle.adimlar(hesap)   // yapılabilir evre geçişleri (buton üretimi)
+GV.lifecycle.dogumIzni(evre)  // yeni kayıt doğrudan MUSTERI evresinde açılabilir mi
+```
+
+### 17.5 Yeni veri sözleşmeleri
+
+```js
+DB.customerTypes       // ['Kurumsal','Bireysel','Kamu','İş Ortağı']  (K-19)
+DB.customerTypesTeyit  // false — Yasin Bey teyidi bekliyor, TEK bayrak
+DB.customerTypesNot    // ekranda basılacak not metni
+```
+
+⚠️ **BAYAT ALAN — `DB.customers[].durum` OKUNMAZ (K-21).** Yaşam evresi
+`DB.accounts[].evre` üzerinde yaşar. Alan bir **tuzağa** çevrildi: okunduğunda
+`DB.bayat.sayac` artar ve `undefined` döner. `tasks/qa/bayat-alan.js` tek bir
+okuma kalırsa kırmızı yanar. Müşteri durumu gerektiğinde `GV.lifecycle` kullan.
+
+### 17.6 Finans veri gerçekleri — ölçüldü
+
+| Koleksiyon | Adet | Not |
+|---|---:|---|
+| `DB.contracts` | 7 | 3'ü bir teklife bağlı; net/KDV/brüt 7/7 tutarlı |
+| `DB.milestones` | 19 | 6 sözleşmeye dağılmış · **NET** eksende · 1 sözleşmede taksit yok |
+| `DB.invoices` | 17 | 15'i bir taksite bağlı · brüt = tutar + vergi, 17/17 tutarlı |
+| `DB.payments` | 17 | 10'u tahsil edilmiş, **7'si edilmemiş** (alacak kaydı) |
+| `DB.paymentAllocations` | 10 | tahsis defteri — bakiyenin **tek** kaynağı |
+| `DB.purchases` | 7 | 4 durum · `DB.purchaseApprovals` 16 adım |
+| `DB.orders` · `DB.suppliers` | 4 · 7 | satın alma zincirinin devamı |
+| Açık bakiyeli fatura | 7 | 7'sinde de ödeme linki var |
+
+**Tahsilat kaydı ≠ para geldi.** `DB.payments` bir **alacak defteridir**;
+`tahsilEdildi` bayrağı nakit olayını söyler. Tahsis ancak nakit olayından
+sonra yapılabilir (`GV.fin.tahsisEt` reddeder). 7 kayıt henüz tahsil edilmedi.
+
+### 17.7 Finans zincirinin yazma yordamları
+
+```js
+GV.fin.tahsilEt(tahsilatKod, { tarih, yontem, hesap, dekont, valor })  // nakit olayı
+GV.fin.tahsisEt(tahsilatKod, faturaKod, tutar, { tarih, yontem, dekont })
+GV.fin.tahsisKaldir(tahsilatKod, faturaKod)
+GV.fin.tahsilGeriAl(tahsilatKod, gerekce)
+GV.fin.balance(fatura)      // TEK bakiye kaynağı — ikinci formül YASAK
+GV.fin.durumTazele(fatura)  // durum türetilir; ekran `f.durum = …` YAZMAZ
+```
+
+Fatura belge ekseni ayrıdır: `GV.flow.gec('invoice', kod, hedef)` —
+alan `belgeDurum`, ödeme durumu (`durum`) **türetilir**.
 
 ## 16. Bu brief'in kendi ölçümü
 

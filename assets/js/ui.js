@@ -589,6 +589,9 @@
       return 'Önce şu alanlar doldurulmalı: ' + (r.eksik || []).join(', ') + '.';
     if(r.why === 'gerekce') return r.mesaj || 'Neden kodu ve açıklama zorunludur.';
     if(r.why === 'kapi')    return r.mesaj || 'Bu geçiş bir ön koşul nedeniyle engellendi.';
+    /* `kilit` — kaydın TAMAMI donmuş (ör. revize edilmiş teklif sürümü).
+       `kapi`dan farkı: tek bir geçiş değil, hiçbir geçiş mümkün değil. */
+    if(r.why === 'kilit')   return r.mesaj || 'Bu kayıt kilitli; üzerinde işlem yapılamaz.';
     if(r.why === 'tahsil' || r.why === 'tahsis' || r.why === 'kaynak') return r.mesaj || r.why;
     return r.mesaj || r.why || 'İşlem uygulanamadı.';
   };
