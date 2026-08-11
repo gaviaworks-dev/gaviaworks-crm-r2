@@ -755,9 +755,11 @@
     /* Dilim 3 — Proje ve Operasyon. Liste ve form ekranları (proje · görev
        formu · destek listesi ve formu) HENÜZ YAZILMADI ve bilerek listede
        DEĞİL: kabuk onları `markWip` ile kilitli tutar, ölü bağlantı doğmaz. */
+    'app-proje.html',
     'app-proje-detay.html',
     'app-gorev.html',
     'app-gorev-detay.html',
+    'app-destek.html',
     'app-destek-detay.html',
     'app-odeme-linki.html',
     'app-odeme-linki-form.html',

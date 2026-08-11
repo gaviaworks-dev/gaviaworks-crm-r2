@@ -79,7 +79,9 @@ const EKRANLAR = [
   { dosya: 'app-gorev.html',                       ad: 'Görevler',      oturum: true },
   { dosya: 'app-gorev-detay.html?id=GRV-2026-113', ad: 'Görev Detayı',  oturum: true },
   { dosya: 'app-destek-detay.html?id=DST-2026-120',ad: 'Destek Detayı', oturum: true },
-  { dosya: 'app-destek-detay.html?id=DST-2026-117',ad: 'Destek Projesiz', oturum: true }
+  { dosya: 'app-destek-detay.html?id=DST-2026-117',ad: 'Destek Projesiz', oturum: true },
+  { dosya: 'app-proje.html',   ad: 'Projeler', oturum: true },
+  { dosya: 'app-destek.html',  ad: 'Destek',   oturum: true }
 ];
 
 const MIME = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8',
