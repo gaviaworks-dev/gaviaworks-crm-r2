@@ -413,6 +413,15 @@ DB.supplierQuotes = [
     odeme:'Peşin', teknikUygun:true, puan:3.7, tercih:false, gerekce:'Daha pahalı' }
 ];
 
+/* SATIR KİMLİĞİ — türetilmiş, uydurulmuş DEĞİL (K-24).
+   Teklif toplama satırı bir BİRLEŞİM kaydıdır (talep × tedarikçi) ve kaynak
+   veride kodu yoktur; `GV.list` satır kimliğini bir ALAN ADINDAN okur
+   (`ui.js` `r[cfg.key]`). Bu yüzden doğal bileşik anahtar tek yerde alana
+   yazılır. Yeni bir `TKF-` kod dizisi uydurmak, karşılığı olmayan bir kayıt
+   numarası üretmek olurdu; bu değer var olan iki alandan türer ve kaynağı
+   okunabilir. 9 satırın 9'unda benzersiz olduğu ölçüldü. */
+DB.supplierQuotes.forEach(function(q){ q.id = q.talep + '·' + q.tedarikci; });
+
 /* ---- Siparişler ----------------------------------------------------------
    PARA EKSENİ: `tutar` **NET** · `vergi` KDV · `toplam` **BRÜT** (`tutar + vergi`).
    `teslimTarihi` çift anlamlıdır: sipariş henüz teslim alınmadıysa **planlanan**,

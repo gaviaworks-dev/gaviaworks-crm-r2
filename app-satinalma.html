@@ -136,9 +136,51 @@ document.addEventListener('gv:ready', function(){
     ]
   });
 
+  /* ================================================================
+     K-24 — ALT KAYITLAR SEKME OLUR, AYRI EKRAN AİLESİ AÇILMAZ
+
+     Rota haritası 116-122 (teklif toplama · siparişler · tedarikçiler)
+     R1'de üç ayrı ekran ailesiydi. Beyar'ın kararı: bu üçü satın alma
+     ekranının SEKMESİDİR. Dördü de kendi `GV.list`ini kurar; bileşen
+     dört kez ayrı ayrı yapılandırılır, tek satır tablo kodu yazılmaz.
+
+     ⚠️ URL SENKRONU YALNIZ BİRİNDE AÇIK. `GV.list` sayfa/sekme/filtre/
+     sıralamayı adres çubuğunda saklar (`t` · `q` · `p` · `s` · `d` · `v`);
+     aynı sayfada dört liste bunu birden yaparsa dördü aynı anahtarları
+     yazar ve birbirinin durumunu ezer. Talepler listesi senkronu KORUR —
+     rota 113'ün eski `app-satinalma.html?t=onay` bağlantısı onun üzerinden
+     çalışıyor. Alt sekmelerin üçünde `urlSync:false`.
+
+     Yüzey sekmesi adres çubuğunda `#hash` ile durur (`GV.tabs`), yani iki
+     mekanizma çakışmaz.
+     ================================================================ */
+  var YUZEYLER = [
+    { key:'talep',     label:'Talepler',       icon:'i-cart' },
+    { key:'teklif',    label:'Teklif Toplama', icon:'i-quote' },
+    { key:'siparis',   label:'Siparişler',     icon:'i-truck' },
+    { key:'tedarikci', label:'Tedarikçiler',   icon:'i-building' }
+  ];
+
   mount.innerHTML =
-    '<div id="satUyari" class="u-mb-8"></div>' +
-    '<div id="satListe"></div>' +
+    '<div class="gv-tabs" role="tablist" id="satSekme">' +
+      YUZEYLER.map(function(y){
+        return '<button type="button" class="gv-tab" role="tab" data-tab="' + y.key + '"' +
+          ' aria-selected="false">' + GV.ico(y.icon,'ic-sm') + GV.esc(y.label) + '</button>';
+      }).join('') +
+    '</div>' +
+    '<div class="gv-tabpanel" role="tabpanel" data-panel="talep" hidden>' +
+      '<div id="satUyari" class="u-mb-8"></div>' +
+      '<div id="satListe"></div>' +
+    '</div>' +
+    '<div class="gv-tabpanel" role="tabpanel" data-panel="teklif" hidden>' +
+      '<div id="satTeklifNot" class="u-mb-8"></div><div id="satTeklifListe"></div>' +
+    '</div>' +
+    '<div class="gv-tabpanel" role="tabpanel" data-panel="siparis" hidden>' +
+      '<div id="satSiparisNot" class="u-mb-8"></div><div id="satSiparisListe"></div>' +
+    '</div>' +
+    '<div class="gv-tabpanel" role="tabpanel" data-panel="tedarikci" hidden>' +
+      '<div id="satTedarikciListe"></div>' +
+    '</div>' +
     '<div id="satBackend"></div>';
 
   /* ---- Ölçüm şeridi — GÖRÜNEN kümeden sayılır ------------------------
@@ -726,6 +768,560 @@ document.addEventListener('gv:ready', function(){
 
     onRender:function(gorunen){ uyariCiz(gorunen); }
   });
+
+  /* ================================================================
+     SEKME 2 — TEKLİF TOPLAMA  (rota 116-118)
+     ----------------------------------------------------------------
+     Kaynak `DB.supplierQuotes` (9 satır). Satır kimliği `id` alanıdır ve
+     `talep · tedarikçi`den TÜRETİLİR (ops.js) — uydurma kod yok.
+
+     ⚠️ İKİ AYRI PUAN EKSENİ (ops.js:259-268): buradaki `puan` TEKLİF
+     puanıdır, tedarikçinin genel performans puanı DEĞİLDİR. İkisi aynı
+     kolonda gösterilmez; Tedarikçiler sekmesindeki puan ayrı etiketlidir.
+     ================================================================ */
+  function tedarikciKaydi(kod){
+    return (DB.suppliers || []).filter(function(x){ return x.kod === kod; })[0] || null;
+  }
+  function tedarikciAd(kod){
+    var s = tedarikciKaydi(kod);
+    return s ? s.unvan : (kod || null);
+  }
+  function talepKaydi(kod){
+    return (DB.purchases || []).filter(function(x){ return x.kod === kod; })[0] || null;
+  }
+
+  var teklifCizildi = false, siparisCizildi = false, tedarikciCizildi = false;
+
+  function teklifCiz(){
+    if(teklifCizildi) return;
+    teklifCizildi = true;
+    var TK = DB.supplierQuotes || [];
+
+    /* Kaç talebin teklifi toplanmış — sayı ÖLÇÜLÜR, tahmin edilmez. */
+    var talepli = TK.reduce(function(acc, q){
+      if(acc.indexOf(q.talep) === -1) acc.push(q.talep); return acc; }, []);
+    var teklifsiz = (DB.purchases || []).filter(function(p){
+      return talepli.indexOf(p.kod) === -1; });
+
+    document.getElementById('satTeklifNot').innerHTML = GV.notice({
+      tone:teklifsiz.length ? 'info' : 'ok', icon:'i-quote',
+      title:TK.length + ' teklif · ' + talepli.length + ' talep için toplandı',
+      text:(teklifsiz.length
+        ? teklifsiz.length + ' talepte hiç tedarikçi teklifi yok (' +
+          teklifsiz.map(function(p){ return p.kod; }).join(', ') + '). Bu bir eksiklik ' +
+          'değil bir ÖLÇÜMDÜR: kaynak veride o taleplere teklif kaydı girilmemiş, ' +
+          'uydurulmadı. '
+        : 'Her talebin en az bir teklifi var. ') +
+        'Fiyatlar NET eksendedir (KDV hariç) — talebin tahmini maliyetiyle aynı eksen.' });
+
+    GV.list({
+      mount:'#satTeklifListe', id:'satinalmaTeklif', key:'id',
+      source:function(){ return DB.supplierQuotes; },
+      exportName:'tedarikci-teklifleri', exportTitle:'Tedarikçi Teklifleri',
+      pageSize:10, views:['table','card'], urlSync:false, archive:false,
+      defaultSort:'talep', defaultDir:'desc',
+
+      search:{ placeholder:'Talep no, tedarikçi ya da gerekçe ara',
+               fields:['talep','tedarikci','gerekce','odeme','garanti'],
+               extra:function(q){ return tedarikciAd(q.tedarikci) || ''; } },
+
+      /* Teklif satırında sorumlu/departman alanı YOKTUR; kapsam talebin
+         kendisinden gelir. Alan adı yerine YORDAM bildirilir (§4.7). */
+      scopeField:{
+        kendi:function(q){ var p = talepKaydi(q.talep); return p ? p.talepEden : null; },
+        departman:function(q){ var p = talepKaydi(q.talep); return p ? p.dep : null; } },
+
+      kpis:[
+        { label:'Toplanan teklif', icon:'i-quote',
+          meta:function(base){
+            var t = base.reduce(function(a, q){
+              if(a.indexOf(q.talep) === -1) a.push(q.talep); return a; }, []);
+            return t.length + ' talebe dağılmış'; },
+          calc:function(base){ return base.length; } },
+        { label:'Tercih edilen', icon:'i-star', tone:'ok',
+          meta:function(base){
+            var t = base.filter(function(q){ return q.tercih; }).length;
+            var tal = base.reduce(function(a, q){
+              if(a.indexOf(q.talep) === -1) a.push(q.talep); return a; }, []).length;
+            return t === tal ? 'her talepte bir tercih işaretli'
+                             : (tal - t) + ' talepte henüz tercih yok'; },
+          calc:function(base){ return base.filter(function(q){ return q.tercih; }).length; } },
+        { label:'Teknik uygun', icon:'i-check-circle',
+          meta:function(base){
+            var u = base.filter(function(q){ return q.teknikUygun === false; }).length;
+            return u ? u + ' teklif teknik olarak uygun bulunmadı' : 'uygunsuz teklif yok'; },
+          calc:function(base){ return base.filter(function(q){ return q.teknikUygun; }).length; } },
+        { label:'En düşük / en yüksek fark', icon:'i-trend-down', perm:'finans', format:F.moneyK,
+          meta:function(){ return 'aynı talebe gelen tekliflerin toplam fiyat aralığı · NET'; },
+          calc:function(base){
+            var gruplar = {};
+            base.forEach(function(q){ (gruplar[q.talep] = gruplar[q.talep] || []).push(q.fiyat || 0); });
+            return Object.keys(gruplar).reduce(function(s, k){
+              var v = gruplar[k];
+              return v.length > 1 ? s + (Math.max.apply(null, v) - Math.min.apply(null, v)) : s;
+            }, 0); } }
+      ],
+
+      tabs:[
+        { key:'tumu', label:'Tüm teklifler', icon:'i-list', filter:null },
+        { key:'tercih', label:'Tercih edilen', icon:'i-star',
+          filter:function(q){ return q.tercih === true; } },
+        { key:'uygun', label:'Teknik uygun', icon:'i-check-circle',
+          filter:function(q){ return q.teknikUygun === true; } },
+        { key:'acik', label:'Açık taleplerin teklifleri', icon:'i-hourglass',
+          filter:function(q){ var p = talepKaydi(q.talep); return !!p && !terminal(p.durum); } }
+      ],
+
+      columns:[
+        { key:'talep', label:'Talep', width:'16%', locked:true,
+          exportValue:function(q){ return q.talep || ''; },
+          render:function(q){
+            var p = talepKaydi(q.talep);
+            return '<span class="cell-main">' + GV.esc(q.talep) + '</span>' +
+              GV.cell.sub(p ? GV.esc(p.urun) : 'talep kaydı defterde yok'); } },
+
+        { key:'tedarikci', label:'Tedarikçi', cellClass:'cell-wrap',
+          sortValue:function(q){ return tedarikciAd(q.tedarikci) || ''; },
+          exportValue:function(q){ return tedarikciAd(q.tedarikci) || q.tedarikci || ''; },
+          render:function(q){
+            var s = tedarikciKaydi(q.tedarikci);
+            if(!s) return GV.cell.faint('—') + GV.cell.sub(GV.esc(q.tedarikci) + ' · tedarikçi kaydı yok');
+            return '<span class="cell-main">' + GV.esc(s.unvan) + '</span>' +
+              GV.cell.sub(GV.esc(q.tedarikci + ' · ' + s.kategori)); } },
+
+        GV.cols.money('fiyat', 'Teklif fiyatı', { perm:'finans', width:'13%',
+          sub:function(){ return 'NET'; } }),
+
+        { key:'teslimSuresi', label:'Teslim', cellClass:'center',
+          exportValue:function(q){ return q.teslimSuresi || ''; },
+          render:function(q){ return q.teslimSuresi
+            ? '<span class="u-sm">' + GV.esc(q.teslimSuresi) + '</span>' : GV.cell.faint('—'); } },
+
+        { key:'odeme', label:'Ödeme koşulu', cellClass:'center',
+          exportValue:function(q){ return q.odeme || ''; },
+          render:function(q){ return q.odeme
+            ? '<span class="u-sm">' + GV.esc(q.odeme) + '</span>' : GV.cell.faint('—'); } },
+
+        { key:'garanti', label:'Garanti', cellClass:'center', visible:false,
+          exportValue:function(q){ return q.garanti || ''; },
+          render:function(q){ return bos(q.garanti)
+            ? '<span class="u-sm">' + GV.esc(q.garanti) + '</span>'
+            : GV.cell.faint('—') + GV.cell.sub('garanti tanımsız'); } },
+
+        /* ⚠️ Etiket "Teklif puanı" — tedarikçi genel puanı DEĞİL (ops.js:264). */
+        { key:'puan', label:'Teklif puanı', cellClass:'center',
+          sortValue:function(q){ return q.puan == null ? null : q.puan; },
+          exportValue:function(q){ return q.puan == null ? '' : q.puan; },
+          render:function(q){
+            if(q.puan == null) return GV.cell.faint('—');
+            return GV.cell.num(q.puan, { basamak:1, tone:q.puan >= 4.5 ? 'ok' : q.puan < 4 ? 'warn' : null }) +
+                   GV.cell.sub('yalnız bu teklif için'); } },
+
+        { key:'tercih', label:'Karar', cellClass:'center',
+          sortValue:function(q){ return q.tercih ? 1 : 0; },
+          exportValue:function(q){ return q.tercih ? 'Tercih edildi' : 'Tercih edilmedi'; },
+          render:function(q){
+            return (q.tercih ? GV.badge('Tercih edildi', 'is-ok')
+                             : GV.badge('Değerlendirmede', 'is-neutral')) +
+              (q.teknikUygun === false ? GV.badge('Teknik uygun değil', 'is-danger') : '') +
+              GV.cell.sub(GV.esc(q.gerekce || 'gerekçe yazılmamış')); } }
+      ],
+
+      filters:[
+        { key:'talep', label:'Talep', type:'select',
+          options:talepli.map(function(k){ return { value:k, label:k }; }) },
+        { key:'tedarikci', label:'Tedarikçi', type:'select',
+          options:(DB.suppliers || []).map(function(s){ return { value:s.kod, label:s.unvan }; }) },
+        { key:'tercih', label:'Yalnız tercih edilenler', type:'select',
+          options:[{ value:'evet', label:'Tercih edildi' }, { value:'hayir', label:'Tercih edilmedi' }],
+          test:function(q, v){ return v === 'evet' ? !!q.tercih : !q.tercih; } }
+      ],
+
+      rowClass:function(q){ return q.teknikUygun === false ? 'is-passive' : ''; },
+
+      card:function(q){
+        return '<div class="gv-rcard-top"><div>' +
+          '<span class="cell-main">' + GV.esc(tedarikciAd(q.tedarikci) || q.tedarikci) + '</span>' +
+          '<div class="cell-code">' + GV.esc(q.talep) + '</div></div>' +
+          (q.tercih ? GV.badge('Tercih edildi', 'is-ok') : GV.badge('Değerlendirmede', 'is-neutral')) +
+          '</div>' +
+        '<div class="gv-rcard-meta"><span>' + GV.esc(q.teslimSuresi || '—') + '</span>' +
+          '<span>' + GV.esc(q.odeme || '—') + '</span>' +
+          '<span>Teklif puanı ' + (q.puan == null ? '—' : q.puan) + '</span></div>' +
+        '<div class="gv-rcard-foot">' +
+          (canFinans ? GV.cell.mny(q.fiyat) : '<span class="cell-mask">••••••</span>') + '</div>';
+      },
+
+      mobile:function(q){
+        return GV.cell.mrow(
+          '<span class="cell-main">' + GV.esc(tedarikciAd(q.tedarikci) || q.tedarikci) + '</span>' +
+            (q.tercih ? GV.badge('Tercih', 'is-ok') : ''),
+          GV.esc(q.talep),
+          [ GV.ico('i-truck','ic-sm') + GV.esc(q.teslimSuresi || '—'),
+            GV.ico('i-wallet','ic-sm') + GV.esc(q.odeme || '—'),
+            GV.ico('i-star','ic-sm') + (q.puan == null ? '—' : q.puan) ],
+          (canFinans ? GV.cell.mny(q.fiyat) : '<span class="cell-mask">••••••</span>')
+        );
+      },
+
+      bulk:[{ key:'disa', label:'Dışa aktar', icon:'i-download', export:true }],
+
+      emptyState:{ icon:'i-quote', title:'Bu görünümde tedarikçi teklifi yok',
+        desc:'Sekmeyi ya da filtreleri değiştirebilirsiniz. Teklif toplanmamış talepler ' +
+             'üstteki şeritte kod kod yazılıdır.' }
+    });
+  }
+
+  /* ================================================================
+     SEKME 3 — SİPARİŞLER  (rota 119-120)
+     Para ekseni: `tutar` NET · `vergi` KDV · `toplam` BRÜT (ops.js:417).
+     ================================================================ */
+  function siparisCiz(){
+    if(siparisCizildi) return;
+    siparisCizildi = true;
+    var SP = DB.orders || [];
+
+    var talepsiz = SP.filter(function(o){ return !talepKaydi(o.talep); });
+    document.getElementById('satSiparisNot').innerHTML = GV.notice({
+      tone:talepsiz.length ? 'warn' : 'info', icon:'i-truck',
+      title:SP.length + ' sipariş kaydı',
+      text:'Tutar NET, vergi KDV, toplam BRÜT eksendedir (ops.js:417). ' +
+        (talepsiz.length
+          ? talepsiz.length + ' siparişin talep kaydı defterde yok (' +
+            talepsiz.map(function(o){ return o.kod + '→' + o.talep; }).join(', ') +
+            '); o satırlarda talep bağı boş bırakıldı.'
+          : 'Dört siparişin dördü de bir satın alma talebine bağlı.') });
+
+    GV.list({
+      mount:'#satSiparisListe', id:'satinalmaSiparis', key:'kod',
+      source:function(){ return DB.orders; },
+      exportName:'siparisler', exportTitle:'Satın Alma Siparişleri',
+      pageSize:10, views:['table','card'], urlSync:false,
+      defaultSort:'tarih', defaultDir:'desc',
+
+      search:{ placeholder:'Sipariş no, talep no, irsaliye ya da fatura ara',
+               fields:['kod','talep','irsaliye','fatura','durum'],
+               extra:function(o){ return tedarikciAd(o.tedarikci) || ''; } },
+
+      scopeField:{
+        kendi:function(o){ var p = talepKaydi(o.talep); return p ? p.talepEden : null; },
+        departman:function(o){ var p = talepKaydi(o.talep); return p ? p.dep : null; } },
+
+      kpis:[
+        { label:'Sipariş', icon:'i-truck', calc:function(base){ return base.length; } },
+        { label:'Toplam brüt', icon:'i-wallet', format:F.moneyK, perm:'finans',
+          meta:function(){ return 'KDV dahil · NET toplamı ayrı kolonda'; },
+          calc:function(base){ return base.reduce(function(s, o){ return s + (o.toplam || 0); }, 0); } },
+        { label:'Tam teslim', icon:'i-check-circle', tone:'ok',
+          meta:function(base){
+            var e = base.filter(function(o){ return o.teslimKontrol === 'Eksik'; }).length;
+            return e ? e + ' siparişte teslim eksik' : 'eksik teslim yok'; },
+          calc:function(base){ return base.filter(function(o){ return o.teslimKontrol === 'Tam'; }).length; } },
+        { label:'Faturası gelmemiş', icon:'i-receipt', tone:'warn',
+          meta:function(){ return 'tedarikçi faturası kayda geçmemiş sipariş'; },
+          calc:function(base){ return base.filter(function(o){ return !o.fatura; }).length; } }
+      ],
+
+      tabs:[
+        { key:'tumu', label:'Tümü', icon:'i-list', filter:null },
+        { key:'yolda', label:'Teslim bekleyen', icon:'i-hourglass',
+          filter:function(o){ return o.teslimKontrol !== 'Tam'; } },
+        { key:'tam', label:'Tam teslim', icon:'i-check-circle',
+          filter:function(o){ return o.teslimKontrol === 'Tam'; } },
+        { key:'faturasiz', label:'Faturası gelmemiş', icon:'i-receipt',
+          filter:function(o){ return !o.fatura; } }
+      ],
+
+      columns:[
+        GV.cols.kod('kod', 'Sipariş', { width:'14%', locked:true,
+          sub:function(o){ return GV.esc(o.doviz || ''); } }),
+
+        { key:'talep', label:'Talep', cellClass:'cell-wrap',
+          exportValue:function(o){ return o.talep || ''; },
+          render:function(o){
+            var p = talepKaydi(o.talep);
+            if(!p) return '<span class="cell-main">' + GV.esc(o.talep || '—') + '</span>' +
+                          GV.cell.sub('talep kaydı defterde yok');
+            return '<span class="cell-main">' + GV.esc(o.talep) + '</span>' +
+                   GV.cell.sub(GV.esc(p.urun)); } },
+
+        { key:'tedarikci', label:'Tedarikçi', cellClass:'cell-wrap',
+          sortValue:function(o){ return tedarikciAd(o.tedarikci) || ''; },
+          exportValue:function(o){ return tedarikciAd(o.tedarikci) || o.tedarikci || ''; },
+          render:function(o){
+            var s = tedarikciKaydi(o.tedarikci);
+            return s ? '<span class="cell-main">' + GV.esc(s.unvan) + '</span>' +
+                       GV.cell.sub(GV.esc(o.tedarikci))
+                     : GV.cell.faint('—') + GV.cell.sub(GV.esc(o.tedarikci || 'tedarikçi yazılmamış')); } },
+
+        GV.cols.money('tutar', 'Net', { perm:'finans', width:'11%', sub:function(){ return 'KDV hariç'; } }),
+        GV.cols.money('toplam', 'Brüt', { perm:'finans', width:'11%',
+          sub:function(o){ return o.vergi ? 'KDV ' + F.money(o.vergi) : 'KDV yazılmamış'; } }),
+
+        GV.cols.durum('durum', 'Durum'),
+
+        /* `teslimTarihi` ÇİFT ANLAMLI (ops.js:418): tam teslimde gerçekleşen,
+           değilse planlanan tarihtir. Hangi anlamda olduğu hücrede yazılır —
+           iki farklı şeyi aynı biçimde basmak ölçümü siler. */
+        { key:'teslimTarihi', label:'Teslim tarihi',
+          sortValue:function(o){ return o.teslimTarihi || null; },
+          exportValue:function(o){
+            return (o.teslimTarihi || '') + (o.teslimKontrol === 'Tam' ? ' (gerçekleşen)' : ' (planlanan)'); },
+          render:function(o){
+            if(!o.teslimTarihi) return GV.cell.faint('—');
+            var tam = o.teslimKontrol === 'Tam';
+            return GV.dateCell(o.teslimTarihi, { done:tam }) +
+                   GV.cell.sub(tam ? 'gerçekleşen' : 'planlanan'); } },
+
+        { key:'teslimKontrol', label:'Teslim kontrolü', cellClass:'center',
+          exportValue:function(o){ return o.teslimKontrol || ''; },
+          render:function(o){
+            if(!o.teslimKontrol) return GV.cell.faint('—');
+            var t = o.teslimKontrol === 'Tam' ? 'is-ok' : 'is-warn';
+            return GV.badge(o.teslimKontrol, t) +
+              (o.kismiTeslimTarihi ? GV.cell.sub('kısmi teslim ' + GV.esc(F.dateShort(o.kismiTeslimTarihi))) : ''); } },
+
+        { key:'irsaliye', label:'İrsaliye', visible:false,
+          exportValue:function(o){ return o.irsaliye || ''; },
+          render:function(o){ return o.irsaliye
+            ? '<span class="cell-code">' + GV.esc(o.irsaliye) + '</span>' : GV.cell.faint('—'); } },
+
+        /* Tedarikçi faturası MÜŞTERİ FATURASI DEĞİLDİR: `DB.invoices` giden
+           faturaları taşır, bu alan gelen faturanın tedarikçi tarafındaki
+           numarasıdır ve karşılığı prototipte YOKTUR. Bağlantı basılmaz. */
+        { key:'fatura', label:'Tedarikçi faturası',
+          exportValue:function(o){ return o.fatura || ''; },
+          render:function(o){
+            if(!o.fatura) return GV.cell.faint('—') + GV.cell.sub('fatura kayda geçmemiş');
+            return '<span class="cell-code">' + GV.esc(o.fatura) + '</span>' +
+                   GV.cell.sub('tedarikçi faturası · sistemde kaydı yok'); } }
+      ],
+
+      filters:[
+        { key:'durum', label:'Durum', type:'multi',
+          options:SP.reduce(function(a, o){
+            if(o.durum && a.map(function(x){ return x.value; }).indexOf(o.durum) === -1)
+              a.push({ value:o.durum, label:o.durum });
+            return a; }, []) },
+        { key:'tedarikci', label:'Tedarikçi', type:'select',
+          options:(DB.suppliers || []).map(function(s){ return { value:s.kod, label:s.unvan }; }) },
+        { key:'tarih', label:'Sipariş tarihi', type:'daterange' }
+      ],
+
+      card:function(o){
+        return '<div class="gv-rcard-top"><div>' +
+          '<span class="cell-main">' + GV.esc(o.kod) + '</span>' +
+          '<div class="cell-code">' + GV.esc(tedarikciAd(o.tedarikci) || o.tedarikci || '—') + '</div></div>' +
+          GV.badge(o.durum) + '</div>' +
+        '<div class="gv-rcard-meta"><span>' + GV.esc(o.talep || '—') + '</span>' +
+          '<span>' + GV.esc(o.teslimKontrol || '—') + '</span></div>' +
+        '<div class="gv-rcard-foot">' +
+          (canFinans ? GV.cell.mny(o.toplam) : '<span class="cell-mask">••••••</span>') +
+          GV.dateCell(o.teslimTarihi, { done:o.teslimKontrol === 'Tam' }) + '</div>';
+      },
+
+      mobile:function(o){
+        return GV.cell.mrow(
+          '<span class="cell-main">' + GV.esc(o.kod) + '</span>' + GV.badge(o.durum),
+          GV.esc(tedarikciAd(o.tedarikci) || o.tedarikci || '—'),
+          [ GV.ico('i-cart','ic-sm') + GV.esc(o.talep || '—'),
+            GV.ico('i-package','ic-sm') + GV.esc(o.teslimKontrol || '—'),
+            GV.ico('i-calendar','ic-sm') + (o.teslimTarihi ? F.dateShort(o.teslimTarihi) : '—') ],
+          (canFinans ? GV.cell.mny(o.toplam) : '<span class="cell-mask">••••••</span>')
+        );
+      },
+
+      bulk:[{ key:'disa', label:'Dışa aktar', icon:'i-download', export:true }],
+
+      emptyState:{ icon:'i-truck', title:'Bu görünümde sipariş yok',
+        desc:'Sekmeyi ya da filtreleri değiştirebilirsiniz.' }
+    });
+  }
+
+  /* ================================================================
+     SEKME 4 — TEDARİKÇİLER  (rota 121-122)
+     ⚠️ ÖMÜR BOYU SAYAÇ KURALI (ops.js:275-284): `toplamTutar` ve
+     `siparisSayisi` sistem öncesi geçmişi de kapsar ve TÜRETİLEMEZ.
+     Kart değeri ile sistemden hesaplanan AYRI SATIRDA verilir; biri
+     diğerinin yerine yazılmaz.
+     ================================================================ */
+  function tedarikciCiz(){
+    if(tedarikciCizildi) return;
+    tedarikciCizildi = true;
+
+    function sistemSiparis(kod){
+      return (DB.orders || []).filter(function(o){ return o.tedarikci === kod; });
+    }
+    function sistemNet(kod){
+      return sistemSiparis(kod).reduce(function(s, o){ return s + (o.tutar || 0); }, 0);
+    }
+
+    GV.list({
+      mount:'#satTedarikciListe', id:'satinalmaTedarikci', key:'kod',
+      source:function(){ return DB.suppliers; },
+      exportName:'tedarikciler', exportTitle:'Tedarikçiler',
+      pageSize:10, views:['table','card'], urlSync:false,
+      defaultSort:'unvan', defaultDir:'asc',
+
+      search:{ placeholder:'Unvan, kategori, yetkili ya da vergi no ara',
+               fields:['kod','unvan','kategori','yetkili','vergiNo','adres','eposta'] },
+
+      /* Tedarikçi kaydı bir personele ya da departmana bağlı DEĞİLDİR;
+         kapsam alanı bildirilmez ve bileşen bunu şeritte kendisi söyler. */
+
+      kpis:[
+        { label:'Tedarikçi', icon:'i-building', calc:function(base){ return base.length; } },
+        { label:'Ömür boyu hacim', icon:'i-wallet', format:F.moneyK, perm:'finans',
+          meta:function(base){
+            var s = base.reduce(function(a, x){ return a + sistemNet(x.kod); }, 0);
+            return 'kart değeri · sistemdeki sipariş kayıtlarından hesaplanan ' + F.money(s); },
+          calc:function(base){ return base.reduce(function(s, x){ return s + (x.toplamTutar || 0); }, 0); } },
+        { label:'Sistemde siparişi olan', icon:'i-truck',
+          meta:function(base){
+            var y = base.filter(function(x){ return !sistemSiparis(x.kod).length; }).length;
+            return y + ' tedarikçinin bu prototipte sipariş kaydı yok — kart hacmi ' +
+                   'sistem öncesi geçmişi de kapsar'; },
+          calc:function(base){ return base.filter(function(x){ return sistemSiparis(x.kod).length; }).length; } },
+        { label:'Ortalama genel puan', icon:'i-star',
+          format:function(v){ return v == null ? '—' : v.toFixed(1); },
+          meta:function(){ return 'tedarikçi GENEL performans puanı · teklif puanından ayrı eksen'; },
+          calc:function(base){
+            var p = base.filter(function(x){ return x.puan != null; });
+            return p.length ? p.reduce(function(s, x){ return s + x.puan; }, 0) / p.length : null; } }
+      ],
+
+      tabs:[
+        { key:'tumu', label:'Tümü', icon:'i-list', filter:null },
+        { key:'siparisli', label:'Sistemde siparişi olan', icon:'i-truck',
+          filter:function(s){ return sistemSiparis(s.kod).length > 0; } },
+        { key:'teklifli', label:'Teklif veren', icon:'i-quote',
+          filter:function(s){ return (DB.supplierQuotes || [])
+            .some(function(q){ return q.tedarikci === s.kod; }); } }
+      ],
+
+      columns:[
+        { key:'unvan', label:'Tedarikçi', width:'24%', locked:true, cellClass:'cell-wrap',
+          exportValue:function(s){ return s.unvan || ''; },
+          render:function(s){
+            return '<span class="cell-main">' + GV.esc(s.unvan) + '</span>' +
+              GV.cell.sub(GV.esc(s.kod + ' · ' + (s.kategori || 'kategorisiz'))); } },
+
+        { key:'yetkili', label:'Yetkili', cellClass:'cell-wrap',
+          exportValue:function(s){ return s.yetkili || ''; },
+          render:function(s){
+            if(!s.yetkili) return GV.cell.faint('—');
+            return '<span class="cell-main">' + GV.esc(s.yetkili) + '</span>' +
+              GV.cell.sub(GV.esc([s.tel, s.eposta].filter(Boolean).join(' · '))); } },
+
+        /* Etiket "Genel puan" — teklif puanıyla karıştırılmasın (ops.js:259). */
+        { key:'puan', label:'Genel puan', cellClass:'center',
+          exportValue:function(s){ return s.puan == null ? '' : s.puan; },
+          render:function(s){
+            if(s.puan == null) return GV.cell.faint('—');
+            return GV.cell.num(s.puan, { basamak:1, tone:s.puan >= 4.5 ? 'ok' : s.puan < 4 ? 'warn' : null }) +
+                   GV.cell.sub('tüm sipariş geçmişi'); } },
+
+        /* İKİ SAYI, İKİ SATIR — biri diğerinin yerine yazılmaz. */
+        GV.cols.money('toplamTutar', 'Ömür boyu hacim', { perm:'finans', width:'15%',
+          sub:function(s){
+            var n = sistemNet(s.kod);
+            return n ? 'sistemde ' + F.money(n) : 'sistemde sipariş kaydı yok';
+          } }),
+
+        { key:'siparisSayisi', label:'Sipariş', cellClass:'center',
+          sortValue:function(s){ return s.siparisSayisi == null ? null : s.siparisSayisi; },
+          exportValue:function(s){ return s.siparisSayisi == null ? '' : s.siparisSayisi; },
+          render:function(s){
+            if(s.siparisSayisi == null) return GV.cell.faint('—');
+            var n = sistemSiparis(s.kod).length;
+            return GV.cell.num(s.siparisSayisi) +
+              GV.cell.sub(n ? 'sistemde ' + n + ' kayıt' : 'sistemde kayıt yok'); } },
+
+        { key:'odemeVadesi', label:'Ödeme vadesi', cellClass:'center', visible:false,
+          exportValue:function(s){ return s.odemeVadesi || ''; },
+          render:function(s){ return s.odemeVadesi
+            ? '<span class="u-sm">' + GV.esc(s.odemeVadesi) + '</span>' : GV.cell.faint('—'); } },
+
+        { key:'vergiNo', label:'Vergi no', visible:false,
+          exportValue:function(s){ return s.vergiNo || ''; },
+          render:function(s){ return s.vergiNo
+            ? '<span class="cell-code">' + GV.esc(s.vergiNo) + '</span>' : GV.cell.faint('—'); } },
+
+        GV.cols.durum('durum', 'Durum')
+      ],
+
+      filters:[
+        { key:'kategori', label:'Kategori', type:'select',
+          options:(DB.suppliers || []).reduce(function(a, s){
+            if(s.kategori && a.map(function(x){ return x.value; }).indexOf(s.kategori) === -1)
+              a.push({ value:s.kategori, label:s.kategori });
+            return a; }, []) },
+        { key:'odemeVadesi', label:'Ödeme vadesi', type:'select',
+          options:(DB.suppliers || []).reduce(function(a, s){
+            if(s.odemeVadesi && a.map(function(x){ return x.value; }).indexOf(s.odemeVadesi) === -1)
+              a.push({ value:s.odemeVadesi, label:s.odemeVadesi });
+            return a; }, []) }
+      ],
+
+      card:function(s){
+        return '<div class="gv-rcard-top"><div>' +
+          '<span class="cell-main">' + GV.esc(s.unvan) + '</span>' +
+          '<div class="cell-code">' + GV.esc(s.kategori || '—') + '</div></div>' +
+          GV.badge(s.durum) + '</div>' +
+        '<div class="gv-rcard-meta"><span>' + GV.esc(s.yetkili || '—') + '</span>' +
+          '<span>Genel puan ' + (s.puan == null ? '—' : s.puan) + '</span></div>' +
+        '<div class="gv-rcard-foot">' +
+          (canFinans ? GV.cell.mny(s.toplamTutar) : '<span class="cell-mask">••••••</span>') +
+          '<span class="u-faint u-xs">' + (s.siparisSayisi || 0) + ' sipariş (ömür boyu)</span></div>';
+      },
+
+      mobile:function(s){
+        return GV.cell.mrow(
+          '<span class="cell-main">' + GV.esc(s.unvan) + '</span>' + GV.badge(s.durum),
+          GV.esc(s.kod + ' · ' + (s.kategori || '—')),
+          [ GV.ico('i-user','ic-sm') + GV.esc(s.yetkili || '—'),
+            GV.ico('i-star','ic-sm') + (s.puan == null ? '—' : s.puan),
+            GV.ico('i-truck','ic-sm') + (s.siparisSayisi || 0) ],
+          (canFinans ? GV.cell.mny(s.toplamTutar) : '<span class="cell-mask">••••••</span>')
+        );
+      },
+
+      bulk:[{ key:'disa', label:'Dışa aktar', icon:'i-download', export:true }],
+
+      emptyState:{ icon:'i-building', title:'Bu görünümde tedarikçi yok',
+        desc:'Sekmeyi ya da aramayı değiştirebilirsiniz.' }
+    });
+  }
+
+  /* ---- Yüzey sekmesi — TEMBEL ÇİZİM ----------------------------------
+     Alt listeler ilk kez görünür olduklarında kurulur. Dördünü birden
+     kurmak, kullanıcının hiç açmayacağı üç listeyi de her sayfa yüklemesinde
+     çizmek olurdu. `gv:tab` `document`a atılır (kalıcı düğüm) → `GV.on`
+     ile TEK anahtar üzerinden bağlanır, yoksa her `GV.refresh()`te bir
+     dinleyici daha birikir (§2.6 · L-16). */
+  GV.on(document, 'gv:tab', function(ev){
+    var k = ev.detail && ev.detail.key;
+    if(k === 'teklif')    teklifCiz();
+    if(k === 'siparis')   siparisCiz();
+    if(k === 'tedarikci') tedarikciCiz();
+  }, 'satinalma-yuzey-tab');
+
+  GV.tabs('#satSekme');
+
+  /* ---- DERİN BAĞLANTI — `?ac=<talep kodu>` ---------------------------
+     Operasyon kuyruğundaki iki satın alma onayı buraya gelir. Talep
+     detayı ayrı ekran değil çekmecedir; parametre okunur, çekmece açılır
+     ve parametre adresten silinir (yoksa her `GV.refresh()`te yeniden
+     açılır ve kullanıcı kapattığı pencereyi kapatamaz). */
+  var acTalep = new URLSearchParams(location.search).get('ac');
+  if(acTalep){
+    var acRec = kayit(acTalep);
+    var acUrl = new URL(location.href);
+    acUrl.searchParams.delete('ac');
+    history.replaceState({}, '', acUrl.pathname + acUrl.search + acUrl.hash);
+    if(acRec) detayAc(acRec);
+    else GV.toast('Satın alma talebi bulunamadı: ' + acTalep, 'danger');
+  }
 
   /* ---- Backend payı — brief §10.2 (b) biçimi ------------------------- */
   document.getElementById('satBackend').innerHTML =
