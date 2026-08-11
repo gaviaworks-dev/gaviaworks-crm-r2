@@ -85,7 +85,14 @@ const EKRANLAR = [
   { dosya: 'app-gorev-form.html',                    ad: 'Görev Formu',    oturum: true },
   { dosya: 'app-gorev-form.html?id=GRV-2026-113',    ad: 'Görev Düzenle',  oturum: true },
   { dosya: 'app-destek-form.html',                   ad: 'Destek Formu',   oturum: true },
-  { dosya: 'app-destek-form.html?id=DST-2026-120',   ad: 'Destek Düzenle', oturum: true }
+  { dosya: 'app-destek-form.html?id=DST-2026-120',   ad: 'Destek Düzenle', oturum: true },
+  /* ---- Dilim 4: Ekip ve Kaynaklar ----------------------------------
+     `?t=cikis` çıkış sürecindeki tek personeli (EMP-015) taşıyan sekme;
+     `#izin` ikinci yüzeyin derin bağlantısı. */
+  { dosya: 'app-personel.html',           ad: 'Personel',   oturum: true },
+  { dosya: 'app-personel.html?t=cikis',   ad: 'Personel Çıkış', oturum: true },
+  { dosya: 'app-zaman.html',              ad: 'Zaman',      oturum: true },
+  { dosya: 'app-zaman.html#izin',         ad: 'İzin',       oturum: true }
 ];
 
 const MIME = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8',

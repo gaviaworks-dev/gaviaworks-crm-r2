@@ -763,6 +763,10 @@
     'app-destek.html',
     'app-destek-detay.html',
     'app-destek-form.html',
+    /* Dilim 4 — Ekip ve Kaynaklar. `app-varlik.html` · personel detay/form ·
+       izin detay/form HENÜZ YAZILMADI ve bilerek listede değil. */
+    'app-personel.html',
+    'app-zaman.html',
     'app-odeme-linki.html',
     'app-odeme-linki-form.html',
     'app-odeme-linki-detay.html',
