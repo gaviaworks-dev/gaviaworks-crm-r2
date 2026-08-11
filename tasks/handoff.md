@@ -1,208 +1,141 @@
-# Handoff — 11 Ağustos 2026 (Dilim 3, yarıda kesildi)
+# Handoff — 11 Ağustos 2026 · Dilim 3 (Proje ve Operasyon) **KAPANDI**
 
-> Bu dosya context'in yerine geçer. `claude --continue` sonrası **ilk iş** bunu okumaktır.
-> Hafıza context değil, diskteki defterlerdir.
+> `claude --continue` sonrası **ilk iş** bunu okumaktır. Hafıza context değil, diskteki defterlerdir.
 >
-> Repo: `gaviaworks-dev/gaviaworks-crm-r2` · `main`
-> Yerel: `~/Developer/Projects/gaviaworks-crm-r2` · çalışma ağacı **temiz**
+> Repo: `gaviaworks-dev/gaviaworks-crm-r2` · `main` · HEAD `50c5625`
+> Yerel: `~/Developer/Projects/gaviaworks-crm-r2` · çalışma ağacı **temiz**, uzak ile **eşit**
 > Eski repo `gaviaworks-crm` **dondurulmuştur** — oradan çalışılmaz, oraya yazılmaz.
 
 ---
 
-## 0. NEDEN YARIDA KESİLDİ — okuma sırasında ilk bilmen gereken
+## 1. Dilim 3 kapandı — sekiz ekranın sekizi yayında
 
-Dilim 3 (Proje ve Operasyon) **sekiz ekran** planlanmıştı. Dört ajan aynı anda
-açıldı. **Dördü de "monthly spend limit" API hatasıyla düştü** — ama dördü de
-düşmeden ÖNCE dosyasını diske yazmıştı. Dosyalar ölçüldü, bütünlükleri
-doğrulandı, düzeltildi ve yayına alındı.
-
-**Kalan dört ekran hiç açılmadı** (ajan bile açılmadı):
-`app-proje.html` · `app-gorev-form.html` · `app-destek.html` · `app-destek-form.html`
-
-Yarım kalan **dosya yok**. Silinen dosya yok. Diskteki her `.html` tamdır ve
-sekiz eksenin sekizinden geçiyor.
-
----
-
-## 1. Bu oturumda kapanan
-
-### 1.1 Açılış üçlüsü — Beyar'ın dört kararı
-
-| Karar | Ne yapıldı | Ölçüm |
-|---|---|---|
-| **K-24** | Satın almaya dört yüzey sekmesi: Talepler · Teklif Toplama · Siparişler · Tedarikçiler. Alt listeler tembel çiziliyor, `urlSync:false` | 9 · 4 · 7 satır · 17 kontrol |
-| **K-23** | Tahsilat listesinde satıra tıklayınca tahsis defteri + geçmiş drawer'ı. Kuyruk hedefi `app-tahsilat.html?ac=<kod>` | 11 kontrol |
-| **K-25** | `GV.fin.tahsisKaldir` artık **silmiyor**: gerekçeli, aktörlü, eksi tutarlı ters kayıt üretiyor (§8.5) | 10 kontrol |
-| **K-26** | Sıradaki dilim Proje ve Operasyon — ADR-R2-25 | — |
-
-ADR'ler: `tasks/kararlar.md` → **ADR-R2-22 · 23 · 24 · 25**.
-
-### 1.2 Yayına alınan ekranlar
-
-| Dosya | Satır | Ne kapatıyor |
+| Dosya | Satır | Rota |
 |---|--:|---|
-| `app-proje-detay.html` | 1472 | Rota **11 satır** (31 · 33 · 34 · 36 · 37 · 39 · 40 · 42 · 43 · 45 · 46). Dokuz sekme, tembel çizim |
-| `app-gorev.html` | 1069 | Rota 48. Tek liste, 8 kayıtlı görünüm sekmesi |
-| `app-gorev-detay.html` | 660 | Rota 49. Kuyruğun **23 satırı** |
-| `app-destek-detay.html` | 707 | Rota 55. Kuyruğun **4 satırı** |
+| `app-proje.html` | 799 | 30 |
+| `app-proje-detay.html` | 1472 | 31 · 33 · 34 · 36 · 37 · 39 · 40 · 42 · 43 · 45 · 46 (**11 satır**) |
+| `app-gorev.html` | 1069 | 48 |
+| `app-gorev-detay.html` | 660 | 49 |
+| `app-gorev-form.html` | 770 | 50 |
+| `app-destek.html` | 966 | 54 · 57 |
+| `app-destek-detay.html` | 707 | 55 |
+| `app-destek-form.html` | 888 | 56 |
 
-Dördü de `shell.js` `BUILT` listesinde. **BUILT 28 = diskteki 28 dosya, birebir.**
+Ayrıca açılış üçlüsü: K-24 satın alma sekmeleri · K-23 tahsilat çekmecesi ·
+K-25 tahsis geri alma. ADR-R2-22 … ADR-R2-25 `tasks/kararlar.md`'de.
+
+**Sayılar:** yayında **31 ekran + index** · `BUILT` **32 = diskteki 32, birebir** ·
+rota **74 / 148** (oturum başı 48) · bu oturumda **36 commit**.
 
 ---
 
-## 2. SIRADAKİ OTURUMUN İLK İŞİ — dört ekran
+## 2. SIRADAKİ DİLİM — Beyar kararı bekliyor
 
-Ajan brief'i (`tasks/ekran-brief.md` **§18**) hazır ve **doğrulanmış**; ajana
-olduğu gibi verilebilir. Yazılacaklar:
+Kalan iki alan: **Ekip ve Kaynaklar** (`app-personel.html` · `app-zaman.html` ·
+`app-varlik.html`) ve **Ayarlar** (`app-ayar-profil` · `-sirket` ·
+`-entegrasyon` · `-log`). Yedisi de menüde **kilitli** (`markWip`) ve
+`BUILT`te değil — ölü bağlantı yok.
 
-| Dosya | Rota | Not |
-|---|---|---|
-| `app-proje.html` | 30 | Proje listesi. `data-sec="operasyon"` `data-screen="proje"`. Menüde girdisi VAR ve bugün kilitli |
-| `app-destek.html` | 54 | Destek listesi. Menüde girdisi VAR ve bugün kilitli |
-| `app-gorev-form.html` | 50 | Görev formu. Menüde girdisi VAR ve bugün kilitli |
-| `app-destek-form.html` | 56 | Destek formu |
+Ekip ve Kaynaklar dilimi kuyruğun kalan **3 ölü hedefini** de kapatır
+(`app-izin-detay` 2 · `app-zaman-onay` 1).
 
-⚠️ **Bu dördü `BUILT` listesinde DEĞİL** ve bilerek değil: kabuk onları
-`markWip` ile kilitli tutuyor, ölü bağlantı doğmuyor. Ekran yazılınca
-`shell.js` `BUILT` listesine **ve** `tasks/qa/tarayici.js` `EKRANLAR`
-listesine eklenmeli, sonra rota haritası işaretlenmeli.
-
-**Sonra DUR.** Ekip ve Kaynaklar ile Ayarlar alanlarına geçme (Beyar talimatı G).
+Ajan sözleşmesi hazır: `tasks/ekran-brief.md` **§18 · §19** dilim 3'ün
+sözleşmesi; yeni dilim için §20 yazılmalı ve `brief-dogrula.js` koşturulmalı.
 
 ---
 
 ## 3. Ortak katmanda BU OTURUMDA değişen HER imza
 
-Brief §18.9 bunları taşıyor. Özet:
-
-| İmza | Ne değişti |
+| İmza | Değişiklik |
 |---|---|
-| `GV.list` `cfg.rowOpen(kayit, render)` | **YENİ.** Satıra tıklayınca çağrılır — tablo satırı, mobil satır, kart, kanban kartı. Satır içindeki `a/button/input/select/textarea/label` tıklaması tetiklemez. Dinleyici bir kez bağlanır |
-| `GV.list` `cfg.urlSync:false` | **DAVRANIŞ DEĞİŞTİ — iki yönlü oldu.** Eskiden yalnız yazmayı susturuyordu; artık okumayı da. Aynı sayfadaki ikinci/üçüncü liste bunu bildirmek ZORUNDA |
-| `GV.fin.tahsisKaldir(t, f, gerekce)` | **ÜÇÜNCÜ ARGÜMAN EKLENDİ ve ZORUNLU.** Kayıt silmiyor, ters kayıt üretiyor |
-| `GV.fin.ciftNet(t, f)` | **YENİ.** Bir tahsilat–fatura çiftinin net tahsisi |
-| `GV.fin.dagitimNet(t)` | **YENİ.** Bir tahsilatın tüm faturalara net dağıtımı |
-| `GV.fin.canliTahsisler(f)` | **YENİ.** Neti sıfırlanmamış tahsis satırları |
-| `GV.fin.tahsisEt` | İdempotency ölçütü **satır değil NET** oldu |
-| `GV.fin.tahsilGeriAl` | Tahsis kontrolü **satır değil NET** oldu |
-| `GV.proje.kapanisKontrol` | Dört `href` proje detayının sekme çapalarına çevrildi; bakım maddesi müşteri detayına |
-| `DB.supplierQuotes[].id` | **YENİ türetilmiş alan** — `talep · tedarikçi`. Uydurma kod değil |
-| `DB.approvals[].link` | Dört satır R2 hedeflerine çevrildi (satın alma ×3, değişiklik ×1) |
+| `GV.list` `cfg.rowOpen(kayit, render)` | **YENİ** — satır tıklaması; iç etkileşimli düğüm tetiklemez, dinleyici bir kez bağlanır |
+| `GV.list` `cfg.urlSync:false` | **İKİ YÖNLÜ OLDU** — yazmayan liste okumaz da |
+| `GV.cols.date` `bosSub(x)` | **YENİ** — boş değerde de alt satır basar |
+| `GV.fin.tahsisYetkisi()` | **YENİ** — tahsis defteri kapısı, kurma ve geri alma için AYNI |
+| `GV.fin.ciftNet` · `.dagitimNet` · `.canliTahsisler` | **YENİ** — net okuma (ters kayıt defteri) |
+| `GV.fin.tahsisKaldir(t, f, gerekce)` | **3. ARGÜMAN ZORUNLU** · kayıt silmez, ters kayıt üretir |
+| `GV.fin.tahsisEt` · `.tahsilGeriAl` | Ölçüt **satır değil NET** |
+| `GV.task.olustur(v)` | **YENİ** — `faturalanabilir` SAAT alanıdır, 0 yazılır |
+| `GV.destek.olustur(v)` · `.slaPolitikasi(k, o)` | **YENİ** — `sla` politikanın `etiket`inden, joker `'Tümü'` desteği |
+| `GV.destek.paketOf` | **DÜZELTİLDİ** — seviye `ad` önekinden, `tip`ten değil |
+| `GV.flow.yanEtki` ticket dalı | Kapanış damgası artık **motorda** |
+| `DB.tahsisYetkiRolleri` · `DB.tahsisYetkiNot` | **YENİ** — `['muhasebe','sahip','genelmudur']` |
+| `DB.supplierQuotes[].id` | **YENİ** türetilmiş satır kimliği |
+| `DB.approvals[].link` | 6 satır R2 hedeflerine çevrildi |
 
 ---
 
-## 4. Ortak katmanda bulunan ve kapatılan DÖRT kusur
+## 4. Ortak katmanda bulunan ve kapatılan DOKUZ kusur
 
-Dördü de ekran yazarken çıktı, dördü de **ortak katmanda** düzeltildi — hiçbir
-ekran etrafından dolanmadı.
-
-1. **`GV.fin.tahsisKaldir` kaydı `splice` ile SİLİYORDU.** Şartname §8.5 "kayıt
-   silinmez, ters işlem üretilir" diyor. Geri alınan tutar hiçbir yerde
-   okunamıyordu.
-2. **`urlSync:false` yalnız yazmayı susturuyordu, okumayı susturmuyordu.** Tek
-   listeli sayfada fark etmezdi; K-24 dört liste koyunca ana listenin
-   `?t=onay` adresi üç alt listeye sızdı.
-3. **Satır–net ayrımı.** Ters kayıttan sonra defterde iki satır durur. Satır
-   sayısına bakan kontroller geri alınmış tahsisi hâlâ duruyor sanıyordu:
-   `tahsisEt` aynı çifte yeni tahsisi sonsuza dek reddederdi, `tahsilGeriAl`
-   nakit olayını hiç serbest bırakmazdı.
-4. **`tarayici.js` oturum parametresini HASH'İN SONUNA ekliyordu.**
-   `…?id=X#test` hedefi `…?id=X#test&role=sahip` oluyordu: kabuk `role`u
-   okuyamadığı için 403 basıyor, sekme anahtarı da hiçbir sekmeye uymuyordu.
-   **Ölçüm ekranı değil hata sayfasını ölçüyor ve YEŞİL yanıyordu — sahte
-   temizlik.** Sorgu ile hash artık ayrı kuruluyor.
+1. `GV.fin.tahsisKaldir` kaydı **siliyordu** — §8.5 "kayıt silinmez" hükmü.
+2. `urlSync:false` yalnız yazmayı susturuyordu, okumayı değil.
+3. Satır–net ayrımı: ters kayıttan sonra `tahsisEt` ve `tahsilGeriAl` kilitlenirdi.
+4. **`tarayici.js` oturum parametresini hash'in SONUNA ekliyordu** → 403 sayfası
+   ölçülüp **yeşil yanıyordu**. Sahte temizlik.
+5. `GV.cols.date` boş dalda `sub` basmıyordu — fabrika en çok gerektiği yerde
+   kullanılamıyordu.
+6. Destek **kapanış damgası iki ekranda kopya**ydı ve ikisi aynı değildi
+   (biri sözlükten, biri `'Kapandı'` dizesinden).
+7. **`GV.destek.paketOf` seviye eşleşmesi hiç tutmuyordu** (`tip` 7/7 `'Bakım'`),
+   sessizce `aday[0]`a düşüyordu — yanlış paketi döndürebiliyordu.
+8. **`kontrol.js` yorum metnini kod sanıyordu** → iki dürüst ekranı kusurlu
+   ilan etti. Yorum ve dize artık ayıklanıyor.
+9. **`brief-dogrula.js` `kuyruk.js`yi taramıyordu** → gerçek bir imzayı
+   (`GV.kuyruk`) hayalet ilan etti.
 
 ---
 
-## 5. Brief'te bulunan ve düzeltilen kusur
+## 5. Eksenler — ONU DA YEŞİL
 
-**`DB.timelogs` `work.js`te DEĞİL, `hr.js`tedir.** Brief §18.0 bu dilimin veri
-kümesini `hr.js` olmadan sabitlemişti; iki ajan da zaman defterini okudu ve
-`kontrol.js` [3] ekseni ikisini de yakaladı. Ajan **doğru davrandı**: `assets/`
-altına dokunmadı, ekranda "defter bu ekranda hiç yüklü değil" diye dürüstçe
-yazdı ve raporladı. Ana oturum `hr.js`yi iki ekrana ekledi ve brief'i düzeltti.
+| Eksen | Kontrol |
+|---|---|
+| `kontrol.js` | ✓ TEMİZ |
+| `brief-dogrula.js` | ✓ BRIEF KODLA UYUMLU |
+| `acilis-uc.js` | ✓ **59 kontrol** · 4 eksen (K-24 · K-23 · K-25 · **K-25b kapı**) |
+| `finans-kanon.js` | ✓ 22 kontrol |
+| `satis-akis.js` | ✓ 42 kontrol · 10 eksen |
+| `odeme-akis` · `ops-akis` · `bayat-alan` · `not-izolasyon` · `rapor-tavan` | ✓ TEMİZ |
+| `tarayici.js` | ✓ **39 ekran × 6 genişlik = 234 ölçüm** · nöbetçi 234/234 geçerli |
 
----
-
-## 6. Koşulan eksenler — son durum
-
-| Eksen | Kontrol | Sonuç |
-|---|---:|---|
-| `kontrol.js` | 5 blok | ✓ TEMİZ |
-| `brief-dogrula.js` | 4 eksen | ✓ BRIEF KODLA UYUMLU |
-| `acilis-uc.js` **(yeni)** | **40** | ✓ TEMİZ · K-24 · K-23 · K-25, her birinde olumlu + olumsuz vaka |
-| `finans-kanon.js` | 22 | ✓ TEMİZ |
-| `satis-akis.js` | 42 | ✓ TEMİZ |
-| `odeme-akis.js` · `ops-akis.js` · `bayat-alan.js` · `not-izolasyon.js` · `rapor-tavan.js` | — | ✓ TEMİZ |
-| `tarayici.js` | **33 ekran × 6 genişlik = 198 ölçüm** | ✓ TEMİZ · yatay taşma **sıfır** |
-
-**Dokuz eksenin dokuzu yeşil.**
+**NÖBETÇİ (yeni):** ölçülen sayfa 403 ya da boş kabuk ise ölçüm GEÇERSİZ sayılır.
+`gv:ready` atıldı mı · belge başlığı · `.gv-page` element sayısı (eşik 25).
+Bozulmuş kopyada 2 kusur enjekte, 2'si de yakalandı; temiz vaka temiz kaldı.
 
 ---
 
-## 7. Operasyon kuyruğu — 43 satırın son hâli
+## 6. Operasyon kuyruğu — 43 satır
 
-| Hedef | Satır | Durum |
-|---|--:|---|
-| `app-gorev-detay.html` | **23** | ✅ gerçek |
-| `app-destek-detay.html` | **4** | ✅ gerçek |
-| `app-satinalma.html?ac=` | 2 | ✅ gerçek (K-24) |
-| `app-tahsilat.html?ac=` | 2 | ✅ gerçek (K-23) |
-| `app-teklif-detay.html` | 1 | ✅ gerçek |
-| `app-proje-detay.html#degisiklik` | 1 | ✅ gerçek |
-| `app-musteri-detay.html` | 1 | ✅ gerçek |
-| `app-istalebi-detay.html` | 4 | ✗ dürüstçe devre dışı |
-| `app-izin-detay.html` | 2 | ✗ dürüstçe devre dışı |
-| `app-onanaliz-detay.html` | 1 | ✗ dürüstçe devre dışı |
-| `app-komisyon-detay.html` | 1 | ✗ dürüstçe devre dışı |
-| `app-zaman-onay.html` | 1 | ✗ dürüstçe devre dışı |
+**Gerçek hedefi olan: 36 · dürüstçe devre dışı: 7.** (Oturum başında 2 / 41.)
 
-**Gerçek hedefi olan: 34 · dürüstçe devre dışı: 9.** (Oturum başında 2 / 41'di.)
-
-Devre dışı dokuzu **gizlenmedi**: düğme `disabled` basılıyor ve ipucunda hedef
-dosya adı yazılı (`app-operasyon.html:258-260`). Beşi de bu dilimin kapsamı
-dışında — `tasks/v2-borc.md` **V2-27**.
+Devre dışı 7'nin dağılımı:
+- **3'ü yazılmamış ekran bekliyor** — `app-izin-detay` (2) · `app-zaman-onay` (1),
+  ikisi de Ekip ve Kaynaklar diliminde.
+- **4'ünün ayrı tam kaydı YOK** — departman talebinin tam kaydı Operasyon
+  panelinin kendisidir (rota 51-52 GÖMÜLÜYOR). Düğme **gizlenmiyor**:
+  "Bu sürümde ayrı tam kayıt yok" diye devre dışı basılıyor ve sebebi ipucunda.
 
 ---
 
-## 8. Sayılar
+## 7. BEYAR'DAN BEKLENEN KARARLAR
 
-| | |
-|---|---:|
-| Yayında ekran (`ls app-*.html` + index) | **28** |
-| `shell.js` BUILT | **28** — diskle birebir |
-| Rota haritası işaretli | **69 / 148** (oturum başında 48) |
-| Bu oturumdaki commit | **19** |
-| Kuyruk gerçek hedef | **34 / 43** |
-| Kapanan borç | V2-22 · V2-24 · V2-25 |
-| Açılan borç | V2-27 · V2-28 · V2-29 · V2-30 |
-
----
-
-## 9. BEYAR'DAN BEKLENEN KARARLAR
-
-1. **K-25 yetki daraltması.** K-25 "yetki Finans yöneticisi" diyor; 27 rollük
-   sözlükte o adda rol **YOK** ve `finans` yetkisi **8 rolde** açık (`sahip ·
-   genelmudur · sistem · operasyon · satismudur · pm · muhasebe · satinalma`).
-   Geri almayı bu kümeden dar bir role bağlamak, tahsisi kuran kullanıcının
-   kendi hatasını düzeltememesi demekti — geri alma, yapmaktan daha ağır
-   koşula bağlanamaz. **Kapı şu an kurmakla EŞİT tutuluyor**, gerekçe zorunlu.
-   Daraltılacaksa değişecek tek yer `domain.js` `tahsisKaldir` içindeki tek
-   `can()` satırı. **Hangi rol?**
-2. **V2-28.** `GV.sales.firsatKazan` önerileri `app-sozlesme-detay.html` ·
-   `app-odemeplani-detay.html` · `app-sozlesme-form.html` üretiyor. Üçü de
-   rota haritasında GÖMÜLÜYOR (müşteri detayı › Finans sekmesi). Hedefler
-   oraya çevrilsin mi?
-3. **Rota 71 kararı düzeltildi** (KARŞILIĞI VAR → GÖMÜLÜYOR, K-23 gereği).
-   Aynı düzeltme **rota 114** (`app-satinalma-detay.html`) için de yapıldı.
-   Onay bekliyor.
+1. **V2-35 — bakım paketi seviyesi üç biçimde.** `DB.supportPackageTypes` uzun
+   biçim (`'Standart Bakım'`), `DB.tickets[].bakimPaketi` kısa biçim
+   (`'Standart'`), `DB.supportPackages[].tip` 7/7 `'Bakım'` (seviye değil,
+   cins). `paketOf` düzeltildi ama **sözlük ile veri hâlâ ayrı biçimde**.
+   Hangisi kanon: kısa mı uzun mu?
+2. **V2-28 — `GV.sales.firsatKazan` üç yazılmamış ekrana bağlanıyor**
+   (`app-sozlesme-detay` · `app-odemeplani-detay` · `app-sozlesme-form`).
+   Üçü de rota haritasında GÖMÜLÜYOR (müşteri detayı › Finans sekmesi).
+   Hedefler oraya çevrilsin mi?
+3. **Sıradaki dilim hangisi:** Ekip ve Kaynaklar mı, Ayarlar mı?
+   (Ekip ve Kaynaklar kuyruğun kalan 3 ölü hedefini de kapatır.)
 
 ---
 
-## 10. İlk üç komut
+## 8. İlk üç komut
 
 ```bash
 cd ~/Developer/Projects/gaviaworks-crm-r2 && git pull
 node tasks/qa/kontrol.js && node tasks/qa/brief-dogrula.js && node tasks/qa/acilis-uc.js
-cat tasks/ekran-brief.md   # §18 dilim 3 sözleşmesi — ajana OLDUĞU GİBİ verilir
+cat tasks/ekran-brief.md   # §18 · §19 dilim 3 sözleşmesi
 ```
