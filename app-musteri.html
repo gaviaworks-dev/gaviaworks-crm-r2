@@ -48,17 +48,11 @@ document.addEventListener('gv:ready', function(){
   var canFinans = GV.perm.can('finans');
 
   /* Evre etiketi — NÖTR. Şartname §5.1 aday için ayrı renk teması yasaklıyor;
-     bu yüzden ADAY ve PASIF tonsuz basılır. Ton sözlüğü `DB.lifecycleStages`
-     içinde TEK yerdedir, ekran kendi renk kararını vermez (L-40). */
-  function evreRozeti(evre){
-    var s = DB.lifecycleStages[evre];
-    if(!s) return '<span class="u-faint">—</span>';
-    return '<span class="badge' + (s.tone ? ' ' + s.tone : '') + '">' + GV.esc(s.ad) + '</span>';
-  }
-  function evreAdi(evre){
-    var s = DB.lifecycleStages[evre];
-    return s ? s.ad : '—';
-  }
+     bu yüzden ADAY ve PASIF tonsuz basılır. Rozet ORTAK KATMANDADIR
+     (`GV.lifecycle.rozet`): aynı yordam üç ekranda ayrı ayrı yazılıydı ve
+     sözlük değişince üçü birden sessizce ayrışırdı (L-40). */
+  function evreRozeti(evre){ return GV.lifecycle.rozet(evre); }
+  function evreAdi(evre){ return GV.lifecycle.ad(evre) || '—'; }
 
   /* Hesabın fırsatları — §5.3 "bir müşteri hesabının birden fazla fırsatı
      olabilir". Fırsat kaydı `lifecycle.js` tarafından lead'den türetildi. */

@@ -308,7 +308,7 @@ maskeleme, iskelet yükleme, boş durum, hata durumu.
 
 ### 4.1 Yapılandırma sözleşmesi
 
-Yayındaki tam örnek: **`app-musteri.html:83-261`**. Alanlar:
+Yayındaki tam örnek: **`app-musteri.html:77-255`**. Alanlar:
 
 ```js
 var api = GV.list({
@@ -1184,5 +1184,5 @@ eksik bulduğun bileşen (yazmadın, rapor ettin) · ölçemediğin şey.
 
 Doğrulama betiği brief'teki her `dosya:satır` işaretini, her `GV.*` / `DB.*`
 adını ve her ikon adını gerçek dosyada arar. Brief eskirse eksen kırmızı yanar.
-`GV.filters` gibi bilerek anılan hayalet adlar `brief-dogrula:yoksay` bloğundadır
+Bilerek anılan hayalet adlar (§0 uyarısı) `brief-dogrula:yoksay` bloğundadır
 ve ölçüm dışıdır — sessiz istisna listesi tutulmaz.

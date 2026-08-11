@@ -131,6 +131,26 @@ console.log('\n[S3] Kazanma kapısı — eksik müşteri bilgisi REDDEDİLİR');
   }
 
   olc();
+  /* KAPI HEDEFE BAĞLI MI — ölçülmüş kusurun nöbetçisi.
+     Kapı KAYNAK duruma bağlıyken (`kapi`), aynı kaynaktan çıkan
+     `Kaybedildi` hedefi de ona takılıyordu: bir satışı KAYBETMEK için
+     müşterinin vergi numarasını doldurmak gerekiyordu. Kaybetmek her
+     zaman mümkün olmalıdır. */
+  if(o.asama === 'Sözleşme aşaması'){
+    const kayip = GV.flow.gec('opportunity', o.kod, 'Kaybedildi', null,
+                              { neden:'BUTCE', not:'eksen — kapı hedefe bağlı mı' });
+    if(!kayip.ok && kayip.why === 'kapi')
+      de('KAPI YANLIŞ YERDE — kazanma kapısı `Kaybedildi` çıkışını da engelliyor');
+    else if(!kayip.ok) de('kayıp geçişi başka nedenle düştü: ' + (kayip.mesaj || kayip.why));
+    else ok('kazanma kapısı yalnız `Kazanıldı` hedefinde — kayıp çıkışı serbest');
+    /* Eksen kendi hazırlığını geri alır: aşağıdaki olumlu vaka için
+       fırsatın sözleşme aşamasında olması gerekiyor. */
+    o.asama = 'Sözleşme aşaması';
+  }else{
+    de('hazırlık düştü — kapı yeri ölçülemedi');
+  }
+
+  olc();
   /* OLUMLU VAKA — eksik alan doldurulunca aynı geçiş GEÇMELİ.
      Kapının "her şeyi reddeden" bir duvar olmadığını kanıtlar. */
   leadHesap.vergiNo = '1234567890';
@@ -138,6 +158,18 @@ console.log('\n[S3] Kazanma kapısı — eksik müşteri bilgisi REDDEDİLİR');
   const pozitif = GV.flow.gec('opportunity', o.kod, 'Kazanıldı');
   if(!pozitif.ok) de('OLUMLU VAKA DÜŞTÜ — alanlar doluyken kazanma reddedildi: ' + (pozitif.mesaj || pozitif.why));
   else ok('olumlu vaka geçti — eksik alan dolunca kapı açıldı');
+
+  olc();
+  /* `GV.flow.adimlar` HEDEFİN `girisGerekce` bayrağını bildiriyor mu.
+     Bildirmediğinde ekran kuralı `DB.transitions`ten kendisi okumak
+     zorunda kalıyordu — sözleşme motorda, uygulaması ekranda (L-40). */
+  const { DB:DB2, GV:GV2 } = kur();
+  const o2 = DB2.opportunities.find(x => x.asama === 'Yeni talep');
+  const kayipAdim = GV2.flow.adimlar('opportunity', o2.kod)
+                       .filter(a => a.hedef === 'Kaybedildi')[0];
+  if(!kayipAdim) de('`Kaybedildi` adımı hiç dönmedi');
+  else if(!kayipAdim.gerekce) de('`Kaybedildi` adımı `gerekce:false` bildiriyor — hedefin girisGerekce bayrağı okunmuyor');
+  else ok('adimlar hedefin `girisGerekce` bayrağını bildiriyor');
 }
 
 /* ---- S4 — yaşam evresi tablosu -------------------------------------- */
@@ -294,13 +326,21 @@ console.log('\n[S9] Ekran kodu durum/aşama/evre alanını ELLE yazmıyor');
 {
   const dosyalar = fs.readdirSync(ROOT).filter(f => /^app-.*\.html$/.test(f));
   /* Dar kapsam: yalnız ATAMA deseni aranır (`x.durum =`), okuma değil.
-     Ham grep `durum` kelimesini de sayardı ve her ekranda yüzlerce çıkardı. */
+     Ham grep `durum` kelimesini de sayardı ve her ekranda yüzlerce çıkardı.
+
+     ⚠️ ÖLÇÜM DÜZELTMESİ (R1 dersi L-26 — araç borcu FAZLA da sayar).
+     İlk koşumda üç bulgunun ÜÇÜ DE yanlıştı: ikisi kuralı ANLATAN yorum
+     satırıydı (`h.evre = … yazmak yasaktır`), biri formun taslak nesnesiydi.
+     Yani eksen, yasağı yazan cümleyi yasak ihlali sayıyordu. Yorumlar
+     taranmadan önce SÖKÜLÜR; dizeler bilerek taranmaya devam eder
+     (bir dizede durum ataması kurmak da kaçamaktır). */
   const desen = /\b[A-Za-z_$][\w$]*\.(durum|asama|evre|belgeDurum)\s*=[^=]/g;
+  const yorumSok = (s) => s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^[ \t]*\/\/.*$/gm, ' ');
   let bulgu = 0;
   for(const d of dosyalar){
     const src = fs.readFileSync(path.join(ROOT, d), 'utf8');
-    const blok = [...src.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
-      .map(m => m[1]).join('\n');
+    const blok = yorumSok([...src.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)]
+      .map(m => m[1]).join('\n'));
     const m = blok.match(desen);
     if(m){ de(`${d} — elle durum ataması: ${m.slice(0,3).join(' · ')}`); bulgu += m.length; }
   }
