@@ -280,7 +280,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
-| 80 | `app-personel.html` | **KARŞILIĞI VAR** | ⚠️ R1'in açık borcu geldi: `durum` alanı hiçbir ekranda okunmuyor, `aktif` boolean'ı paralel duruyor (P3-06). R2'de kapatılacak mı? → K-18 |
+| 80 | `app-personel.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** 5 sekme, hepsi geçiş tablosundan ve `GV.hr.*`ten TÜRETİLDİ. **K-18 kapandı**: `aktif` tuzağa çevrildi, `DB.ikBayat.sayac` her rolde 0. Kişisel veri kapısı SATIRA bakar (`GV.hr.ozlukGorebilir`), role değil — `muhasebe` maaşı görür özlüğü görmez |
 | 81 | `app-personel-detay.html` | **KARŞILIĞI VAR** | Performans · eğitim · yaşam döngüsü sekmeleri buraya gelir |
 | 82 | `app-personel-form.html` | **KARŞILIĞI VAR** | — |
 | 83 | `app-personel-giris.html` | **GÖMÜLÜYOR** | §3.1 "işe giriş/çıkış" birleştirilen içerik → personel detayı › Yaşam Döngüsü (`employee` 15. geçiş varlığı `domain.js`'te hazır) |
@@ -292,12 +292,12 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | R1 ekranı | Karar | Hedef |
 |---|---|---|---|
-| 87 | `app-izin.html` | **KARŞILIĞI VAR** | "Zaman ve İzin" girdisinin bir sekmesi |
+| 87 | `app-izin.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI** — `app-zaman.html` › İzin yüzeyi. Sekmeler `DB.leaveStatuses`ten türetildi (7 talep). Bakiye kapısı hedefe taşındı: bakiyesi yetmeyen talep artık REDDEDİLEBİLİYOR |
 | 88 | `app-izin-detay.html` | **KARŞILIĞI VAR** | — |
 | 89 | `app-izin-form.html` | **KARŞILIĞI VAR** | — |
-| 90 | `app-zaman.html` | **KARŞILIĞI VAR** | "Zaman ve İzin" girdisinin diğer sekmesi |
-| 91 | `app-zaman-onay.html` | **GÖMÜLÜYOR** | `app-zaman.html` sekmesi + `/operasyon?tip=onay` |
-| 92 | `app-kapasite.html` | **GÖMÜLÜYOR** | §3.1 "kapasite" birleştirilen içerik → "İş ve Kapasite" raporu (§7.1 şablonu birebir bu) |
+| 90 | `app-zaman.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** İki yüzey sekmesi (Zaman · İzin), tembel çizim, `#izin` derin bağlantısı. 131 zaman kaydı · 6 haftalık defter |
+| 91 | `app-zaman-onay.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — `app-zaman.html` › Zaman yüzeyinin "Onay bekleyen" kayıtlı görünümü (43 satır, `?t=onay`). Haftalık defter satırın onay merciidir; 41 satır kapsanıyor, 90 kapsanmıyor |
+| 92 | `app-kapasite.html` | **GÖMÜLÜYOR** ✅ | **GÖMÜLÜYOR** — kapasite ayrı ekran değil, "İş ve Kapasite" raporu (`app-rapor.html?r=is-kapasite`, yayında). Zaman ekranı oraya bağlanıyor |
 
 ### 6.3 Varlıklar
 
