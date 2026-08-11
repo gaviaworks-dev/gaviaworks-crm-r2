@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Yeni Görev — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="operasyon" data-screen="gorev">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   GÖREV FORMU — ekran brief §5 (CreateEditPage deseni) · §18.3 · §18.4 · §19
+
+   DESEN: `GV.pageHead` + `GV.form` + `GV.afterSave`. Bu depoda
+   `CreateEditPage` ADINDA bir bileşen YOKTUR; desen budur (brief §5).
+
+   TEK KAPI — kayıt yazma:
+     · yeni kayıt → `GV.task.olustur(v)`.  `DB.tasks.push(...)` YASAK.
+       Kod üretimi, başlangıç durumu, zorunlu alan ve denetim izi orada.
+     · sorumlu    → `GV.task.ata`     (Havuzda ise GEÇİŞ, değilse alan yazımı;
+                    ayrım YORDAMDA, ekranda değil)
+     · öncelik    → `GV.task.oncelik`
+     · durum      → bu formdan DEĞİŞMEZ. Geçişin tek mutasyon noktası
+                    `GV.task.transition` / `GV.flow.gec`tir ve düğmeleri görev
+                    detayındadır. Düzenleme kipinde durum alanı `readonly`
+                    bir BİLGİDİR (brief §7.4 · §18.3-18.4).
+
+   HR.JS YÜKLENMEZ (brief §19.0): bu ekran zaman defterini okumaz — defter
+   `hr.js`tedir ve burada hiçbir alanı ölçülmez. `firsat.js` ve `odeme.js`
+   de yüklenmez.
+
+   SÖZLÜKLER ELLE YAZILMAZ: tür · öncelik · etki · durum · geçiş tablosu
+   hepsi `DB`den okunur. Başlangıç durumu `DB.taskStatuses[0]`tan, atama
+   hedefi geçiş tablosunun kendi etiketinden TÜRETİLİR — sabit dize yok.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var esc = GV.esc;
+  var F   = GV.fmt;
+
+  var q   = new URLSearchParams(location.search);
+  var kod = q.get('id');
+  var rec = kod ? (DB.tasks || []).filter(function(x){ return x.kod === kod; })[0] : null;
+
+  /* ---- Kayıt okuma yüzeyleri — tarih yakınlığı bağ değildir ---------- */
+  function projeKaydi(k){ return (DB.projects || []).filter(function(x){ return x.kod === k; })[0] || null; }
+  function hesapKaydi(k){ return (DB.accounts || []).filter(function(x){ return x.kod === k; })[0] || null; }
+  function talepKaydi(k){ return (DB.tickets || []).filter(function(x){ return x.kod === k; })[0] || null; }
+  function sprintKaydi(k){ return (DB.sprints || []).filter(function(x){ return x.kod === k; })[0] || null; }
+  function modulKaydi(k){ return (DB.projectModules || []).filter(function(x){ return x.kod === k; })[0] || null; }
+  function depKaydi(k){ return (DB.departments || []).filter(function(x){ return x.kod === k; })[0] || null; }
+  function projeAd(k){ var p = projeKaydi(k); return p ? p.ad : (k || null); }
+  function hesapAd(k){ var h = hesapKaydi(k); return h ? (h.kisa || h.unvan) : (k || null); }
+  function depAd(k){ var d = depKaydi(k); return d ? d.ad : (k || null); }
+  function kisiAd(k){ return k ? (DB.empName(k) || k) : null; }
+  function faint(s){ return '<span class="u-faint">' + esc(s) + '</span>'; }
+  function bosNull(x){
+    var s = (x == null) ? '' : String(x).trim();
+    return s === '' ? null : s;
+  }
+  function benzersiz(list){
+    return (list || []).filter(function(v, i, s){
+      return v != null && v !== '' && s.indexOf(v) === i; });
+  }
+
+  /* ---- Kayıt yok durumu (§10) --------------------------------------- */
+  if(kod && !rec){
+    GV.pageHead({
+      eyebrow:'Proje ve Operasyon', title:'Kayıt bulunamadı', sub:kod,
+      actions:[{ label:'Görev listesine dön', icon:'i-arrow-left', href:'app-gorev.html' }]
+    });
+    mount.innerHTML = GV.errorState({
+      title:kod + ' bulunamadı',
+      desc:'Bu kod hiçbir görev kaydıyla eşleşmedi. Adres çubuğundaki kaydı kontrol edin ' +
+           'ya da görev listesinden kaydı seçin.',
+      action:'<a class="btn btn-acc" href="app-gorev-form.html">Yeni görev aç</a>' });
+    return;
+  }
+
+  /* ---- Kayıt sahipliği kapısı (brief §6 adım 2) ----------------------
+     Müşteri oturumu, listede göremediği bir görevi adres çubuğundan
+     açamaz. Kural ortak katmanda; ekran yalnız çağırır ve `false`da çıkar. */
+  if(rec && !GV.guardRecord({
+      mount:'#rec', musteri:rec.musteri, kod:rec.kod,
+      eyebrow:'Proje ve Operasyon', title:rec.baslik || rec.kod,
+      geriHref:'app-gorev.html', geriLabel:'Görev listesine dön' })) return;
+
+  /* =================================================================
+     ÖN DOLGU PARAMETRELERİ — `?proje=` · `?musteri=` · `?destek=`
+     -----------------------------------------------------------------
+     Liste ekranları bu formu bağlamla açabilir. Parametre bir KAYITLA
+     eşleşmek zorundadır: eşleşmeyen kodu sessizce yutmak, kullanıcıya
+     "bağladım" dedirtip hiçbir yere bağlamamak olurdu.
+     Düzenleme kipinde parametreler OKUNMAZ — kaydın kendi bağları esastır.
+     ================================================================= */
+  var ON = [
+    { key:'proje',   etiket:'Proje',          deger:q.get('proje'),   kayit:null },
+    { key:'musteri', etiket:'Müşteri hesabı', deger:q.get('musteri'), kayit:null },
+    { key:'destek',  etiket:'Destek talebi',  deger:q.get('destek'),  kayit:null }
+  ];
+  if(!rec) ON.forEach(function(o){
+    if(!o.deger) return;
+    o.kayit = o.key === 'proje'   ? projeKaydi(o.deger)
+            : o.key === 'musteri' ? hesapKaydi(o.deger)
+            :                       talepKaydi(o.deger);
+  });
+  var kayipOn = ON.filter(function(o){ return o.deger && !o.kayit; });
+  if(!rec && kayipOn.length){
+    GV.pageHead({
+      eyebrow:'Proje ve Operasyon', title:'Ön dolgu kaydı bulunamadı',
+      sub:kayipOn.map(function(o){ return o.etiket + ': ' + o.deger; }).join(' · '),
+      actions:[{ label:'Görev listesine dön', icon:'i-arrow-left', href:'app-gorev.html' }]
+    });
+    mount.innerHTML = GV.errorState({
+      title:kayipOn.map(function(o){ return o.deger; }).join(' · ') + ' bulunamadı',
+      desc:'Adres çubuğundan gelen ön dolgu kodu hiçbir kayıtla eşleşmedi; form o bağı ' +
+           'uydurmaz. Bağı formdan seçerek devam edebilirsiniz.',
+      action:'<a class="btn btn-acc" href="app-gorev-form.html">Boş formla devam et</a>' });
+    return;
+  }
+
+  /* ---- Yetki kapısı -------------------------------------------------- */
+  var izinli = rec ? GV.perm.can('duzenle') : GV.perm.can('ekle');
+  if(!izinli){
+    GV.pageHead({
+      eyebrow:'Proje ve Operasyon',
+      title:rec ? (rec.baslik || rec.kod) : 'Yeni Görev',
+      sub:'Bu ekran için yetkiniz yok',
+      actions:[{ label:'Görev listesine dön', icon:'i-arrow-left', href:'app-gorev.html' }]
+    });
+    mount.innerHTML = GV.empty({
+      icon:'i-lock',
+      title:rec ? 'Görev kaydını düzenleme yetkiniz yok' : 'Yeni görev açma yetkiniz yok',
+      desc:'Rolünüz (' + GV.perm.role() + ') bu işlem için yetkili değil. ' +
+           'Görevleri görüntülemeye devam edebilirsiniz.',
+      action:'<a class="btn btn-line" href="app-gorev.html">Görev listesine dön</a>' });
+    return;
+  }
+
+  /* =================================================================
+     1. SÖZLÜK VE KURAL ÖLÇÜMÜ — hiçbir liste ekranda YAZILI DEĞİL
+     ================================================================= */
+  var TUM      = DB.tasks || [];
+  var DURUMLAR = DB.taskStatuses || [];
+  var TT       = DB.taskTransitions || {};
+  var ETK      = DB.taskActionLabels || {};
+
+  /* Başlangıç durumu SABİT YAZILMAZ — sözlüğün ilk değeridir (domain.js). */
+  var ILK       = DURUMLAR[0] || null;
+  var ILK_KURAL = (ILK && TT[ILK]) || {};
+
+  /* Atama hedefi de sabit yazılmaz: ilk durumun geçiş kuralı BİRİNCİL
+     etiketini taşır (`etiket`), o etiket hangi hedefin eylem adıysa atama
+     oraya gider. `İptal edildi` başka bir etikete sahip olduğu için eşleşme
+     tekildir. Tablo değişirse ekran kendiliğinden doğru kalır (L-40). */
+  var ATAMA_HEDEF = (ILK_KURAL.next || []).filter(function(h){
+    return ETK[h] && ETK[h] === ILK_KURAL.etiket; })[0] || null;
+
+  /* Kontrol / onay adımlarının hangi durumlar olduğu da tablodan okunur:
+     yetkisi `kontrolEden` ilişkisine bağlı durum kontrol adımıdır,
+     `onaylayan` ilişkisine bağlı olan onay adımıdır. */
+  function yetkisi(d, iliski){ return ((TT[d] || {}).yetki || []).indexOf(iliski) !== -1; }
+  var KONTROL_DURUM = DURUMLAR.filter(function(d){ return yetkisi(d, 'kontrolEden'); })[0] || null;
+  var ONAY_DURUM    = DURUMLAR.filter(function(d){ return yetkisi(d, 'onaylayan'); })[0] || null;
+
+  /* Kontrol adımından çıkarken zorunlu olan alan — bu formda YOKTUR ve
+     olmamalıdır: teslim edilen çıktı işin sonunda yazılır, başında değil. */
+  var TESLIM_ALAN  = ((TT[KONTROL_DURUM] || {}).zorunlu || [])[0] || null;
+
+  /* Aciliyet için ortak sözlük YOK; `etki` için var (`DB.impacts`, 4 değer).
+     Aciliyet seçenekleri defterden türetilir ve sıra yalnız görüntü içindir
+     (ölçüldü: kayıtta geçen üç değerin üçü de `DB.impacts` içinde yazılı). */
+  var ACILIYETLER = benzersiz(TUM.map(function(t){ return t.aciliyet; }))
+    .sort(function(a, b){ return (DB.impacts || []).indexOf(a) - (DB.impacts || []).indexOf(b); });
+
+  /* ---- Ölçülen sayılar: hepsi defterden sayılır, hiçbiri yazılı değil -- */
+  var IC_GOREV  = TUM.filter(function(t){ return !t.proje && !t.musteri; }).length;
+  var DESTEKLI  = TUM.filter(function(t){ return !!t.destek; }).length;
+  var SURELER   = TUM.map(function(t){ return t.tahminiSure; })
+                     .filter(function(x){ return typeof x === 'number'; });
+  var SURE_MIN  = SURELER.length ? Math.min.apply(null, SURELER) : null;
+  var SURE_MAX  = SURELER.length ? Math.max.apply(null, SURELER) : null;
+  var ETIKET_HAVUZ = benzersiz(TUM.reduce(function(a, t){ return a.concat(t.etiketler || []); }, []));
+  /* ⚠️ `faturalanabilir` GÖREV kaydında SAAT tutar (ölçüldü: 26/26 sayı).
+     Aynı ad `DB.timelogs`ta BOOLEAN'dır — iki koleksiyon, iki anlam. Saat
+     zaman defterinden BİRİKİR; oluşturma anında girilmez ve bu form onu
+     SORMAZ. Yeni görevde değer 0'dır ve bunu yordam yazar. */
+  var FAT_SAYISAL = TUM.filter(function(t){ return typeof t.faturalanabilir === 'number'; }).length;
+
+  /* ---- Seçenek listeleri -------------------------------------------- */
+  var KISILER = (DB.employees || []).map(function(e){
+    var d = depKaydi(e.dep);
+    return { value:e.kod, label:e.ad + (d ? ' · ' + d.kisa : '') };
+  });
+  var DEPARTMANLAR = (DB.departments || []).map(function(d){
+    return { value:d.kod, label:d.ad + (d.aktif === false ? ' · pasif' : '') };
+  });
+  var PROJELER = (DB.projects || []).map(function(p){
+    return { value:p.kod, label:p.ad + ' · ' + p.durum + (p.arsiv === true ? ' · arşiv' : '') };
+  });
+  var HESAPLAR = (DB.accounts || []).map(function(h){
+    return { value:h.kod, label:(h.kisa || h.unvan) + ' · ' + (GV.lifecycle.ad(h.evre) || h.evre) };
+  });
+  /* Sprint ve modül seçenekleri PROJEYE göre daraltılamıyor (seçenek listesi
+     çizim anında sabitlenir); bu yüzden üç kapı birlikte kurulur:
+       · alan yalnız proje seçilince görünür (`showIf`),
+       · etikette sprintin/modülün AİT OLDUĞU proje yazılıdır,
+       · başka projenin kaydı `validate` ile REDDEDİLİR (uyarı değil, ret). */
+  var SPRINTLER = (DB.sprints || []).map(function(s){
+    return { value:s.kod, label:s.ad + ' · ' + (projeAd(s.proje) || s.proje) };
+  });
+  var MODULLER = (DB.projectModules || []).map(function(m){
+    return { value:m.kod, label:m.ad + ' · ' + (projeAd(m.proje) || m.proje) };
+  });
+  var TALEPLER = (DB.tickets || []).map(function(t){
+    return { value:t.kod, label:t.kod + ' · ' + t.baslik };
+  });
+
+  /* Müşteri oturumunda hesap alanı kilitlidir: kapsam süzgeci ekranın
+     yazdığı kayıtta da geçerli olmalı (brief §2.2 · §4.7). */
+  var musteriKilit = (GV.session && GV.session.musteri) || null;
+
+  /* =================================================================
+     2. FORM TASLAĞI — bileşenin okuyacağı başlangıç değerleri
+     ================================================================= */
+  var DUZ_ALANLAR = ['baslik','tur','aciklama','amac','proje','sprint','modul','musteri',
+                     'dep','veren','kontrolEden','onaylayan','destek','termin',
+                     'etki','aciliyet','kabulKriteri','beklenenCikti'];
+
+  var formKayit = {};
+  if(rec){
+    DUZ_ALANLAR.concat(['sorumlu','oncelik','tahminiSure']).forEach(function(k){
+      formKayit[k] = rec[k] == null ? '' : rec[k];
+    });
+    /* Görüntü alanı SALT OKUNUR ve adı `*Bilgi` — `yardimciBilgi` /
+       `faturaBilgi` ile aynı sözleşme. `formKayit.durum` adı, kayda elle
+       durum atayan koddan AYIRT EDİLEMİYORDU: `satis-akis.js` S9 ekseni
+       (elle durum ataması yasağı) bunu haklı olarak yakaladı. Ad ayrımı
+       ekseni susturmuyor, niyeti görünür kılıyor. */
+    formKayit.durumBilgi = rec.durum || '';
+    formKayit.etiketler  = (rec.etiketler || []).join(', ');
+    /* Çok kişilik alanlar SALT OKUNUR gösterilir — gerekçesi alan tanımında. */
+    formKayit.yardimciBilgi = (rec.yardimci || []).map(kisiAd).join(', ') || '—';
+    formKayit.izleyiciBilgi = (rec.izleyiciler || []).map(kisiAd).join(', ') || '—';
+    formKayit.faturaBilgi   = rec.faturalanabilir == null ? '' : rec.faturalanabilir;
+  }else{
+    formKayit.veren = (GV.session && GV.session.emp) || '';
+    formKayit.dep   = (GV.session && GV.session.dep) || '';
+    ON.forEach(function(o){ if(o.kayit) formKayit[o.key] = o.kayit.kod; });
+    /* Ön dolgu zinciri KAYITTAN okunur, türetilmeyen bağ boş kalır:
+       destek talebi kendi müşterisini ve projesini taşır, proje kendi
+       müşterisini taşır. Ters yön (müşteriden proje) TEK kayıt değildir —
+       bir hesabın birden çok projesi olabilir — ve tahmin edilmez. */
+    var t0 = ON[2].kayit, p0 = ON[0].kayit;
+    if(t0){
+      if(!formKayit.musteri && t0.musteri) formKayit.musteri = t0.musteri;
+      if(!formKayit.proje   && t0.proje)   formKayit.proje   = t0.proje;
+    }
+    if(p0 && !formKayit.musteri && p0.musteri) formKayit.musteri = p0.musteri;
+  }
+  if(musteriKilit) formKayit.musteri = musteriKilit;
+
+  /* ---- Sayfa başlığı — form bileşeninden ÖNCE (brief §2.4) ----------- */
+  GV.pageHead({
+    eyebrow:'Proje ve Operasyon',
+    title:rec ? (rec.baslik || rec.kod) : 'Yeni Görev',
+    sub:rec
+      ? rec.kod + ' · ' + rec.durum + ' · durum bu formdan değişmez'
+      : 'Yeni görev · sorumlusuz açılırsa "' + (ILK || '—') + '", sorumluyla açılırsa "' +
+        (ATAMA_HEDEF || '—') + '" durumunda doğar',
+    actions:[
+      { label:'Vazgeç', icon:'i-arrow-left',
+        href:rec ? ('app-gorev-detay.html?id=' + encodeURIComponent(rec.kod)) : 'app-gorev.html' },
+      { label:'Kaydet', icon:'i-check', cls:'btn-acc', run:function(){ kaydet(); } }
+    ]
+  });
+
+  mount.innerHTML = '<div id="grvForm"></div><div id="grvBackend"></div>';
+
+  /* =================================================================
+     3. ALANLAR
+     ================================================================= */
+  function sprintDogrula(val, veri){
+    if(!val) return '';
+    var s = sprintKaydi(val);
+    if(!s) return 'Sprint kaydı bulunamadı.';
+    if(veri.proje && s.proje !== veri.proje)
+      return 'Bu sprint ' + (projeAd(s.proje) || s.proje) + ' projesine ait; seçili proje farklı.';
+    return '';
+  }
+  function modulDogrula(val, veri){
+    if(!val) return '';
+    var m = modulKaydi(val);
+    if(!m) return 'Modül kaydı bulunamadı.';
+    if(veri.proje && m.proje !== veri.proje)
+      return 'Bu modül ' + (projeAd(m.proje) || m.proje) + ' projesine ait; seçili proje farklı.';
+    return '';
+  }
+  function projeSecili(v){ return !!v.proje; }
+
+  var temelAlanlar = [
+    { key:'baslik', label:'Görev başlığı', type:'text', cols:12, required:true,
+      placeholder:'Örn. Rapor ekranında tarih filtresi düzeltilecek',
+      hint:'Oluşturma yordamının şart koştuğu TEK alan budur; diğerleri boş kalabilir ' +
+           've boş kalan alan uydurulmaz.' },
+    { key:'tur', label:'Görev türü', type:'select', cols:6, options:DB.taskTypes || [],
+      hint:(DB.taskTypes || []).length + ' değerlik ortak sözlükten okunur.' }
+  ];
+  if(rec) temelAlanlar.push(
+    { key:'durumBilgi', label:'Durum', type:'select', cols:6, readonly:true, options:DURUMLAR,
+      hint:'Durum bu formdan DEĞİŞMEZ. Geçişin tek mutasyon noktası geçiş yordamıdır ve ' +
+           'yapılabilir işlemlerin düğmeleri görev detayındadır.' });
+  temelAlanlar.push(
+    { key:'aciklama', label:'Açıklama', type:'textarea', cols:12, rows:4,
+      placeholder:'İşin ne olduğu, nerede göründüğü, hangi koşulda tekrarlandığı.',
+      hint:'Sorumlunun işe başlarken okuyacağı metin.' },
+    { key:'amac', label:'Amaç', type:'textarea', cols:12, rows:2,
+      placeholder:'Bu iş neden yapılıyor?',
+      hint:'Amaç açıklamadan ayrı bir alandır: biri işi, diğeri gerekçesini anlatır.' });
+
+  var atamaAlanlar = [
+    { key:'sorumlu', label:'Sorumlu', type:'select', cols:6, options:KISILER,
+      hint:rec
+        ? 'Sorumlu değişimi ayrı bir yordamdan geçer; görev havuzdaysa bu bir GEÇİŞTİR, ' +
+          'atanmışsa alan değişimidir. Alanı boşaltmak bir yordam değildir.'
+        : 'Boş bırakılırsa görev "' + (ILK || '—') + '" durumunda doğar. Kişi seçilirse atama ' +
+          'geçiş tablosundan geçirilir ve durum "' + (ATAMA_HEDEF || '—') + '" olur.' },
+    { key:'veren', label:'Görevi veren', type:'select', cols:6, options:KISILER,
+      hint:rec ? '' : 'Varsayılan olarak oturum sahibi yazıldı; değiştirebilirsiniz.' },
+    { key:'kontrolEden', label:'Kontrol eden', type:'select', cols:6, options:KISILER,
+      hint:KONTROL_DURUM
+        ? '"' + KONTROL_DURUM + '" durumundan çıkışın yetkisi bu kişidedir.'
+        : 'Kontrol adımı geçiş tablosundan okunamadı.' },
+    { key:'onaylayan', label:'Onaylayan', type:'select', cols:6, options:KISILER,
+      hint:'Onaylayan kontrol edenden FARKLIYSA görev, kontrol çıkışında ayrı bir onay ' +
+           'adımına girer. Aynı kişiyi seçerseniz ayrı onay adımı OLMAZ; iş doğrudan tamamlanır.' },
+    { key:'dep', label:'Departman', type:'select', cols:6, options:DEPARTMANLAR,
+      hint:rec ? '' : 'Varsayılan olarak oturumun departmanı yazıldı.' }
+  ];
+  if(rec){
+    /* ⚠️ ÇOKLU SEÇİM YUVASI YOK. `GV.form` `select` alanında `multiple`
+       desteklemiyor ve `read()` tek düğüm okuyor — mevcut kayıtlarda iki
+       kişilik izleyici listeleri var; tek seçimlik bir alan onları SESSİZCE
+       silerdi. Bu yüzden düzenlemede alanlar salt okunur bilgidir.
+       (Eksik bileşen ana oturuma rapor edildi.) */
+    atamaAlanlar.push(
+      { key:'yardimciBilgi', label:'Yardımcı personel', type:'text', cols:6, readonly:true,
+        hint:'Çok kişilik liste. Form bileşeninde çoklu seçim alanı olmadığı için bu ekran ' +
+             'listeyi değiştirmez; olduğu gibi korur.' },
+      { key:'izleyiciBilgi', label:'İzleyiciler', type:'text', cols:6, readonly:true,
+        hint:'Çok kişilik liste. Aynı nedenle salt okunur.' });
+  }else{
+    atamaAlanlar.push(
+      { key:'yardimci', label:'Yardımcı personel', type:'select', cols:6, options:KISILER,
+        hint:'Bu sürümde tek kişi seçilebilir — çoklu seçim alanı ortak katmanda yok. ' +
+             'Kayda tek kişilik liste olarak yazılır.' },
+      { key:'izleyiciler', label:'İzleyici', type:'select', cols:6, options:KISILER,
+        hint:'Aynı sınır: tek kişi seçilir, kayda tek kişilik liste olarak yazılır.' });
+  }
+
+  var faturaAlani = rec
+    ? { key:'faturaBilgi', label:'Faturalanabilir (saat)', type:'number', cols:6, readonly:true,
+        hint:'Bu alan kayıtta SAAT tutar ve zaman defterinden gelir; formdan yazılmaz. ' +
+             'Ölçüldü: ' + FAT_SAYISAL + ' görevde alan sayısal.' }
+    : { key:'faturaBilgi', label:'Faturalanabilir (saat)', type:'number', cols:6, readonly:true,
+        hint:'Yeni görevde 0 saattir — henüz çalışılmadı. Bu alan bir tercih değil ' +
+             'bir ÖLÇÜMDÜR ve zaman defterinden birikir (ölçüldü: ' + FAT_SAYISAL +
+             ' görevde alan sayısal). Formdan yazılmaz.' };
+
+  var planAlanlar = [
+    { key:'proje', label:'Proje', type:'select', cols:6, options:PROJELER,
+      hint:TUM.length + ' görevin ' + IC_GOREV + ' tanesi ne projeye ne müşteriye bağlı — ' +
+           'iç görevler geçerli kayıtlardır, bu yüzden ikisi de zorunlu değildir.' },
+    { key:'sprint', label:'Sprint', type:'select', cols:6, options:SPRINTLER,
+      showIf:projeSecili, validate:sprintDogrula,
+      hint:'Yalnız proje seçilince görünür. Etikette sprintin ait olduğu proje yazılıdır; ' +
+           'başka projenin sprinti kabul edilmez.' },
+    { key:'modul', label:'Modül', type:'select', cols:6, options:MODULLER,
+      showIf:projeSecili, validate:modulDogrula,
+      hint:'Yalnız proje seçilince görünür. Başka projenin modülü kabul edilmez.' },
+    { key:'musteri', label:'Müşteri hesabı', type:'select', cols:6, options:HESAPLAR,
+      readonly:!!musteriKilit,
+      hint:musteriKilit
+        ? 'Oturumunuz bir müşteri hesabına bağlı; görev yalnız kendi hesabınıza açılabilir.'
+        : 'Hesap defteri tek listedir: aday kaynaklı hesaplar da yaşam evresiyle birlikte görünür.' },
+    { key:'destek', label:'Bağlı destek talebi', type:'select', cols:6, options:TALEPLER,
+      hint:'Ölçüldü: ' + TUM.length + ' görevin ' + DESTEKLI + ' tanesi bir destek talebine bağlı.' },
+    { key:'termin', label:'Termin', type:'date', cols:6,
+      hint:'Bugün ' + F.date(DB.today) + '. Termin boş bırakılırsa görev gecikme sayacına girmez ' +
+           '— bu bir hata değil, ölçülmemiş bir tarihtir.' },
+    { key:'tahminiSure', label:'Tahmini süre (saat)', type:'number', cols:6, min:0,
+      hint:SURELER.length
+        ? 'Saat cinsinden. Defterdeki değerler ' + SURE_MIN + '–' + SURE_MAX + ' saat arasında.'
+        : 'Saat cinsinden. Defterde karşılaştırılacak değer yok.' },
+    faturaAlani,
+    { key:'oncelik', label:'Öncelik', type:'select', cols:6, options:DB.priorities || [],
+      hint:rec
+        ? 'Öncelik ayrı bir yordamdan yazılır; kaydederken o yordam çağrılır. Boşaltmak ' +
+          'bir yordam değildir.'
+        : (DB.priorities || []).length + ' değerlik ortak sözlükten okunur.' },
+    { key:'etki', label:'Etki', type:'select', cols:6, options:DB.impacts || [],
+      hint:'Ortak etki sözlüğünden okunur (' + (DB.impacts || []).length + ' değer).' },
+    { key:'aciliyet', label:'Aciliyet', type:'select', cols:6, options:ACILIYETLER,
+      hint:ACILIYETLER.length
+        ? 'Aciliyet için ortak sözlük yok; seçenekler mevcut görev kayıtlarından türetildi.'
+        : 'Aciliyet için ne sözlük ne de kayıtta değer var — seçenek türetilemedi.' }
+  ];
+
+  var detayAlanlar = [
+    { key:'kabulKriteri', label:'Kabul kriteri', type:'textarea', cols:12, rows:3,
+      placeholder:'Kontrol edenin "tamam" diyebilmesi için sağlanması gereken ölçülebilir koşul.',
+      hint:'Kabul kriteri yazılmazsa kontrol adımı bir ölçüye değil, kanaate dayanır.' },
+    { key:'beklenenCikti', label:'Beklenen çıktı', type:'textarea', cols:12, rows:2,
+      placeholder:'Örn. Düzeltme PR + test raporu',
+      hint:TESLIM_ALAN && KONTROL_DURUM
+        ? 'Bu alan PLANLANAN çıktıdır. "' + KONTROL_DURUM + '" durumundan çıkışta zorunlu olan ' +
+          'teslim edilen çıktı AYRI bir alandır ve işin sonunda, görev detayında yazılır.'
+        : 'Bu alan planlanan çıktıdır.' },
+    { key:'etiketler', label:'Etiketler', type:'text', cols:12,
+      placeholder:'Örn. Frontend, QA',
+      hint:'Virgülle ayırın. Defterde şu an ' + ETIKET_HAVUZ.length + ' ayrı etiket geçiyor.' }
+  ];
+
+  /* =================================================================
+     4. FORM
+     ================================================================= */
+  var form = GV.form({
+    mount:'#grvForm',
+    id:'gorevForm',
+    record:formKayit,
+    tabs:[
+      { key:'temel',    label:'Temel',    icon:'i-tasks' },
+      { key:'atama',    label:'Atama',    icon:'i-user-check' },
+      { key:'planlama', label:'Planlama', icon:'i-calendar' },
+      { key:'detay',    label:'Detay',    icon:'i-clipboard' }
+    ],
+    aside:function(veri){ return yanPanel(veri); },
+    sections:[
+      { title:'Görevin kendisi', icon:'i-tasks', tab:'temel',
+        desc:'Kaydın tek zorunlu alanı başlıktır. Durum bu formda seçilmez: görev ' +
+             'sorumluya göre doğar, sonrası geçiş yordamının işidir.',
+        fields:temelAlanlar },
+      { title:'Kim yapacak, kim kontrol edecek', icon:'i-users', tab:'atama',
+        desc:'Sorumlu alanı görevin DOĞACAĞI DURUMU belirler. Kontrol eden ile onaylayan ' +
+             'ise ilerideki akışı belirler; ikisi aynı kişiyse ayrı onay adımı doğmaz.',
+        fields:atamaAlanlar },
+      { title:'Bağlam, takvim ve öncelik', icon:'i-calendar', tab:'planlama',
+        desc:'Proje ve müşteri bağı zorunlu değildir; iç görevler ikisi de boş yaşar. ' +
+             'Sprint ve modül yalnız proje seçilince açılır.',
+        fields:planAlanlar },
+      { title:'Kabul ve çıktı', icon:'i-clipboard-check', tab:'detay',
+        desc:'Bu bölüm işin biteceği yeri tarif eder; kontrol adımı buradaki ölçüye bakar.',
+        fields:detayAlanlar }
+    ]
+  });
+
+  if(!form){
+    mount.innerHTML = GV.errorState({ title:'Form çizilemedi',
+      desc:'Form bileşeni bağlanamadı. Sayfayı yeniden açmayı deneyin.' });
+    return;
+  }
+
+  /* =================================================================
+     5. CANLI ÖZET — "bu görev hangi durumda doğacak"
+     -----------------------------------------------------------------
+     Panel bir tahmin tablosu YAZMAZ: doğacak durumu geçiş tablosundan,
+     onay adımını `GV.task.onayGerekli` yordamından, atama yetkisini
+     `GV.task.yetkili` yordamından okur. Aynı kural iki yerde tanımlanmaz.
+     ================================================================= */
+  function yanPanel(v){
+    var taslak = {
+      sorumlu:bosNull(v.sorumlu), kontrolEden:bosNull(v.kontrolEden),
+      onaylayan:bosNull(v.onaylayan), veren:bosNull(v.veren)
+    };
+    var dogacak = rec ? rec.durum
+                : (taslak.sorumlu ? ATAMA_HEDEF : ILK);
+    /* Atama bir GEÇİŞTİR: oturumun o geçişe yetkisi yoksa görev yine oluşur
+       ama havuzda kalır. Bunu kaydettikten SONRA söylemek geç olurdu. */
+    var atamaYetki = taslak.sorumlu ? GV.task.yetkili(taslak, ILK_KURAL) : true;
+
+    var out = '<div class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-tasks') + 'Kayıt özeti</h3></div>' +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Kayıt no', rec
+            ? '<span class="cell-code">' + esc(rec.kod) + '</span>'
+            : faint('kaydederken defterden üretilir')],
+          ['Durum', rec ? GV.badge(rec.durum)
+                        : (dogacak ? GV.badge(dogacak) : faint('geçiş tablosundan türetilemedi'))],
+          ['Sorumlu', taslak.sorumlu ? esc(kisiAd(taslak.sorumlu)) : faint('atanmadı')],
+          ['Öncelik', GV.pri(bosNull(v.oncelik))],
+          ['Termin', v.termin ? GV.dateCell(v.termin) : faint('verilmedi')],
+          ['Bağ', [
+              v.proje   ? 'proje: ' + esc(projeAd(v.proje)) : null,
+              v.musteri ? 'müşteri: ' + esc(hesapAd(v.musteri)) : null,
+              v.destek  ? 'destek: ' + esc(v.destek) : null
+            ].filter(Boolean).join('<br>') || faint('bağsız iç görev')]
+        ]) +
+      '</div></div>';
+
+    /* ---- Doğacak durum ---------------------------------------------- */
+    if(!rec){
+      if(!ATAMA_HEDEF){
+        out += GV.notice({ tone:'warn', icon:'i-alert',
+          title:'Atama hedefi ölçülemedi',
+          text:'Geçiş tablosunda ilk durumun birincil hedefi türetilemedi. Görev "' +
+               (ILK || '—') + '" durumunda doğar; atamayı görev detayından yapın.' });
+      }else if(!taslak.sorumlu){
+        out += GV.notice({ tone:'info', icon:'i-inbox',
+          title:'Görev "' + ILK + '" durumunda doğacak',
+          text:'Sorumlu seçilmedi. Kayıt havuza düşer ve atamayı yapabilen bir rol onu ' +
+               '"' + ATAMA_HEDEF + '" durumuna alır.' });
+      }else if(atamaYetki){
+        out += GV.notice({ tone:'ok', icon:'i-user-check',
+          title:'Görev "' + ATAMA_HEDEF + '" durumunda doğacak',
+          text:'Kayıt "' + ILK + '" durumunda açılır, sonra sorumlu ataması geçiş tablosundan ' +
+               'geçirilir. Alan olarak yazılmaz — bu yüzden yetki ve zorunlu alan denetimi atlanmaz.' });
+      }else{
+        out += GV.notice({ tone:'danger', icon:'i-alert',
+          title:'Sorumlu ataması düşecek',
+          text:'Rolünüz (' + GV.perm.role() + ') "' + ILK + '" → "' + ATAMA_HEDEF +
+               '" geçişini yapamıyor; gereken: ' + (ILK_KURAL.yetki || []).join(', ') +
+               '. Görev oluşur ama "' + ILK + '" durumunda, sorumlusuz kalır.' });
+      }
+    }else{
+      out += GV.notice({ tone:'info', icon:'i-refresh',
+        title:'Durum bu formdan değişmez',
+        text:'Kayıt "' + rec.durum + '" durumunda. Yapılabilir geçişlerin düğmeleri görev ' +
+             'detayındadır; burada durum yalnız bilgi olarak gösterilir.' });
+      if(rec.beklemeNedeni){
+        out += GV.notice({ tone:'warn', icon:'i-hourglass',
+          title:'Bekleme nedeni: ' + rec.beklemeNedeni,
+          text:'Bekleme bir DURUM DEĞİLDİR, durumun yanındaki ikinci eksendir ve ayrı bir ' +
+               'yordamla yazılır. Bu formdan değiştirilmez.' });
+      }
+    }
+
+    /* ---- Onay adımı -------------------------------------------------- */
+    if(!taslak.kontrolEden && !taslak.onaylayan){
+      out += GV.notice({ tone:'info', icon:'i-info',
+        title:'Onay adımı henüz ölçülemedi',
+        text:'Kontrol eden ve onaylayan seçilmedi. İki alan da dolmadan ayrı onay adımının ' +
+             'doğup doğmayacağı belli olmaz — boş bırakmak "onay yok" demek değildir.' });
+    }else if(GV.task.onayGerekli(taslak)){
+      out += GV.notice({ tone:'warn', icon:'i-stamp',
+        title:'Ayrı onay adımı olacak',
+        text:'Kontrol eden (' + (taslak.kontrolEden ? kisiAd(taslak.kontrolEden) : 'boş') +
+             ') ile onaylayan (' + (taslak.onaylayan ? kisiAd(taslak.onaylayan) : 'boş') +
+             ') farklı. Görev "' + (KONTROL_DURUM || 'kontrol') + '" çıkışında doğrudan ' +
+             'tamamlanmaz, önce "' + (ONAY_DURUM || 'onay') + '" adımına girer.' });
+    }else{
+      out += GV.notice({ tone:'ok', icon:'i-check-circle',
+        title:'Ayrı onay adımı olmayacak',
+        text:'Kontrol eden ile onaylayan aynı kişi. Görev "' + (KONTROL_DURUM || 'kontrol') +
+             '" çıkışında doğrudan tamamlanır; "' + (ONAY_DURUM || 'onay') + '" adımı doğmaz.' });
+    }
+
+    /* ---- Termin ------------------------------------------------------ */
+    if(v.termin && String(v.termin) < String(DB.today)){
+      out += GV.notice({ tone:'danger', icon:'i-clock',
+        title:'Termin bugünden önce',
+        text:'Seçilen termin ' + F.date(v.termin) + '; bugün ' + F.date(DB.today) +
+             '. Görev doğar doğmaz geciken sayılır.' });
+    }
+
+    /* ---- Seçili projenin defteri ------------------------------------- */
+    if(v.proje){
+      var pSpr = (DB.sprints || []).filter(function(s){ return s.proje === v.proje; });
+      var pMod = (DB.projectModules || []).filter(function(m){ return m.proje === v.proje; });
+      out += '<div class="gv-card">' +
+        '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-sprint') + 'Seçili projenin defteri</h3>' +
+          '<span class="gc-meta">' + esc(projeAd(v.proje)) + '</span></div>' +
+        '<div class="gc-body">' +
+          GV.dl([
+            ['Sprint', pSpr.length
+              ? pSpr.map(function(s){ return esc(s.ad); }).join('<br>')
+              : faint('bu projede sprint kaydı defterde yok')],
+            ['Modül', pMod.length
+              ? pMod.map(function(m){ return esc(m.ad); }).join('<br>')
+              : faint('bu projede modül kaydı defterde yok')]
+          ]) +
+        '</div></div>';
+    }else if(!v.musteri){
+      out += GV.notice({ tone:'info', icon:'i-briefcase',
+        title:'İç görev olarak doğacak',
+        text:'Ne proje ne müşteri seçildi. Ölçüldü: ' + TUM.length + ' görevin ' + IC_GOREV +
+             ' tanesi böyle yaşıyor; bu geçerli bir kayıttır.' });
+    }
+
+    return out;
+  }
+
+  /* =================================================================
+     6. KAYDETME
+     ================================================================= */
+  function etiketAyir(s){
+    return String(s == null ? '' : s).split(',').map(function(x){ return x.trim(); })
+      .filter(function(x){ return !!x; });
+  }
+  function sayiYaNull(x){
+    var s = String(x == null ? '' : x).trim();
+    if(s === '') return null;
+    var n = Number(s);
+    return isNaN(n) ? null : n;
+  }
+
+  function kaydet(){
+    var v = form.submit();
+    if(!v) return false;                     /* doğrulama düştü — bileşen söyledi */
+    return rec ? guncelle(v) : yeniKayit(v);
+  }
+
+  /* ---- YENİ KAYIT — tek kapı: GV.task.olustur ------------------------
+     `DB.tasks.push(...)` YASAK. Kod üretimi, başlangıç durumu, atama geçişi
+     ve denetim izi yordamın içindedir; ekran ikinci bir audit satırı YAZMAZ. */
+  function yeniKayit(v){
+    var r = GV.task.olustur({
+      baslik:v.baslik,
+      sorumlu:bosNull(v.sorumlu),
+      tur:bosNull(v.tur),
+      proje:bosNull(v.proje), modul:bosNull(v.modul), sprint:bosNull(v.sprint),
+      musteri:bosNull(v.musteri), dep:bosNull(v.dep), veren:bosNull(v.veren),
+      yardimci:bosNull(v.yardimci) ? [bosNull(v.yardimci)] : [],
+      izleyiciler:bosNull(v.izleyiciler) ? [bosNull(v.izleyiciler)] : [],
+      kontrolEden:bosNull(v.kontrolEden), onaylayan:bosNull(v.onaylayan),
+      oncelik:bosNull(v.oncelik), etki:bosNull(v.etki), aciliyet:bosNull(v.aciliyet),
+      destek:bosNull(v.destek), termin:bosNull(v.termin),
+      tahminiSure:sayiYaNull(v.tahminiSure),
+      /* `faturalanabilir` GÖNDERİLMEZ: saat alanıdır, yordam 0 yazar. */
+      aciklama:bosNull(v.aciklama), amac:bosNull(v.amac),
+      kabulKriteri:bosNull(v.kabulKriteri), beklenenCikti:bosNull(v.beklenenCikti),
+      etiketler:etiketAyir(v.etiketler)
+    });
+
+    if(!r || r.ok !== true){
+      GV.toast(GV.flowHata(r) || 'Görev oluşturulamadı.', 'danger');
+      return false;
+    }
+
+    var g = r.gorev;
+    var ek = '';
+    /* Atama geçişi düşmüş olabilir: görev vardır ama havuzdadır. Bunu
+       yutup "oluşturuldu" demek, olmayan bir atamayı beyan etmek olurdu. */
+    if(r.atama && r.atama.ok === false){
+      ek = ' Sorumlu ataması uygulanamadı: ' + GV.flowHata(r.atama);
+      GV.toast('Görev oluştu, sorumlu ataması düştü — ' + GV.flowHata(r.atama), 'warn');
+    }
+
+    GV.afterSave({
+      kod:g.kod, liste:'app-gorev.html', detay:'app-gorev-detay.html', yeni:true,
+      mesaj:g.kod + ' oluşturuldu; görev "' + g.durum + '" durumunda doğdu.' + ek
+    });
+    return true;
+  }
+
+  /* ---- DÜZENLEME -----------------------------------------------------
+     Üç eksen üç ayrı kapıdan geçer:
+       · sorumlu → atama yordamı (havuzdaysa GEÇİŞ),
+       · öncelik → öncelik yordamı,
+       · durum   → hiç dokunulmaz.
+     Kalan alanlar düz alanlardır ve tek deftere yazılır. */
+  function guncelle(v){
+    var uyari = [];
+
+    /* 1) Sorumlu — geçiş olabilir, o yüzden HER ŞEYDEN ÖNCE. Düşerse hiçbir
+       alan değişmemiş olur; yarım kayıt bırakılmaz. */
+    var yeniSorumlu = bosNull(v.sorumlu);
+    if(yeniSorumlu && yeniSorumlu !== rec.sorumlu){
+      var ra = GV.task.ata(rec.kod, yeniSorumlu, 'görev formundan değiştirildi');
+      if(ra && ra.ok === false && ra.why !== 'zaten bu kişide'){
+        GV.toast('Sorumlu değiştirilemedi: ' + GV.flowHata(ra), 'danger');
+        return false;
+      }
+    }else if(!yeniSorumlu && rec.sorumlu){
+      uyari.push('Sorumlu boşaltılamadı: atamayı geri alan bir yordam yok, alan eski değerinde kaldı.');
+    }
+
+    /* 2) Öncelik — ayrı yordam. Düşerse kayıt yazılmaya devam eder ve sebep
+       söylenir; öncelik uğruna bütün düzenlemeyi geri almak orantısız olurdu. */
+    var yeniOncelik = bosNull(v.oncelik);
+    if(yeniOncelik && yeniOncelik !== rec.oncelik){
+      var ro = GV.task.oncelik(rec.kod, yeniOncelik);
+      if(ro && ro.ok === false && ro.why !== 'zaten bu değerde')
+        uyari.push('Öncelik değiştirilemedi: ' + GV.flowHata(ro));
+    }else if(!yeniOncelik && rec.oncelik){
+      uyari.push('Öncelik boşaltılamadı: öncelik silme yordamı yok, alan eski değerinde kaldı.');
+    }
+
+    /* 3) Düz alanlar */
+    var degisen = [];
+    DUZ_ALANLAR.forEach(function(k){
+      var yeni = bosNull(v[k]);
+      var eski = (rec[k] == null || rec[k] === '') ? null : rec[k];
+      if(String(yeni) !== String(eski)){ degisen.push(k); rec[k] = yeni; }
+    });
+    var ySure = sayiYaNull(v.tahminiSure);
+    var eSure = rec.tahminiSure == null ? null : rec.tahminiSure;
+    if(ySure !== eSure){ degisen.push('tahminiSure'); rec.tahminiSure = ySure; }
+    var yEtiket = etiketAyir(v.etiketler);
+    if(yEtiket.join('|') !== (rec.etiketler || []).join('|')){
+      degisen.push('etiketler'); rec.etiketler = yEtiket;
+    }
+
+    GV.audit.yaz({
+      kayit:rec.kod, modul:'Görev',
+      islem:degisen.length
+        ? 'Görev kaydı güncellendi — değişen alan: ' + degisen.join(', ')
+        : 'Görev kaydı kaydedildi — düz alanlarda değişiklik yok',
+      tone:'info', icon:'i-edit' });
+
+    if(uyari.length) GV.toast(uyari.join(' '), 'warn');
+
+    GV.afterSave({
+      kod:rec.kod, liste:'app-gorev.html', detay:'app-gorev-detay.html', yeni:false,
+      mesaj:'Görev kaydı güncellendi; durum "' + rec.durum + '" olarak kaldı — durum yalnız ' +
+            'geçiş yordamıyla değişir.'
+    });
+    return true;
+  }
+
+  /* =================================================================
+     7. BACKEND PAYI — brief §10.2 (b) · §19.6 tablosu kopyalanır
+     ================================================================= */
+  document.getElementById('grvBackend').innerHTML =
+    '<section class="gv-card u-mt-8"><div class="gc-head">' +
+      '<h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+      '<span class="u-faint u-sm">3 madde</span></div>' +
+      '<div class="gc-body">' +
+        '<ul class="odl-gap">' +
+          '<li><span class="odl-gap-kod">BE-P1</span>' +
+            '<span>Görev/proje durum geçişi sunucuda yeniden doğrulanmaz; yetki ve zorunlu ' +
+              'alan kontrolü istemcide koşar</span>' +
+            '<span class="odl-gap-bolum">§9</span></li>' +
+          '<li><span class="odl-gap-kod">BE-S4</span>' +
+            '<span>Belge yükleme gerçek depoya yazmaz; dosya adı ve boyutu bellekte tutulur</span>' +
+            '<span class="odl-gap-bolum">§9</span></li>' +
+          '<li><span class="odl-gap-kod">BE-S5</span>' +
+            '<span>Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır</span>' +
+            '<span class="odl-gap-bolum">§9 audit_event</span></li>' +
+        '</ul>' +
+        '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+          '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+        '<p class="u-faint u-sm">BE-S4 bu formda alan olarak <b>sorulmaz</b>: görev kaydında ' +
+          'ek/belge alanı yok ve bağlı bir depo yok. Kaydedilemeyecek bir dosya alanı açıp ' +
+          'gönderildiğinde sessizce düşürmek, taklidin ta kendisi olurdu.</p>' +
+        '<p class="u-faint u-sm">BE-S5 bu ekranda doğrudan görünür: kayıt yalnız bellekte doğar. ' +
+          'Kaydettikten sonra görev detayına giderken tarayıcı sayfayı yeniden yükler, veri ' +
+          'dosyaları baştan koşar ve bu turda üretilen görev o anda kaybolur. Kalıcılık ' +
+          'sunucunun payıdır.</p>' +
+      '</div>' +
+    '</section>';
+});
+</script>
+</body>
+</html>
