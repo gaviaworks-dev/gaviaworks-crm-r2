@@ -1654,3 +1654,150 @@ Ajan bu tabloyu **kopyalar**, kendi maddesini uydurmaz (§10.2 (b) biçimi):
 
 `BE-D1` **yalnız destek ekranlarında**, `BE-P2` yalnız proje ve görev
 ekranlarında yazılır — ilgisiz madde beyan etmek beyanı gürültüye çevirir.
+
+---
+
+## 19. Dilim 3 — kalan dört ekran (proje listesi · görev formu · destek listesi · destek formu)
+
+§1-§18 aynen geçerlidir. Burada yalnız bu dört ekranın ihtiyacı olan **yeni**
+imzalar var. Hepsi yayındaki koddan alındı ve ölçüldü.
+
+### 19.0 Kabuk öznitelikleri ve veri dosyaları
+
+| Dosya | `data-sec` | `data-screen` | mount |
+|---|---|---|---|
+| `app-proje.html` | `operasyon` | `proje` | `rec` |
+| `app-gorev-form.html` | `operasyon` | `gorev` | `rec` |
+| `app-destek.html` | `operasyon` | `destek` | `rec` |
+| `app-destek-form.html` | `operasyon` | `destek` | `rec` |
+
+**Veri dosyaları:** `org.js` · `crm.js` · `work.js` · `misc.js` · `ops.js` ·
+`hr.js` · `lifecycle.js`.
+`hr.js` **proje listesinde ZORUNLU** — `GV.proje.sure` ve `.maliyet`
+`DB.timelogs`u okur ve o koleksiyon `hr.js`tedir (§18.0 uyarısı).
+Görev ve destek formunda `hr.js` gerekmez; **yüklemeyin.**
+`firsat.js` ve `odeme.js` dördünde de **yüklenmez**.
+
+### 19.1 `GV.task.olustur(v)` — YENİ (`domain.js`)
+
+Görev formu `DB.tasks.push(...)` **YAZMAZ**. Kod üretimi, başlangıç durumu,
+zorunlu alan ve denetim izi tek yerdedir.
+
+```js
+GV.task.olustur({
+  baslik:'…',                 // ZORUNLU
+  sorumlu:'EMP-004',          // verilirse atama GEÇİŞTEN geçer (Havuzda → Atandı)
+  tur, proje, modul, sprint, musteri, dep, veren, yardimci, izleyiciler,
+  kontrolEden, onaylayan, oncelik, etki, aciliyet, destek,
+  termin, tahminiSure, faturalanabilir,
+  aciklama, amac, kabulKriteri, beklenenCikti, etiketler
+})
+// → { ok:true, gorev, atama }          atama: sorumlu verildiyse GV.task.ata sonucu
+// → { ok:false, why:'zorunlu', eksik:['baslik'] } · { ok:false, why:'yetki', roller:['ekle'] }
+```
+
+Ölçüldü: `sorumlu` verilince durum **`Atandı`**, verilmeyince **`Havuzda`**.
+Kod defterden türer (`GRV-2026-127` üretildi, son kayıt `GRV-2026-126` idi).
+Başlangıç durumu `DB.taskStatuses[0]`tan okunur — **sabit dize yazma.**
+
+### 19.2 `GV.destek.olustur(v)` ve `GV.destek.slaPolitikasi(...)` — YENİ
+
+```js
+GV.destek.slaPolitikasi(kategori, oncelik)   // → DB.slaPolicies kaydı ya da null
+GV.destek.olustur({
+  baslik:'…',                 // ZORUNLU
+  musteri:'MUS-2024-001',     // ZORUNLU
+  proje, kategori, oncelik, etki, sorumlu, acan, kanal, aciklama,
+  ucretli, bakimPaketi
+})
+// → { ok:true, talep, politika }
+// → { ok:false, why:'zorunlu', eksik:['baslik'|'musteri'] } · { why:'yetki' }
+```
+
+⚠️ **SLA İKİ AYRI ALANDIR, KARIŞTIRMA:**
+`DB.slaPolicies[].ilkYanit` / `.cozum` **DAKİKADIR** (60 · 120 · 240 · 1440).
+`DB.tickets[].sla` ise politikanın **`etiket`** dizesidir (`'4 saat'`,
+`'2 gün'`). Ölçüldü: yayındaki **7 talebin 7'sinde** `sla`, politikanın
+`etiket`iyle birebir eşleşiyor. Ekran süre gösterecekse hangi alanı
+gösterdiğini yazar.
+
+⚠️ Üç politika `oncelik:'Tümü'` taşır (SLA-05 · 06 · 07) — joker eşleşmeyi
+`slaPolitikasi` kendi yapar, ekran ikinci bir eşleştirme kurmaz.
+
+⚠️ **Yeni talepte `slaDurum` `null` kalır.** Sayaç canlı çalışmaz (BE-D1);
+`'Zamanında'` yazmak ölçülmemişi ölçülmüş göstermek olurdu (L-13). Ekran bunu
+"henüz ölçülmedi" diye basar, **boş bırakmaz ve sıfır yazmaz**.
+
+### 19.3 `GV.kuyruk` — destek listesi ORTAK SATIR MODELİNİ kullanır
+
+Destek listesi **ikinci bir satır modeli üretmez**. Operasyon kuyruğu destek
+taleplerini zaten ortak modele çeviriyor (`assets/js/kuyruk.js`); liste ekranı
+aynı yordamı çağırır.
+
+```js
+GV.kuyruk.tipler            // tip sözlüğü { destek:{ ad, ikon, flowTur, kaynak }, … }
+GV.kuyruk.hepsi()           // tüm tiplerin ortak satırları
+GV.kuyruk.kapsamli()        // rol kapsamı uygulanmış hâli
+GV.kuyruk.suz(rows, f)      // f = { tip:[], durum:[], sorumlu, tarih:'geciken'|'bugun'|'tarihsiz', q }
+GV.kuyruk.sirala(rows)      // gecikenler önce, sonra son tarihe göre, tarihsizler sonda
+GV.kuyruk.bul(id)           // id = '<tip>:<kod>'
+GV.kuyruk.kayit(satir)      // satırın arkasındaki GERÇEK kaydı döndürür
+GV.kuyruk.sayac(rows)       // { gorev, destek, onay, takip, tahsilat, istalebi, geciken }
+GV.kuyruk.empAd(kod)
+```
+
+Ortak satırın alanları (şartname §6.2'nin beşi + teknik alanlar):
+`baslik · iliski · durum · sorumlu · sonTarih` + `id · tip · kod · flowTur ·
+kaynak · tam · tone · gecikti`.
+
+⚠️ **Kuyruk YALNIZ AÇIK talepleri taşır** (`DB.ticketClosedStatuses` dışındakiler
+— ölçüldü: 7 talebin 4'ü). Destek listesi **kapalıları da göstermek zorundadır**;
+o yüzden liste `DB.tickets`i kaynak alır ve kuyruk modelini **satır biçimi**
+olarak kullanır — `GV.kuyruk.hepsi()`yi kaynak olarak kullanma, kapalı 3 talebi
+kaybedersin. `sonTarih:null` kuralı (destekte termin alanı YOK) aynen geçerlidir.
+
+### 19.4 `GV.fin.tahsisYetkisi()` ve `DB.tahsisYetkiRolleri` — YENİ (K-25)
+
+```js
+DB.tahsisYetkiRolleri   // ['muhasebe','sahip','genelmudur'] — rol adları DB.roles'ten doğrulandı
+DB.tahsisYetkiNot       // ekranda basılacak açıklama
+GV.fin.tahsisYetkisi()  // boolean — tahsis KURMA ve GERİ ALMA için AYNI kapı
+```
+
+`permMatrix.finans` bayrağı bu iş için **okunmaz**: o bayrak "parayı
+görebilir" demektir (maskeleme kuralı UID-11) ve 8 rolde açıktır. Bu dilimin
+dört ekranı tahsis yazmaz; imza burada **bilinsin diye** var.
+
+### 19.5 `DB.projects` — proje listesinin alan envanteri (14 kayıt, 14/14 dolu)
+
+`kod · ad · musteri · musteriAd · pm · ekip · durum · saglik · baslangic ·
+planlananBitis · gercekBitis(8) · ilerleme · sozlesmeTutari · butce ·
+tahminiSure · kaynak · tur · oncelik · faz(7) · repo · canli · test · tasarim ·
+sunucu · teknoloji · ucuncuTaraf · teknikSorumlu · musteriSorumlu · riskler ·
+gecikmeNedeni(4) · sonGuncelleme · arsiv(7)`
+
+Sözlükler: `DB.projectStatuses` (10) · `DB.projectPhases` (7) ·
+`DB.projectSources` (5) · `DB.projectModules` (15).
+
+Ölçülen dağılım: durum → `Tamamlandı` 7 · `Aktif` 4 · `Test/Kabul` 1 ·
+`Teslim` 1 · `Plan` 1. Sağlık → `İyi` 10 · `Dikkat` 2 · `Riskli` 2.
+
+**Sekmeler `DB.projectStatuses`ten türetilir, elle yazılmaz.** Durum kümeleri
+için `GV.proje.acik/kapali/bitti/arsivli/geciken` kullanılır (§18.5) — ekran
+`p.durum !== 'Teslim'` gibi bir cümle **yazmaz**, o cümle yedi ekranda
+kopyalanmıştı ve sözlük değişince yedisi birden sessizce yanlışa düşerdi.
+
+⚠️ **`gercekBitis` 8/14, `faz` 7/14, `gecikmeNedeni` 4/14 dolu.** Boşta `—`
+basılır ve sebebi yazılır; `0` ya da bugünün tarihi **yazılmaz**.
+
+### 19.6 Bu dört ekranda beyan edilecek backend payı
+
+§18.10 tablosu geçerli. Ek olarak:
+
+| Kod | Madde | Nerede |
+|---|---|---|
+| `BE-P1` | Durum geçişi sunucuda yeniden doğrulanmaz | proje listesi · görev formu |
+| `BE-P2` | Zaman kaydı gerçek bir timesheet servisine bağlı değil | proje listesi |
+| `BE-D1` | SLA sayacı gerçek zamanlı çalışmaz; `slaDurum` kaynak veride yazılı sabittir, yeni kayıtta `null` | destek listesi · destek formu |
+| `BE-S4` | Belge yükleme gerçek depoya yazmaz | görev formu · destek formu |
+| `BE-S5` | Denetim izi kalıcı değildir | dördünde de |

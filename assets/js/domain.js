@@ -1745,6 +1745,17 @@
        görev doğrudan `Tamamlandı`ya gider; **farklıysa** araya `Onay bekliyor`
        girer. Veride bugün 17 görevde aynı, 9 görevde farklı.
      =================================================================== */
+  /* Yeni kayıt kodu DEFTERDEN türetilir, sabit yazılmaz. Desen ekran
+     brief'i §13.2'de yazılı; iki oluşturma yordamı da bunu çağırır. */
+  function yeniKayitKodu(list, onek, basamak){
+    var yil = String((window.DB && DB.today) || '2026').slice(0, 4), max = 0;
+    (list || []).forEach(function(x){
+      var m = new RegExp('^' + onek + '-' + yil + '-(\\d+)$').exec(x.kod || '');
+      if(m) max = Math.max(max, +m[1]);
+    });
+    return onek + '-' + yil + '-' + String(max + 1).padStart(basamak || 3, '0');
+  }
+
   var Task = {
     /* Onay adımı gerekli mi — türetilir, alan açılmaz */
     onayGerekli:function(t){ return !!t && t.onaylayan !== t.kontrolEden; },
@@ -1930,6 +1941,63 @@
     /* BEKLEME NEDENİ — durumdan bağımsız ikinci eksen (REVİZE 01).
        Görev "Devam ediyor" kalır, yalnız neyi beklediğini söyler. Eskiden
        bunun için üç ayrı DURUM vardı ve görev ilerlemeyi bırakmış görünüyordu. */
+    /* ---- GÖREV OLUŞTURMA (dilim 3) ------------------------------------
+       Form ekranı kaydı KENDİ ELİYLE `DB.tasks.push(...)` ile yazmaz. İki
+       form ekranı (görev · destek) aynı anda yazılıyor ve ikisi de kendi
+       oluşturma kodunu kurarsa, kod üretimi · başlangıç durumu · zorunlu
+       alan kümesi · denetim izi dört ayrı yerde tanımlanmış olurdu (L-40).
+
+       BAŞLANGIÇ DURUMU SABİT YAZILMAZ: `DB.taskStatuses[0]` okunur. Görev
+       bir sorumluyla açılıyorsa ilk durumdan çıkış geçişi MOTORDAN geçirilir
+       (`Task.transition`) — böylece geçiş tablosunun yetki ve zorunlu alan
+       denetimi atlanmaz ve ikinci bir mutasyon yolu doğmaz. */
+    olustur:function(v){
+      if(!window.DB) return { ok:false, why:'veri yok' };
+      if(!can('ekle')) return { ok:false, why:'yetki', roller:['ekle'] };
+      v = v || {};
+      if(!String(v.baslik || '').trim())
+        return { ok:false, why:'zorunlu', eksik:['baslik'] };
+
+      var ilk = (DB.taskStatuses || [])[0];
+      if(!ilk) return { ok:false, why:'durum sözlüğü yüklü değil' };
+
+      var t = {
+        kod:yeniKayitKodu(DB.tasks, 'GRV'),
+        baslik:String(v.baslik).trim(),
+        tur:v.tur || null,
+        proje:v.proje || null, modul:v.modul || null, sprint:v.sprint || null,
+        musteri:v.musteri || null,
+        dep:v.dep || ((GV.session && GV.session.dep) || null),
+        olusturan:(GV.session && GV.session.emp) || null,
+        veren:v.veren || (GV.session && GV.session.emp) || null,
+        sorumlu:null,                       /* atama AŞAĞIDA, motordan geçer */
+        yardimci:v.yardimci || [], izleyiciler:v.izleyiciler || [],
+        kontrolEden:v.kontrolEden || null, onaylayan:v.onaylayan || null,
+        oncelik:v.oncelik || null, etki:v.etki || null, aciliyet:v.aciliyet || null,
+        destek:v.destek || null,
+        durum:ilk,
+        baslangic:null, termin:v.termin || null, tamamlanma:null,
+        tahminiSure:v.tahminiSure != null ? v.tahminiSure : null,
+        gercekSure:0,
+        faturalanabilir:v.faturalanabilir === true,
+        ilerleme:0, revizyon:0, yenidenAcilma:0,
+        aciklama:v.aciklama || null, amac:v.amac || null,
+        kabulKriteri:v.kabulKriteri || null, beklenenCikti:v.beklenenCikti || null,
+        etiketler:v.etiketler || [],
+        aktif:true
+      };
+      DB.tasks.push(t);
+      log(t.kod, 'Görev oluşturuldu', '', ilk, 'ok', 'i-plus');
+
+      /* Sorumlu verildiyse atama GEÇİŞTİR — alan olarak yazılmaz. */
+      var atama = null;
+      if(v.sorumlu){
+        atama = Task.ata(t.kod, v.sorumlu, 'oluşturma sırasında atandı');
+        if(atama && atama.ok === false) return { ok:true, gorev:t, atama:atama };
+      }
+      return { ok:true, gorev:t, atama:atama };
+    },
+
     bekleme:function(kod, neden, notu, sessiz){
       if(!window.DB) return null;
       var t = DB.tasks.filter(function(x){ return x.kod === kod; })[0];
@@ -2344,6 +2412,79 @@
 
     /* Çözüm zamanı — `acilis` + `cozumSuresi` dakika. Çözüm süresi yoksa
        çözüm de yoktur: `null` döner, ekran "çözüm kaydı yok" der. */
+    /* ---- DESTEK TALEBİ OLUŞTURMA (dilim 3) ----------------------------
+       Görev tarafıyla aynı gerekçe: form kaydı kendi eliyle yazmaz.
+
+       ⚠️ `sla` ve `slaDurum` UYDURULMAZ. `sla` bir SÜRE taahhüdüdür ve
+       `DB.slaPolicies` matrisinden (kategori × öncelik) OKUNUR; eşleşme
+       yoksa alan **boş bırakılır** ve ekran sebebini yazar. `slaDurum`
+       canlı hesaplanan bir sayaç değildir (BE-D1) — yeni kayıtta ölçülmemiş
+       olduğu için `null` kalır, 'Zamanında' yazmak ölçülmemişi ölçülmüş
+       göstermek olurdu (L-13). */
+    slaPolitikasi:function(kategori, oncelik){
+      /* ⚠️ İKİ ÖLÇÜM. (a) Üç politika `oncelik:'Tümü'` taşır — joker eşleşme
+         yoksa `Geliştirme talebi` · `Kullanım sorusu` · `Bilgi talebi`
+         kategorileri hiçbir politikaya düşmezdi. (b) Talep kaydındaki `sla`
+         alanı politikanın `etiket`iyle eşleşir (`'4 saat'`), `ilkYanit` ile
+         DEĞİL: `ilkYanit` DAKİKADIR (60 · 120 · 240). Ölçüldü — yayındaki 7
+         talebin 7'sinde `sla` bir etiket dizesidir. İkisini karıştırmak
+         defterin içine iki farklı birim yazmak olurdu. */
+      var L = (window.DB && DB.slaPolicies) || [];
+      return L.filter(function(p){
+        return p.kategori === kategori && p.oncelik === oncelik;
+      })[0] || L.filter(function(p){
+        return p.kategori === kategori && p.oncelik === 'Tümü';
+      })[0] || null;
+    },
+
+    olustur:function(v){
+      if(!window.DB) return { ok:false, why:'veri yok' };
+      if(!can('ekle')) return { ok:false, why:'yetki', roller:['ekle'] };
+      v = v || {};
+      if(!String(v.baslik || '').trim())
+        return { ok:false, why:'zorunlu', eksik:['baslik'] };
+      if(!v.musteri) return { ok:false, why:'zorunlu', eksik:['musteri'] };
+
+      var ilk = (DB.ticketStatuses || [])[0];
+      if(!ilk) return { ok:false, why:'durum sözlüğü yüklü değil' };
+
+      var hesap = (DB.accounts || []).filter(function(x){ return x.kod === v.musteri; })[0];
+      var pol   = Destek.slaPolitikasi(v.kategori, v.oncelik);
+
+      var t = {
+        kod:yeniKayitKodu(DB.tickets, 'DST'),
+        musteri:v.musteri,
+        musteriAd:hesap ? hesap.unvan : (v.musteriAd || null),
+        proje:v.proje || null,
+        baslik:String(v.baslik).trim(),
+        kategori:v.kategori || null,
+        oncelik:v.oncelik || null,
+        etki:v.etki || null,
+        /* Politikadan OKUNDU; yoksa boş — uydurulmadı. */
+        sla:pol ? pol.etiket : null,     /* ETİKET dizesi — `ilkYanit` DAKİKADIR */
+        sorumlu:v.sorumlu || null,
+        acan:v.acan || (GV.session && GV.session.kontak) || (GV.session && GV.session.emp) || null,
+        acilis:DB.today,
+        ilkYanit:null, mudahaleSuresi:null, cozumSuresi:null,
+        durum:ilk,
+        harcananSure:0,
+        ucretli:v.ucretli === true,
+        bakimPaketi:v.bakimPaketi || null,
+        kalanDestek:null,
+        memnuniyet:null,
+        slaDurum:null,                 /* ölçülmedi — BE-D1, sayaç canlı değil */
+        kanal:v.kanal || null,
+        aciklama:v.aciklama || null,
+        cozumAciklama:null, cozenPersonel:null, musteriOnay:null, kapanisTarihi:null,
+        aktif:true
+      };
+      DB.tickets.push(t);
+      log(t.kod, 'Destek talebi açıldı' + (pol ? ' · SLA ' + pol.etiket + ' (politika ' + pol.kod + ')'
+                                               : ' · SLA politikası eşleşmedi, süre boş bırakıldı'),
+          '', ilk, 'ok', 'i-plus');
+      return { ok:true, talep:t, politika:pol };
+    },
+
     cozumTarihi:function(t){
       t = Destek.kayit(t);
       if(!t || t.cozumSuresi == null || !t.acilis) return null;

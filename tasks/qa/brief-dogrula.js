@@ -109,7 +109,13 @@ function metindenGV(dosya){
 console.log('\n[B2] Brief\'te geçen `GV.<ad>` adları');
 {
   const tanimli = new Set(Object.keys(ctx.GV || {}));
-  for(const f of ['assets/js/ui.js','assets/js/shell.js','assets/js/quicknote.js'])
+  /* ⚠️ `kuyruk.js` bu listede YOKTU ve `GV.kuyruk` brief'e girince eksen
+     "kodda yok" dedi — oysa yordam yayında ve `app-operasyon.html` onu beş
+     oturumdur çağırıyor. Eksenin kendi kapsamı eksikti: DOM isteyen her
+     ortak katman dosyası burada sayılmalı, yoksa doğrulayıcı gerçek bir
+     imzayı hayalet ilan eder ve brief'i yanlış yere düzelttirir. */
+  for(const f of ['assets/js/ui.js','assets/js/shell.js','assets/js/quicknote.js',
+                  'assets/js/kuyruk.js'])
     for(const a of metindenGV(f)) tanimli.add(a);
   /* Alt yordamlar: GV.list dönüş yüzeyi, GV.shell.*, GV.cell.*, GV.cols.* … */
   const altYuzey = new Set([
