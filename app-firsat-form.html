@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Yeni Fırsat — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="satis" data-screen="satisakisi">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/data/firsat.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   FIRSAT FORMU — şartname §5.3
+
+   §5.3: "Mevcut lead alanlarından bütçe, sıcaklık, tahmini kapanış, hizmet
+   ve sonraki aksiyon `opportunity` kaydına taşınmalıdır." Bu form o kaydın
+   giriş kapısıdır; alan listesi `DB.opportunities` şemasıyla birebirdir
+   (lifecycle.js:189-213) — şemada olmayan alan sorulmaz, şemada olan alan
+   uydurma bir sözlükten beslenmez.
+
+   ÜÇ KİP, TEK EKRAN
+     ?id=FRS-…     → düzenleme
+     ?hesap=MUS-…  → o hesaba bağlı YENİ fırsat; hesap alanı dolu ve salt
+                     okunur (bağ adres çubuğundan geliyor, kullanıcı onu
+                     kazara değiştirip fırsatı başka hesaba taşımasın)
+     argümansız    → yeni fırsat, hesap listeden seçilir
+
+   ⚠️ AŞAMA ALANI YOK — İKİNCİ MUTASYON YOLU AÇILMADI
+   Yeni fırsat `DB.pipelineStages` içindeki `sira:1` aşamasında DOĞAR; bu
+   değer nesne literalinde verilir, sonradan atanmaz. Aşamayı ilerletmek
+   `GV.flow.gec` işidir ve fırsat detayında yürür: orada kapı (`firsatKazanma`),
+   gerekçe zorunluluğu (`Kaybedildi`) ve yetki çözümü zaten var. Burada bir
+   aşama `<select>`i basmak, o kapıların etrafından dolaşan ikinci bir yol
+   açardı (brief §7.4). Düzenleme kipinde aşama salt okunur gösterilir.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var esc = GV.esc;
+  var q   = new URLSearchParams(location.search);
+  var kod = q.get('id');
+  var hesapParam = q.get('hesap');
+  var rec = kod ? (DB.opportunities || []).filter(function(x){ return x.kod === kod; })[0] : null;
+
+  /* ---- Kayıt yok durumu (§10) ------------------------------------- */
+  if(kod && !rec){
+    GV.pageHead({
+      eyebrow:'Müşteri ve Satış', title:'Kayıt bulunamadı', sub:kod,
+      actions:[{ label:'Satış akışına dön', icon:'i-arrow-left', href:'app-satis-akisi.html' }]
+    });
+    mount.innerHTML = GV.errorState({
+      title:kod + ' bulunamadı',
+      desc:'Bu kod hiçbir fırsat kaydıyla eşleşmedi. Adres çubuğundaki kaydı kontrol edin ' +
+           'ya da satış akışından fırsatı seçin.' });
+    return;
+  }
+
+  /* ---- ?hesap= kipi: bağ adres çubuğundan gelir, ölçülür ----------- */
+  var hesapKilit = (!rec && hesapParam) ? GV.lifecycle.hesap(hesapParam) : null;
+  if(!rec && hesapParam && !hesapKilit){
+    GV.pageHead({
+      eyebrow:'Müşteri ve Satış', title:'Hesap bulunamadı', sub:hesapParam,
+      actions:[{ label:'Müşteri listesine dön', icon:'i-arrow-left', href:'app-musteri.html' }]
+    });
+    mount.innerHTML = GV.errorState({
+      title:hesapParam + ' bulunamadı',
+      desc:'Fırsat bağlanacak hesap kaydı yok. Hesabı müşteri listesinden açın ya da ' +
+           'fırsatı hesap seçerek oluşturun.',
+      action:'<a class="btn btn-line" href="app-firsat-form.html">Hesap seçerek devam et</a>' });
+    return;
+  }
+
+  /* ---- Yetki kapısı ----------------------------------------------- */
+  var izinli = rec ? GV.perm.can('duzenle') : GV.perm.can('ekle');
+  if(!izinli){
+    GV.pageHead({
+      eyebrow:'Müşteri ve Satış',
+      title:rec ? (rec.baslik || rec.kod) : 'Yeni Fırsat',
+      sub:'Bu ekran için yetkiniz yok',
+      actions:[{ label:'Satış akışına dön', icon:'i-arrow-left', href:'app-satis-akisi.html' }]
+    });
+    mount.innerHTML = GV.empty({
+      icon:'i-lock',
+      title:rec ? 'Fırsat kaydını düzenleme yetkiniz yok' : 'Yeni fırsat açma yetkiniz yok',
+      desc:'Rolünüz (' + GV.perm.role() + ') bu işlem için yetkili değil. ' +
+           'Satış akışını görüntülemeye devam edebilirsiniz.',
+      action:'<a class="btn btn-line" href="app-satis-akisi.html">Satış akışına dön</a>' });
+    return;
+  }
+
+  /* =================================================================
+     SÖZLÜK VE AŞAMA ÖLÇÜMÜ — hiçbir liste ekranda yazılı değil
+     -----------------------------------------------------------------
+     · hizmet   → `DB.services` (12 değer)
+     · kaynak   → `DB.refTypes` (18 değer)
+     · referans → `DB.referrers` (8 kayıt)
+     · sıcaklık → ortak bir sözlük YOK; üç değer (`Sıcak` · `Ilık` · `Soğuk`)
+       `DB.leads[].sicaklik` içinde ölçülüdür ve `DB.opportunities` onları
+       oradan taşır (lifecycle.js:203). Liste elle yazılmaz, defterden
+       türetilir: sözlük bir gün ortak katmana taşınırsa burası kendiliğinden
+       ona döner, ikinci bir kopya yaşamaz (L-40).
+     · aşama    → `DB.pipelineStages`; doğum aşaması `sira:1` olandır,
+       sabit yazılmaz.
+     ================================================================= */
+  function benzersiz(list){
+    return (list || []).filter(function(v, i, s){
+      return v != null && v !== '' && s.indexOf(v) === i; });
+  }
+  var sicaklikDegerleri = benzersiz((DB.leads || []).map(function(l){ return l.sicaklik; }));
+
+  var SIRALI = (DB.pipelineStages || []).slice().sort(function(a, b){ return a.sira - b.sira; });
+  var ILK_ASAMA = (SIRALI.filter(function(s){ return s.sira === 1; })[0] || {}).key || null;
+
+  function asamaOf(key){ return key ? DB.pipelineStage(key) : null; }
+  function olasilikOf(key){ var s = asamaOf(key); return (s && s.olasilik != null) ? s.olasilik : null; }
+
+  /* Açık fırsat = geçiş tablosunda `terminal` işaretli OLMAYAN aşama.
+     Sonuç aşamalarının listesini ekranda tutmak, tablo değişince sessizce
+     yanlışa düşen ikinci bir sözleşme olurdu (firsat.js:98-110). */
+  function acikMi(o){
+    var t = (DB.transitions.opportunity || {})[o.asama];
+    return !!t && !t.terminal;
+  }
+
+  var canFinans = GV.perm.can('finans');
+
+  /* =================================================================
+     ALAN KÜMESİ — §5.3 · `DB.opportunities` şeması
+     TEMEL: hesap · başlık · hizmet · bütçe · kapanış tahmini · sorumlu
+     EK   : sıcaklık · puan · kaynak · yönlendiren · sonraki aksiyon/tarih
+
+     BÜTÇE VE YETKİ: satış akışı ekranı bütçeyi `perm:'finans'` ile
+     maskeliyor (app-satis-akisi.html:421) ve ölçüldü — satış TEMSİLCİSİ
+     rolünde `finans:false`. Aynı alanı formda serbestçe göstermek, listede
+     kapatılan pencereyi formdan açmak olurdu. Yetkisiz rolde alan salt
+     okunur ve MASKELİ basılır (`••••••`, UID-11: `0` bir DEĞERDİR), kayıt
+     listesine hiç girmez — düzenlemede mevcut bütçeye DOKUNULMAZ.
+     ================================================================= */
+  var TEMEL_ALANLAR = canFinans
+    ? ['hesap','baslik','hizmet','butce','kapanisTahmini','sorumlu']
+    : ['hesap','baslik','hizmet','kapanisTahmini','sorumlu'];
+  var EK_ALANLAR = ['sicaklik','puan','kaynak','referans','sonrakiAksiyon','sonrakiTarih'];
+  var KAYIT_ALANLARI = TEMEL_ALANLAR.concat(EK_ALANLAR);
+
+  var SAYISAL = { butce:true, puan:true };
+
+  function bosNull(x){
+    var s = (x == null) ? '' : String(x).trim();
+    return s === '' ? null : s;
+  }
+  function sayiNull(x){
+    var s = (x == null) ? '' : String(x).trim();
+    if(s === '') return null;
+    var n = Number(s);
+    return isNaN(n) ? null : n;
+  }
+  function alanDegeri(k, ham){ return SAYISAL[k] ? sayiNull(ham) : bosNull(ham); }
+
+  /* Form taslağı — kaydın KENDİSİ değil, bileşenin okuyacağı başlangıç
+     değerleri. `asama` bilerek YOK: doğum değeri kaydetme anında nesne
+     literalinde verilir, düzenlemede ise hiç dokunulmaz. */
+  var formKayit = {};
+  if(rec){
+    KAYIT_ALANLARI.forEach(function(k){ formKayit[k] = (rec[k] == null) ? '' : rec[k]; });
+  }else if(hesapKilit){
+    formKayit.hesap = hesapKilit.kod;
+  }
+
+  /* ---- Sayfa başlığı — form bileşeninden ÖNCE (§2.4) --------------- */
+  GV.pageHead({
+    eyebrow:'Müşteri ve Satış',
+    title:rec ? (rec.baslik || rec.kod) : 'Yeni Fırsat',
+    sub:rec
+      ? rec.kod + ' · ' + esc(rec.asama || '—') + ' · aşama bu ekrandan değiştirilmez'
+      : (hesapKilit
+          ? hesapKilit.unvan + ' hesabına yeni fırsat · ' + (ILK_ASAMA || '—') + ' aşamasında doğar'
+          : 'Yeni fırsat · ' + (ILK_ASAMA || '—') + ' aşamasında doğar'),
+    actions:[
+      { label:'Vazgeç', icon:'i-arrow-left', href:'app-satis-akisi.html' },
+      { label:'Kaydet', icon:'i-check', cls:'btn-acc', run:function(){ kaydet(); } }
+    ]
+  });
+
+  mount.innerHTML = '<div id="firsatForm"></div><div id="firsatBackend"></div>';
+
+  /* ---- Hesap seçenekleri: unvan + yaşam evresi adı ----------------- */
+  var hesapSecenekleri = (DB.accounts || []).slice().sort(function(a, b){
+    return String(a.unvan || '').localeCompare(String(b.unvan || ''), 'tr');
+  }).map(function(h){
+    return { value:h.kod,
+             label:(h.unvan || h.kod) + ' · ' + (GV.lifecycle.ad(h.evre) || 'evresiz') };
+  });
+
+  /* Bütçe alanı — yetkiye göre iki biçim (yukarıdaki gerekçe). */
+  var butceAlan = canFinans
+    ? { key:'butce', label:'Bütçe', type:'money', cols:6,
+        hint:'Tahmini sözleşme tutarı. Ağırlıklı tutar bu değerin aşama olasılığıyla çarpımıdır.' }
+    : { key:'butce', label:'Bütçe', type:'text', cols:6, readonly:true,
+        value:GV.perm.mask('', 'finans'),
+        hint:'Bütçe finans yetkisi gerektirir; rolünüzde (' + GV.perm.role() + ') maskelenir. ' +
+             'Kaydetme bu alana dokunmaz, mevcut değer olduğu gibi kalır.' };
+
+  /* Düzenleme kipinde aşama SALT OKUNUR — ikinci mutasyon yolu yok.
+     Değer `record`tan DEĞİL, alanın kendi `value`sundan gelir: `asama`
+     bilerek form taslağının dışındadır (kaydetme listesine sızmasın diye),
+     bu yüzden gösterilecek değeri alan kendisi taşır. */
+  var asamaAlan = { key:'asama', label:'Aşama', type:'select', cols:6, readonly:true,
+    value:rec ? rec.asama : '',
+    options:SIRALI.map(function(s){
+      return { value:s.key, label:s.key + ' · %' + s.olasilik }; }),
+    hint:'Aşama fırsat detayından ilerletilir; geçiş kuralı, kazanma kapısı ve ' +
+         'denetim izi oradaki tek yordamda yürür.' };
+
+  var temelAlanlar = [
+    { key:'hesap', label:'Müşteri hesabı', type:'select', cols:12, required:true,
+      readonly:!!hesapKilit,
+      options:hesapSecenekleri,
+      placeholder:'Hesap seçin',
+      hint:hesapKilit
+        ? 'Bağ adres çubuğundan geldi ve değiştirilemez. Başka bir hesaba fırsat açmak için ' +
+          'satış akışından "Yeni Fırsat" ile başlayın.'
+        : 'Aday da müşteri de tek listededir (§5.1); her seçeneğin yanında yaşam evresi yazar. ' +
+          (DB.accounts || []).length + ' hesap listelendi.' },
+
+    { key:'baslik', label:'Fırsat başlığı', type:'text', cols:12, required:true,
+      placeholder:'Örn. Dava dosyası ve müvekkil doküman yönetim sistemi',
+      hint:'Satılacak işin bir cümlelik tanımı — satış akışı kartlarında bu metin görünür.' },
+
+    { key:'hizmet', label:'Hizmet', type:'select', cols:6, options:DB.services || [],
+      hint:'Hizmet sözlüğü ortak katmandadır; ' + (DB.services || []).length + ' hizmet tanımlı.' },
+
+    butceAlan,
+
+    { key:'kapanisTahmini', label:'Kapanış tahmini', type:'date', cols:6,
+      /* ⚠️ "Geçmiş tarih olamaz" kuralı KURULMADI ve nedeni ölçüldü: 12
+         fırsatın 4'ünde `kapanisTahmini` bugünden (DB.today = 2026-08-03)
+         ÖNCEDİR. Kural konsaydı bu dört kaydın düzenlenmesi kilitlenirdi —
+         doğrulama var olan veriyi geçersiz ilan ederdi (web adresi alanında
+         ölçülmüş aynı sınıf hata, ui.js:2295). Gecikme bir HATA değil, bir
+         OLGUDUR; sağ panelde "… gün gecikti" diye okunur basılır. */
+      hint:'Geçmiş bir tarih girilebilir; gecikme engellenmez, sağ panelde gün olarak okunur.' },
+
+    { key:'sorumlu', label:'Sorumlu', type:'select', cols:6, required:true,
+      value:(GV.session && GV.session.emp) || '',
+      options:(DB.employees || []).map(function(e){ return { value:e.kod, label:e.ad }; }),
+      hint:rec ? 'Fırsatın sahibi; geçiş yetkisinde "sorumlu" ilişkisi bu alandan çözülür.'
+               : 'Varsayılan olarak oturum sahibi atandı; değiştirebilirsiniz.' }
+  ];
+  if(rec) temelAlanlar.push(asamaAlan);
+
+  var form = GV.form({
+    mount:'#firsatForm',
+    id:'firsatForm',
+    record:formKayit,
+    tabs:[
+      { key:'temel', label:'Temel bilgiler',   icon:'i-funnel' },
+      { key:'ek',    label:'Daha fazla bilgi', icon:'i-list' }
+    ],
+    aside:function(veri){ return yanPanel(veri); },
+    sections:[
+      { title:'Fırsat ve hesap', icon:'i-funnel', tab:'temel',
+        desc:'İlk kayıtta yalnız bu bilgiler istenir. Nitelendirme alanları ' +
+             '"Daha fazla bilgi" sekmesindedir ve zorunlu değildir.',
+        fields:temelAlanlar },
+
+      { title:'Nitelendirme', icon:'i-target', tab:'ek',
+        desc:'Sıcaklık ve puan fırsatın önceliğini anlatır; ikisi de aşamayı DEĞİŞTİRMEZ — ' +
+             'ayrı eksenlerdir.',
+        fields:[
+          { key:'sicaklik', label:'Sıcaklık', type:'select', cols:6,
+            options:sicaklikDegerleri,
+            hint:sicaklikDegerleri.length
+              ? 'Ortak sözlük yok; ' + sicaklikDegerleri.length +
+                ' değer aday kayıtlarındaki mevcut sıcaklıklardan türetildi.'
+              : 'Aday kayıtlarında sıcaklık değeri yok — seçenek türetilemedi.' },
+          { key:'puan', label:'Puan', type:'number', cols:6, min:0, max:100,
+            hint:'0–100 arası nitelendirme puanı. Boş bırakılabilir; boş puan "0" demek değildir.' }
+        ] },
+
+      { title:'Kaynak ve takip', icon:'i-activity', tab:'ek',
+        desc:'Fırsatın nereden geldiği ve bir sonraki adımı. Yönlendiren kişi kaynaktan ayrı ' +
+             'bir alandır: kaynak KANALI, yönlendiren KİŞİYİ söyler.',
+        fields:[
+          { key:'kaynak', label:'Kaynak', type:'select', cols:6, options:DB.refTypes || [] },
+          { key:'referans', label:'Yönlendiren / referans', type:'select', cols:6,
+            options:(DB.referrers || []).map(function(r){
+              return { value:r.kod, label:r.ad + ' · ' + r.tur }; }) },
+          { key:'sonrakiAksiyon', label:'Sonraki aksiyon', type:'text', cols:6,
+            placeholder:'Örn. Teklif sunum toplantısı' },
+          { key:'sonrakiTarih', label:'Sonraki aksiyon tarihi', type:'date', cols:6 }
+        ] }
+    ]
+  });
+
+  if(!form){
+    mount.innerHTML = GV.errorState({ title:'Form çizilemedi',
+      desc:'Form bileşeni bağlanamadı. Sayfayı yeniden açmayı deneyin.' });
+    return;
+  }
+
+  /* =================================================================
+     SAĞ PANEL — canlı özet ([3.1.15])
+     Ölçüm burada yapılır, kaydetmede değil: kullanıcı bütçeyi yazarken
+     ağırlıklı tutarı, tarihi seçerken kalan günü, hesabı seçerken o hesabın
+     açık fırsat sayısını görür. Türetilemeyen her değer "—" basar ve NEDENİ
+     yazılır — "0" yazmak ölçülmemişi ölçülmüş göstermek olurdu (L-13).
+     ================================================================= */
+  function agirlikliTutar(butce, asamaKey){
+    var p = olasilikOf(asamaKey);
+    if(butce == null || p == null) return null;
+    return Math.round(butce * p / 100);
+  }
+
+  function yanPanel(v){
+    var hesapKod = v.hesap || (hesapKilit ? hesapKilit.kod : '');
+    var h = hesapKod ? GV.lifecycle.hesap(hesapKod) : null;
+    var asamaKey = rec ? rec.asama : ILK_ASAMA;
+    var s = asamaOf(asamaKey);
+    var butce = canFinans ? sayiNull(v.butce) : null;
+    var agirlikli = canFinans ? agirlikliTutar(butce, asamaKey) : null;
+
+    var firsatlar = h ? DB.accountOpportunities(h.kod) : [];
+    var acik = firsatlar.filter(acikMi);
+
+    var out = '<div class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-funnel') + 'Fırsat özeti</h3></div>' +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Kayıt no', rec
+            ? '<span class="cell-code">' + esc(rec.kod) + '</span>'
+            : '<span class="u-faint">kaydederken üretilir</span>'],
+          ['Müşteri hesabı', h
+            ? '<span class="cell-main">' + esc(h.unvan || h.kod) + '</span> ' + GV.lifecycle.rozet(h.evre)
+            : '<span class="u-faint">hesap seçilmedi</span>'],
+          ['Aşama', s
+            ? esc(s.key) + ' ' + GV.cell.sub('%' + s.olasilik + ' olasılık' + (rec ? '' : ' · doğum aşaması'))
+            : '<span class="u-faint">—</span>'],
+          ['Ağırlıklı tutar', !canFinans
+            ? '<span class="cell-mask">' + GV.perm.mask('', 'finans') + '</span>'
+            : (agirlikli == null
+                ? GV.cell.faint('—') + GV.cell.sub(butce == null
+                    ? 'bütçe girilmedi' : 'aşama olasılığı ölçülemedi')
+                : GV.cell.mny(agirlikli) + GV.cell.sub('bütçe × %' + (s ? s.olasilik : '—')))],
+          ['Kapanışa kalan', v.kapanisTahmini
+            ? esc(GV.fmt.rel(v.kapanisTahmini))
+            : GV.cell.faint('—') + GV.cell.sub('kapanış tahmini girilmedi')],
+          ['Hesabın açık fırsatı', h
+            ? '<span class="u-num">' + acik.length + '</span>' +
+              GV.cell.sub(firsatlar.length + ' fırsattan ' + acik.length + ' tanesi açık' +
+                          (rec ? ' · bu kayıt dahil' : ''))
+            : GV.cell.faint('—') + GV.cell.sub('hesap seçilince ölçülür')]
+        ]) +
+      '</div></div>';
+
+    /* §5.1 tablosu: hesabın evresi ADAY ise `MUSTERI` doğrudan komşu DEĞİLDİR.
+       Ara evre ELLE YAZILMAZ, sözlükten ÖLÇÜLÜR: ADAY'ın izinli hedefleri
+       arasından `MUSTERI`ye çıkabilen hangisiyse odur. */
+    if(h && h.evre && GV.lifecycle.sonraki(h.evre).indexOf('MUSTERI') === -1){
+      var ara = GV.lifecycle.sonraki(h.evre).filter(function(k){
+        return GV.lifecycle.sonraki(k).indexOf('MUSTERI') !== -1; });
+      out += GV.notice({ tone:'info', icon:'i-info',
+        title:'Kazanma için evre yolu: ' +
+              (ara.map(function(k){ return GV.lifecycle.ad(k) || k; }).join(' veya ') || 'yok'),
+        text:'Hesap şu an "' + (GV.lifecycle.ad(h.evre) || h.evre) + '" evresinde ve buradan ' +
+             'doğrudan "' + (GV.lifecycle.ad('MUSTERI') || 'Müşteri') + '" evresine geçilemez. ' +
+             'Fırsat kazanıldığında evre ' +
+             (ara.map(function(k){ return GV.lifecycle.ad(k) || k; }).join(' veya ') || '—') +
+             ' üzerinden geçmek zorundadır; kazanma kapısı bunu uyarmaz, reddeder.' });
+    }
+
+    if(!h){
+      out += GV.notice({ tone:'info', icon:'i-building',
+        title:'Hesap seçilmedi',
+        text:'Ağırlıklı tutar, evre yolu ve açık fırsat sayısı bir hesaba bağlanmadan ölçülemez.' });
+    }
+
+    return out;
+  }
+
+  /* =================================================================
+     KAYDETME
+     ================================================================= */
+  function kodUret(){
+    /* Kod defterden türetilir, sabit yazılmaz (§13.2). */
+    var yil = String(DB.today).slice(0, 4), max = 0;
+    (DB.opportunities || []).forEach(function(x){
+      var m = new RegExp('^FRS-' + yil + '-(\\d+)$').exec(x.kod || '');
+      if(m) max = Math.max(max, +m[1]);
+    });
+    return 'FRS-' + yil + '-' + String(max + 1).padStart(3, '0');
+  }
+
+  function kaydet(){
+    var v = form.submit();
+    if(!v) return false;
+
+    var hedefKod;
+    var hesapKod = bosNull(v.hesap);
+
+    if(!rec){
+      /* ---- YENİ KAYIT ---------------------------------------------
+         Doğum aşaması nesne LİTERALİNDE verilir; sonradan atanmaz.
+         Türetilemeyen alan NULL doğar — `0` yazmak, ölçülmemiş olanı
+         "ölçtüm, sıfır çıktı" diye beyan etmektir (L-08 · L-13).
+         `kayipNedeni` yalnız kayıp geçişinde doğar, formda sorulmaz. */
+      hedefKod = kodUret();
+      var o = {
+        kod:hedefKod,
+        legacy_id:hedefKod,
+        legacy_kaynak:'form',
+        hesap:hesapKod,
+        baslik:bosNull(v.baslik),
+        asama:ILK_ASAMA,
+        hizmet:bosNull(v.hizmet),
+        butce:canFinans ? sayiNull(v.butce) : null,
+        sicaklik:bosNull(v.sicaklik),
+        puan:sayiNull(v.puan),
+        kapanisTahmini:bosNull(v.kapanisTahmini),
+        sonrakiAksiyon:bosNull(v.sonrakiAksiyon),
+        sonrakiTarih:bosNull(v.sonrakiTarih),
+        sorumlu:bosNull(v.sorumlu),
+        kaynak:bosNull(v.kaynak),
+        referans:bosNull(v.referans),
+        kayipNedeni:null
+      };
+      (DB.opportunities || (DB.opportunities = [])).unshift(o);
+
+      GV.audit.yaz({
+        kayit:hedefKod, modul:'Satış',
+        islem:'Fırsat oluşturuldu (fırsat formu) · hesap ' + (hesapKod || '—'),
+        yeni:ILK_ASAMA || '—', tone:'ok', icon:'i-plus' });
+    }else{
+      /* ---- DÜZENLEME ----------------------------------------------
+         Yalnız formdaki alanlar yazılır. `asama` listede YOK: aşama bu
+         ekrandan değişmez, salt okunur alan yalnız gösterimdir.
+         Yetkisiz rolde `butce` de listede değildir — maskeli alanın
+         okunan değeri (`••••••`) kayda sızmaz. */
+      hedefKod = rec.kod;
+      var degisen = [];
+      KAYIT_ALANLARI.forEach(function(k){
+        var yeniD = alanDegeri(k, v[k]);
+        var formD = alanDegeri(k, formKayit[k]);
+        if(yeniD !== formD) degisen.push(k);
+        rec[k] = yeniD;
+      });
+
+      GV.audit.yaz({
+        kayit:hedefKod, modul:'Satış',
+        islem:degisen.length
+          ? 'Fırsat güncellendi — değişen alan: ' + degisen.join(', ')
+          : 'Fırsat kaydedildi — alan değişmedi',
+        tone:'info', icon:'i-edit' });
+    }
+
+    GV.afterSave({
+      kod:hedefKod,
+      liste:'app-satis-akisi.html',
+      detay:'app-firsat-detay.html',
+      yeni:!rec,
+      mesaj:rec
+        ? 'Fırsat bilgileri güncellendi; aşama değiştirilmedi.'
+        : 'Fırsat oluşturuldu ve "' + (ILK_ASAMA || '—') + '" aşamasında başladı. ' +
+          'Aşama ilerletme fırsat detayından yürür.',
+      alt:hesapKod
+        ? [{ label:'Müşteri hesabını aç', cls:'btn-line',
+             href:'app-musteri-detay.html?id=' + encodeURIComponent(hesapKod) }]
+        : []
+    });
+    return true;
+  }
+
+  /* =================================================================
+     BACKEND PAYI — §10.2 (b): tek tek, gizlenmeden, taklit edilmeden
+     ================================================================= */
+  var backendMaddeleri = [
+    { kod:'BE-S2',
+      madde:'PATCH /api/customers/:id/lifecycle-stage yok; fırsat kazanıldığında hesabın ' +
+            'yaşam evresi yalnız bellekte değişir, kaynak müşteri kaydına aynalanmaz. ' +
+            'Bu formun yazdığı fırsat alanları da aynı deftere, bellekte yaşar.',
+      bolum:'§9' },
+    { kod:'BE-S5',
+      madde:'Aktivite ve denetim izi kalıcı değildir; bu kaydın oluşturma/güncelleme satırı ' +
+            'sayfa yenilenince sıfırlanır. Gerçek sistemde audit_event tablosuna yazılır.',
+      bolum:'§9 audit_event' }
+  ];
+  document.getElementById('firsatBackend').innerHTML =
+    '<section class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+        '<span class="gc-meta">' + backendMaddeleri.length + ' madde</span></div>' +
+      '<div class="gc-body">' +
+        GV.dl(backendMaddeleri.map(function(g){
+          return ['<span class="cell-code">' + esc(g.kod) + '</span>',
+                  esc(g.madde) + ' <span class="u-faint u-sm">' + esc(g.bolum) + '</span>'];
+        })) +
+        '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve <b>taklit edilmedi</b>. ' +
+          'Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+      '</div>' +
+    '</section>';
+});
+</script>
+</body>
+</html>
