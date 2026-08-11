@@ -105,12 +105,12 @@ document.addEventListener('gv:ready', function(){
      onu çözemez, ad `DB.contacts`ten okunur. */
   var kontak = (DB.contacts || []).filter(function(c){ return c.kod === t.acan; })[0] || null;
 
-  /* SLA politikası: kategori × öncelik matrisi. Kategori bazlı politikalar
-     `oncelik:'Tümü'` taşır; eşleşme kuralı budur, sıralama değil. */
-  var politika = (DB.slaPolicies || []).filter(function(p){
-    return p.aktif !== false && p.kategori === t.kategori &&
-           (p.oncelik === t.oncelik || p.oncelik === 'Tümü');
-  })[0] || null;
+  /* SLA politikası — eşleştirme ORTAK KATMANDA (`GV.destek.slaPolitikasi`).
+     Bu ekran kendi kategori × öncelik matrisini yazıyordu; destek formu ve
+     destek listesi de aynı soruyu soruyor. Üç yerde üç kopya kural, sözlük
+     değişince üçünün üçü birden sessizce ayrışırdı (L-40). Joker
+     (`oncelik:'Tümü'`) kuralı da artık tek yerde. */
+  var politika = GV.destek.slaPolitikasi(t.kategori, t.oncelik);
 
   var paket  = GV.destek.paketOf(t);
   var dusum  = GV.destek.kotaDusum(t);
