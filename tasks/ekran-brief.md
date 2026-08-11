@@ -1346,3 +1346,303 @@ Doğrulama betiği brief'teki her `dosya:satır` işaretini, her `GV.*` / `DB.*`
 adını ve her ikon adını gerçek dosyada arar. Brief eskirse eksen kırmızı yanar.
 Bilerek anılan hayalet adlar (§0 uyarısı) `brief-dogrula:yoksay` bloğundadır
 ve ölçüm dışıdır — sessiz istisna listesi tutulmaz.
+
+---
+
+## 18. Dilim 3 — Proje ve Operasyon zinciri
+
+Bu bölüm dilim 3'ün sözleşmesidir. §1-§16 aynen geçerlidir; burada yalnız
+**bu dilime özgü** olanlar yazılıdır. Her sayı ölçüldü.
+
+### 18.0 Bu dilimde yazılan ekranlar ve kabuk öznitelikleri
+
+| Dosya | `data-sec` | `data-screen` | mount `id` |
+|---|---|---|---|
+| `app-proje.html` | `operasyon` | `proje` | `rec` |
+| `app-proje-detay.html` | `operasyon` | `proje` | `rec` |
+| `app-gorev.html` | `operasyon` | `gorev` | `rec` |
+| `app-gorev-detay.html` | `operasyon` | `gorev` | `rec` |
+| `app-gorev-form.html` | `operasyon` | `gorev` | `rec` |
+| `app-destek.html` | `operasyon` | `destek` | `rec` |
+| `app-destek-detay.html` | `operasyon` | `destek` | `rec` |
+| `app-destek-form.html` | `operasyon` | `destek` | `rec` |
+
+Mount `id`si **`rec` olmalıdır**: `GV.refresh()` yalnız `#rec`i taze kopyayla
+değiştirir (§2.5). Başka ad verirsen dinleyiciler birikir.
+
+`SCREEN_DENY` bu üç ekranı **kısıtlamaz** — `musteri` rolü proje, görev ve
+destek ekranlarını görebilir; satır kapsamını `scopeField` süzer.
+
+**Yüklenecek veri dosyaları:** `org.js` · `crm.js` · `work.js` · `misc.js` ·
+`ops.js` · `lifecycle.js`. `firsat.js` ve `odeme.js` **yükleme** — bu dilimde
+kullanılmıyor.
+
+### 18.1 Veri gerçekleri — ölçüldü, uydurma yok
+
+| Koleksiyon | Adet | Not |
+|---|---:|---|
+| `DB.projects` | **14** | 7'si `Tamamlandı`, 4'ü `Aktif`, 1'er `Plan` · `Test/Kabul` · `Teslim`. Sağlık: 10 İyi · 2 Dikkat · 2 Riskli |
+| `DB.tasks` | **26** | 16'sı bir projeye, 18'i bir müşteriye bağlı; **8'i ikisine de bağlı değil** — bu normaldir, iç görevlerdir |
+| `DB.tickets` | **7** | 6'sı bir projeye bağlı; `DST-2026-117` hiçbir projeye bağlı değil |
+| `DB.projectMilestones` | **12** | ⚠️ bkz. §18.2 — `DB.milestones` ile **AYNI ŞEY DEĞİL** |
+| `DB.sprints` | 6 | yalnız 5 projede |
+| `DB.bugs` | 6 | 4 projede |
+| `DB.changeRequests` | 5 | 5 projede |
+| `DB.deliveries` | 5 | 5 projede |
+| `DB.testCases` | 5 | **hepsi `PRJ-2026-001`de** |
+| `DB.subtasks` | 9 | `ustGorev` alanıyla göreve bağlı |
+| `DB.taskDeps` | 3 | `gorev` · `bagimli` · `tur` |
+| `DB.supportPackages` | 7 | **`proje` alanı 7/7 BOŞ** — bağı kullanıcı kurar (`GV.proje.bakimBagla`) |
+| `DB.slaPolicies` | 7 | kategori × öncelik matrisi |
+| `DB.timelogs` | 131 | `proje` alanı taşır |
+
+**Proje başına alt kayıt dağılımı — ekran bunu bilerek yazar:**
+
+| Proje | görev | sprint | milestone | teslim | hata | değişiklik | test | belge | fatura | timelog |
+|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|
+| `PRJ-2026-001` | 4 | 1 | 1 | 1 | **3** | 1 | **5** | 1 | 2 | 38 |
+| `PRJ-2026-002` | 2 | 1 | 1 | 1 | 0 | 0 | 0 | 1 | 1 | 15 |
+| `PRJ-2026-003` | 4 | **2** | **5** | 1 | 1 | 1 | 0 | 1 | **5** | **51** |
+| `PRJ-2026-004` | 1 | 0 | 3 | 1 | 0 | 0 | 0 | 0 | 3 | 1 |
+| `PRJ-2026-005` | 1 | 1 | 1 | 0 | 1 | 1 | 0 | 0 | 2 | 7 |
+| `PRJ-2026-006` | 3 | 1 | 1 | 1 | 1 | 1 | 0 | 0 | 2 | 7 |
+| `PRJ-2026-007` | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 |
+| `PRJ-2025-008` | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |
+| diğer **6** proje | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+
+**Altı proje hiçbir alt kayıt taşımıyor** ve bu bir eksiklik değil ölçümdür:
+hepsi 2023-2025 yıllarında kapanmış kayıtlar, alt defterleri R1'e hiç
+girmemiş. O projelerin sekmeleri **boş** açılır ve sekme "kayıt yok" değil
+**"bu projede X kaydı defterde yok"** der (§10.1).
+
+### 18.2 ⚠️ İKİ FARKLI "MILESTONE" — karıştırma
+
+Bu depoda `milestone` kelimesi **iki ayrı koleksiyonu** adlandırıyor ve ikisi
+farklı şeydir:
+
+| Koleksiyon | Ne | Alanlar |
+|---|---|---|
+| **`DB.projectMilestones`** (12) | **PROJE kilometre taşı** — işin teslim adımı | `kod` `proje` `baslik` `tarih` `sorumlu` `durum` `teslimat` `aciklama` |
+| **`DB.milestones`** (19) | **ÖDEME PLANI TAKSİTİ** — sözleşmenin para adımı | `odeme` (**NET**) `sozlesme` `proje` … |
+
+Proje detayının **Milestone sekmesi `DB.projectMilestones` okur.**
+`DB.milestones` finans zincirine aittir (§17.2 · `GV.fin.tutar(x,'milestone')`)
+ve proje detayında **Finans/Bütçe** bağlamında anılırsa öyle etiketlenir.
+İkisini aynı sekmede aynı adla basmak, iki farklı defteri tek sayı gibi
+göstermek olurdu.
+
+### 18.3 `GV.flow` varlıkları — bu dilimde kullanacakların
+
+| `tur` | Koleksiyon | Durum alanı | Durum sayısı |
+|---|---|---|---|
+| `project` | `DB.projects` | `durum` | 10 |
+| `ticket` | `DB.tickets` | `durum` | 8 |
+| `bug` | `DB.bugs` | `durum` | 10 |
+| `change` | `DB.changeRequests` | `durum` | 11 |
+| `delivery` | `DB.deliveries` | `durum` | 9 |
+
+⚠️ **`task` İSTİSNADIR.** `DB.flowEntities.task` tanımlı ama görev geçişinin
+gerçek motoru **`GV.task.transition`**tır; `GV.flow.gec('task', …)` onu
+çağırır (`domain.js:453`) ve `GV.flow.adimlar('task', …)` da
+`GV.task.nextSteps`e düşer (`domain.js:405`). **İkisini de kullanabilirsin;
+ikisi de aynı tek mutasyon noktasına gider.** Kendi geçişini yazma.
+
+**Görev geçiş tablosu (`DB.taskTransitions`, 10 durum) — ELLE YAZMA, oku:**
+
+```
+Havuzda        → Atandı · İptal edildi        yetki: pm/takimlideri/depmudur/sahip/operasyon   zorunlu: sorumlu
+Atandı         → Devam ediyor · Engellendi · İptal edildi     yetki: sorumlu/pm
+Devam ediyor   → Kontrolde · Engellendi · İptal edildi        yetki: sorumlu
+Kontrolde      → Revizede · Onay bekliyor · Tamamlandı        yetki: kontrolEden/pm   zorunlu: teslimEdilenCikti
+Revizede       → Kontrolde · İptal edildi     yetki: sorumlu
+Onay bekliyor  → Tamamlandı · Revizede        yetki: onaylayan/pm/sahip
+Engellendi     → Devam ediyor · İptal edildi  yetki: sorumlu/pm   zorunlu: engelNedeni
+Tamamlandı     → Arşivlendi · Revizede        yetki: pm/sahip
+İptal edildi   → Arşivlendi                   yetki: pm/sahip/operasyon
+Arşivlendi     → (yok)
+```
+
+`Kontrolde` çıkışında **iki yol tabloda yazılı ama yalnız BİRİ geçerlidir**:
+`GV.task.onayGerekli(t)` (`onaylayan !== kontrolEden`) true ise
+`Onay bekliyor`, değilse `Tamamlandı`. `nextSteps` bunu zaten süzer — ekran
+tabloyu kendi okuyup ikisini birden basmaz.
+
+**`Arşivlendi` son duraktır (`next:[]`).** Arşivden çıkış bir geçiş değil ayrı
+işlemdir: `GV.task.arsivGeriAl(kod)` aktivite kaydından hangi duruma
+döneceğini **okur**, tahmin etmez; kayıt yoksa işlem yapılmaz ve sebebi
+söylenir.
+
+### 18.4 `GV.task` — görev yordamları (`domain.js:1628-1841`)
+
+```js
+GV.task.nextSteps(kod)        // [{ hedef, etiket, tone, izin, eksik:[] }] — buton üretimi
+GV.task.transition(kod, hedef, ek, not)
+//   → { ok:true, gorev, eski, bildirim:[] }
+//   → { ok:false, why:'yetki'|'zorunlu'|<düz metin>, roller:[], eksik:[] }
+GV.task.onayGerekli(t)        // onaylayan !== kontrolEden
+GV.task.yetkili(t, kural)     // oturum bu geçişi yapabilir mi
+GV.task.eksikAlanlar(t, kural, ek)
+GV.task.arsivGeriAl(kod)      // → { ok, gorev, eski, hedef } · { ok:false, why:'kaynak durum bilinmiyor', aciklama }
+GV.task.ata(kod, emp, not)    // Havuzda ise GEÇİŞ, değilse alan değişimi — ayrım YORDAMDA
+GV.task.oncelik(kod, deger)   // DB.priorities: Kritik · Yüksek · Orta · Düşük
+GV.task.bekleme(kod, neden, notu, sessiz)   // DB.taskWaitReasons (7) — DURUMDAN BAĞIMSIZ ikinci eksen
+```
+
+⚠️ **Bekleme nedeni bir DURUM DEĞİLDİR.** Görev "Devam ediyor" kalır, yalnız
+neyi beklediğini söyler. Eskiden bunun için üç ayrı durum vardı ve görev
+ilerlemeyi bırakmış görünüyordu. Ekran bunu durum rozetinin **yanında** ayrı
+bir işaret olarak basar, durumun yerine değil.
+
+⚠️ **ARŞİV İKİ ALANLA ANLATILIYOR** (`durum:'Arşivlendi'` **ve** `arsiv:true`)
+ve `GV.list` ikisini de arşiv sayar. `transition` ikisini birlikte yazar —
+ekran hiçbirini elle yazmaz.
+
+### 18.5 `GV.proje` — proje yordamları
+
+```js
+GV.proje.kayit(kodYaKayit)    // kod da kayıt da kabul eder
+GV.proje.acik(p) / .kapali(p) / .bitti(p) / .arsivli(p) / .geciken(p)
+GV.proje.kapaliDurumlar       // ['Tamamlandı','İptal Edildi']
+GV.proje.teslimDurumlari      // ['Teslim','Kapanış','Tamamlandı']
+
+GV.proje.sure(kod)
+//  → { planlanan, gerceklesen, faturalanabilir, tum, kayit, kapsam }
+//  ⚠️ `kapsam:false` → zaman defteri bu projeyi KAPSAMIYOR. Ekran "0 saat"
+//     YAZMAZ, "defterde kayıt yok" yazar (L-13). `gerceklesen` yalnız
+//     ONAYLI kayıtlardan; `tum` onaysızları da içerir, fark ekranda söylenir.
+
+GV.proje.maliyet(kod)
+//  → { personel, disKaynak, satinAlma, diger, toplam, gelir, brutKar,
+//      karlilikYuzde, kapsam, saat, maliyetsizPersonel:[], oranGuvenilmez:[] }
+//  ⚠️ `maliyetsizPersonel` dolu ise o kişilerin saatleri maliyete GİRMEDİ;
+//     `oranGuvenilmez` dolu ise kârlılık yüzdesi güvenilmez. İkisi de
+//     ekranda YAZILIR — tek bir toplam basıp güvenilirliği yutmak yasak.
+
+GV.proje.kapanisKontrol(kod)
+//  → [{ anahtar, etiket, olculdu, gecti, sayi, detay, href }]  · 8 madde
+//  ⚠️ `olculdu:false` = ÖLÇÜLEMEDİ, "geçti" değil. Kaydı olmayan madde
+//     kilit saymaz ama gerekçe ister.
+
+GV.proje.kapat(kod, { neden, aciklama, istisna }, tarih)
+//  → { ok:true, kod, tarih, gecmeyen, istisna }
+//  → { ok:false, why:'kapali'|'istisna'|'gerekçe'|'yetki'|'zaten kapalı', eksik:[], mesaj }
+//  KAPI REDDEDER: ölçülebilen ve geçmeyen madde varsa kapanış olmaz.
+//  Yalnız `sahip`/`gm` neden kodu + açıklama + `istisna:true` ile geçer.
+
+GV.proje.bakimPaketleri(kod)          // AYNI MÜŞTERİNİN paketleri (aday liste)
+GV.proje.bakimBagla(projeKod, paketKod)
+GV.proje.bakimAc(...)                 // bkz. domain.js — kapanışta yeni paket açar
+```
+
+⚠️ **`DB.supportPackages[].proje` 7/7 BOŞTUR ve türetilemez.** Tek dolaylı
+zincir (`paket.sozlesme → contract.proje`) hiçe çıkıyor; tarih yakınlığı ve
+müşteri eşleşmesi bağ **sayılmadı**. Bağı kullanıcı kurar. Proje detayının
+bakım bloğu bunu böyle söyler.
+
+### 18.6 `GV.destek` ve `GV.test`
+
+```js
+GV.destek.kayit(t)              // kod da kayıt da
+GV.destek.acik(t) / .kapali(t)  // DB.ticketClosedStatuses = ['Çözüldü','Müşteri Onayı','Kapandı']
+GV.destek.kapaliDurumlar()
+GV.destek.paketOf(t)            // talebin bakım paketi kaydı — yoksa null
+GV.destek.kotaDusum(t)          // pakete düşen saat
+GV.destek.cozumTarihi(t)
+
+GV.test.sayac(projeKod)         // { turetilmis, senaryo, basarili, basarisiz, engellendi, kosulmadi, kosum }
+GV.test.kosumlar(...) · .sonuclar(...) · .senaryolar(...) · .adimlar(...)
+GV.test.hataBaglami(...) · .hatasizBasarisiz(...)
+```
+
+⚠️ **`GV.test.sayac` `turetilmis` bayrağı taşır.** `false` ise sayılar kayıttaki
+sabit alanlardan gelir ve koşum defterinden **türetilmemiştir**; `true` ise
+gerçek koşumlardan sayılmıştır. İki farklı güvenilirlikteki sayı **aynı
+biçimde basılamaz** (§17.1 devralınan sayaç ile aynı disiplin).
+
+`DB.ticketStatuses` (8): `Yeni · Triage · Atandı · Devam ediyor · Çözüldü ·
+Müşteri Onayı · Kapandı · Yeniden Açıldı`.
+`DB.ticketChannels` (7) · `DB.ticketWaitReasons` (7) · `DB.slaPolicies` (7).
+
+⚠️ **Destek talebinde TERMİN ALANI YOKTUR.** `sla` bir SÜRE taahhüdüdür
+(`'4 saat'`, `'2 gün'`), bir tarih değildir; tarihe çevirmek uydurma olur.
+Gecikme bilgisi `slaDurum` alanındadır (`Zamanında` · `Risk altında` ·
+`İhlal edildi`) ve kaynak veride yazılıdır.
+
+### 18.7 Proje detayı — SEKME SÖZLEŞMESİ (rota 33-47 · şartname §3.3)
+
+`app-proje-detay.html` **sekmelidir** ve alt kayıtlar **ayrı ekran değildir**.
+Sekme kümesi (`GV.tabs`, §6.1 işaretleme sözleşmesi):
+
+| Sekme | `data-tab` | Kaynak | Dolu mu |
+|---|---|---|---|
+| Özet | `ozet` | proje kaydı + `GV.proje.sure` + `.maliyet` + `.kapanisKontrol` | her projede |
+| Milestone | `milestone` | **`DB.projectMilestones`** | 6 projede |
+| Sprint | `sprint` | `DB.sprints` | 5 projede |
+| Kalite | `test` | `DB.testCases` + `GV.test.*` | **yalnız `PRJ-2026-001`** |
+| Hatalar | `hata` | `DB.bugs` | 4 projede |
+| Değişiklik | `degisiklik` | `DB.changeRequests` | 5 projede |
+| Teslim | `teslim` | `DB.deliveries` | 5 projede |
+| Belgeler | `belge` | `DB.documents` (`proje` alanı) | 3 projede |
+| Aktivite | `aktivite` | `GV.audit.oku(p.kod, 30)` | her projede |
+
+**Tembel yükleme zorunludur** (risk R-04: R1'de bu ekran 111 KB'tı). Sekme
+gövdesi `gv:tab` olayında çizilir:
+
+```js
+GV.on(document, 'gv:tab', function(e){ … }, 'projeDetay-tab');   // §2.6 — KALICI düğüm
+GV.tabs('#projeSekme');
+```
+
+`GV.tabs` aktif sekmeyi `location.hash`e yazar ve açılışta geri okur — yani
+`app-proje-detay.html?id=PRJ-2026-006#degisiklik` doğrudan o sekmeyi açar.
+**Bu adres biçimi sözleşmedir**; Operasyon kuyruğu ve `GV.proje.kapanisKontrol`
+buraya bağlanıyor.
+
+⚠️ `GV.tabs` panelleri **belge genelinde** arar — aynı sayfada ikinci bir
+sekme kümesi kurma. Sekme içindeki listeler `GV.list`tir ve **`urlSync:false`
+bildirmelidir** (ana ekranda URL senkronu kullanan başka bir liste varsa
+çakışır; bayrak artık iki yönlüdür, §18.9).
+
+**Küresel çapraz liste açma.** Bir alt kayıt tipini proje bağlamı dışında
+görmek gerekiyorsa yeni ekran değil **Operasyon filtresi** kullanılır
+(`app-operasyon.html?tip=…`). Rota haritası §4.2 bunu birebir yazıyor.
+
+### 18.8 Görev listesi — TEK LİSTE, KAYITLI GÖRÜNÜM
+
+`app-gorev.html` **tek bir `GV.list`tir**. R1'de 9 menü girdisi `?t=` ile
+bu ekrana gidiyordu; R2'de tek girdi var ve varyasyonlar **sekme + kayıtlı
+görünüm**. Sekme varyasyonu için **ayrı ekran açma** (şartname §3.3).
+
+Sekmeler bir DURUM LİSTESİ DEĞİL, birer kuraldır ve `DB.taskStatuses`ten
+türetilir — elle yazma. Eski `?t=<anahtar>` bağlantı biçimi `GV.list`in kendi
+URL senkronu üzerinden çalışmalıdır, yani bu ekranda **`urlSync` açık kalır**.
+
+**Toplantı ve kararlar bağlamsal aktivitedir**: karar göreve bağlanır
+(`app-gorev.html` kayıtlı görünümü). Ayrı toplantı ekranı **açılmaz**.
+
+### 18.9 Ortak katmanda BU OTURUMDA eklenen imzalar
+
+| İmza | Nerede | Ne yapar |
+|---|---|---|
+| `GV.list` `cfg.rowOpen(kayit, render)` | `ui.js` | Satıra tıklayınca çağrılır. Tablo satırı, mobil satır, kart ve kanban kartı — dördü de. Satır İÇİNDEKİ `a/button/input/select/textarea/label` tıklaması **tetiklemez**. Dinleyici bir kez bağlanır |
+| `GV.list` `cfg.urlSync:false` | `ui.js` | Artık **iki yönlü**: yazmayan liste **okumaz da**. Aynı sayfadaki ikinci/üçüncü liste bunu bildirmek ZORUNDADIR |
+| `GV.fin.ciftNet(tahsilatKod, faturaKod)` | `domain.js` | Bir tahsilat–fatura çiftinin NET tahsisi (ters kayıtlar dahil) |
+| `GV.fin.dagitimNet(tahsilatKod)` | `domain.js` | Bir tahsilatın tüm faturalara net dağıtımı |
+| `GV.fin.canliTahsisler(faturaKod)` | `domain.js` | Neti sıfırlanmamış tahsis satırları |
+| `GV.fin.tahsisKaldir(tahsilatKod, faturaKod, gerekce)` | `domain.js` | **Üçüncü argüman eklendi ve ZORUNLU.** Kayıt silmez, eksi tutarlı ters kayıt üretir (§8.5) |
+| `DB.supplierQuotes[].id` | `ops.js` | `talep · tedarikçi`den türetilmiş satır kimliği |
+
+### 18.10 Bu dilimde beyan edilecek backend payı maddeleri
+
+Ajan bu tabloyu **kopyalar**, kendi maddesini uydurmaz (§10.2 (b) biçimi):
+
+| Kod | Madde | Şartname |
+|---|---|---|
+| `BE-P1` | Görev/proje durum geçişi sunucuda yeniden doğrulanmaz; yetki ve zorunlu alan kontrolü istemcide koşar | §9 |
+| `BE-P2` | Zaman kaydı ve onay zinciri gerçek bir timesheet servisine bağlı değil; süreler bellekte | §9 |
+| `BE-S4` | Belge yükleme gerçek depoya yazmaz; dosya adı ve boyutu bellekte tutulur | §9 |
+| `BE-S5` | Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır | §9 `audit_event` |
+| `BE-D1` | SLA sayacı gerçek zamanlı çalışmaz; `slaDurum` kaynak veride yazılı sabit değerdir | §9 |
+
+`BE-D1` **yalnız destek ekranlarında**, `BE-P2` yalnız proje ve görev
+ekranlarında yazılır — ilgisiz madde beyan etmek beyanı gürültüye çevirir.
