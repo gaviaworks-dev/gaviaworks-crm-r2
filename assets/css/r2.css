@@ -1,0 +1,226 @@
+/* =====================================================================
+   GAVIAWORKS CRM R2 — REVİZYONUN EKLEDİĞİ STİLLER
+
+   tokens.css · shell.css · ui.css R1'den TAŞINDI ve DEĞİŞTİRİLMEDİ.
+   Bu dosya yalnız R2'nin YENİ bileşenlerini giydirir:
+     · üst çubuk çekmece parçaları (takvim / onay / bildirim)
+     · Gündem paneli kartları (pn-*)
+     · Hızlı Notlar çekmecesi (qn-*)
+
+   ⚠️ SIFIR HARDCODE DEĞER. Her renk, boşluk, yarıçap, gölge ve tipografi
+   ölçüsü tokens.css'teki custom property'den okunur (CLAUDE.md kuralı).
+   ===================================================================== */
+
+/* =====================================================================
+   1. ÜST ÇUBUK — Yeni menüsü ve çekmece parçaları
+   ===================================================================== */
+.gv-newbtn{ gap:var(--sp-3); white-space:nowrap; }
+@media (max-width:900px){
+  .gv-newbtn span{ display:none; }
+}
+
+.gv-me-menu-empty{
+  padding:var(--sp-7) var(--sp-8);
+  font-size:var(--fs-sm); color:var(--muted); line-height:var(--lh-base);
+}
+
+.gv-drawer-sub{
+  margin:0 0 var(--sp-7);
+  font-size:var(--fs-sm); color:var(--muted);
+}
+.gv-drawer-sec{ margin-bottom:var(--sp-9); }
+.gv-drawer-sec h4{
+  margin:0 0 var(--sp-6);
+  font-size:var(--fs-xs); font-weight:var(--fw-700);
+  letter-spacing:var(--ls-caps); text-transform:uppercase; color:var(--muted);
+}
+
+/* Çekmece içi zaman çizelgesi — takvim, onay ve bildirim ortak kullanır */
+.gv-tl{ list-style:none; margin:0; padding:0; }
+.gv-tl li{
+  padding:var(--sp-6) 0;
+  border-bottom:1px solid var(--line);
+  display:flex; flex-direction:column; gap:var(--sp-2);
+}
+.gv-tl li:last-child{ border-bottom:0; }
+.gv-tl b{ font-size:var(--fs-sm); font-weight:var(--fw-600); color:var(--ink); }
+.gv-tl-meta{ font-size:var(--fs-xs); color:var(--muted); }
+
+.gv-note-hint{
+  margin:var(--sp-8) 0 0;
+  padding:var(--sp-6);
+  background:var(--bg-sunk); border-radius:var(--r-md);
+  font-size:var(--fs-xs); color:var(--muted); line-height:var(--lh-base);
+}
+
+/* =====================================================================
+   2. GÜNDEM PANELİ — şartname §4.1
+   En fazla altı kart: ajanda · iş kuyruğu · notlar · bildirim + iki özet
+   ===================================================================== */
+.pn-grid{ margin-top:var(--sp-9); }
+.pn-col{ display:flex; flex-direction:column; gap:var(--sp-9); min-width:0; }
+/* .gv-card + .gv-card ui.css'te üst boşluk veriyor; kolonda gap zaten
+   var, ikisi üst üste binmesin. */
+.pn-col .gv-card + .gv-card{ margin-top:0; }
+
+.pn-card{ display:flex; flex-direction:column; min-width:0; }
+.pn-body{ min-width:0; }
+.pn-pad{ padding:var(--card-pad); }
+
+.pn-list{ list-style:none; margin:0; padding:0; }
+.pn-row{
+  display:flex; align-items:center; gap:var(--sp-6);
+  padding:var(--sp-6) var(--card-pad);
+  border-bottom:1px solid var(--line);
+  min-width:0;
+}
+.pn-row:last-child{ border-bottom:0; }
+.pn-row.is-late{ background:var(--danger-tint); box-shadow:inset var(--sp-1) 0 0 var(--danger); }
+.pn-row.is-done .pn-main b{ text-decoration:line-through; color:var(--muted); }
+
+.pn-time{
+  flex:0 0 auto;
+  font-family:var(--font-num); font-size:var(--fs-sm); font-weight:var(--fw-700);
+  color:var(--acc-deep);
+}
+.pn-main{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:var(--sp-2); }
+.pn-main b{
+  font-size:var(--fs-sm); font-weight:var(--fw-600); color:var(--ink);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.pn-sub{
+  font-size:var(--fs-xs); color:var(--muted);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.pn-right{ flex:0 0 auto; display:flex; align-items:center; gap:var(--sp-5); }
+
+.pn-foot{
+  display:flex; align-items:center; gap:var(--sp-6); flex-wrap:wrap;
+  padding:var(--sp-7) var(--card-pad);
+  border-top:1px solid var(--line); background:var(--bg-sunk);
+}
+.pn-hint{ font-size:var(--fs-2xs); color:var(--muted); flex:1 1 auto; min-width:0; }
+
+/* Rol bazlı özet kartlarının sayaç şeridi */
+.pn-stats{
+  display:flex; gap:var(--sp-9); flex-wrap:wrap;
+  padding:var(--sp-8) var(--card-pad);
+  border-bottom:1px solid var(--line);
+}
+.pn-stat-num{
+  font-family:var(--font-num); font-size:var(--fs-xl); font-weight:var(--fw-800);
+  color:var(--ink); letter-spacing:var(--ls-tight);
+}
+.pn-stat-lbl{ font-size:var(--fs-xs); color:var(--muted); margin-top:var(--sp-2); }
+
+@media (max-width:640px){
+  .pn-stats{ gap:var(--sp-7); }
+  .pn-row{ padding:var(--sp-6) var(--page-pad-sm); }
+}
+
+/* =====================================================================
+   3. HIZLI NOTLAR ÇEKMECESİ — şartname §4.2
+   Tek metin alanı · isteğe bağlı tarih · otomatik sahip · checkbox.
+   Kategori, renk, öncelik, durum sekmesi, KPI şeridi ve toplu işlem YOK.
+   ===================================================================== */
+.qn-new{
+  padding:var(--sp-7);
+  background:var(--bg-sunk);
+  border:1px solid var(--line);
+  border-radius:var(--r-md);
+  margin-bottom:var(--sp-8);
+}
+.qn-text{
+  width:100%; resize:vertical; min-height:calc(var(--sp-13) * 1.4);
+  font-family:var(--font); font-size:var(--fs-sm); line-height:var(--lh-base);
+}
+.qn-new-foot{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:var(--sp-6); margin-top:var(--sp-6); flex-wrap:wrap;
+}
+.qn-date{
+  display:flex; align-items:center; gap:var(--sp-4);
+  color:var(--muted); min-width:0;
+}
+.qn-date .inp{ height:var(--h-sm); font-size:var(--fs-xs); }
+
+.qn-search{
+  position:relative; display:flex; align-items:center; gap:var(--sp-4);
+  margin-bottom:var(--sp-7); color:var(--muted);
+}
+.qn-search .inp{ height:var(--h-sm); font-size:var(--fs-sm); flex:1 1 auto; min-width:0; }
+
+.qn-list{ list-style:none; margin:0 0 var(--sp-7); padding:0; }
+.qn-item{
+  display:flex; align-items:flex-start; gap:var(--sp-6);
+  padding:var(--sp-6) 0;
+  border-bottom:1px solid var(--line);
+  min-width:0;
+}
+.qn-item:last-child{ border-bottom:0; }
+.qn-item.is-done .qn-title{ text-decoration:line-through; color:var(--muted); }
+
+.qn-check{ flex:0 0 auto; display:flex; align-items:center; padding-top:var(--sp-1); cursor:pointer; }
+.qn-check input{ width:var(--sp-8); height:var(--sp-8); cursor:pointer; accent-color:var(--acc); }
+.qn-check span{ display:none; }
+
+.qn-body{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:var(--sp-2); }
+.qn-title{
+  font-size:var(--fs-sm); font-weight:var(--fw-600); color:var(--ink);
+  word-break:break-word;
+}
+.qn-sub{ font-size:var(--fs-xs); color:var(--muted); word-break:break-word; }
+.qn-due{
+  display:flex; align-items:center; gap:var(--sp-3);
+  font-size:var(--fs-2xs); color:var(--muted);
+}
+
+.qn-sep{
+  margin:var(--sp-8) 0 var(--sp-5);
+  font-size:var(--fs-2xs); font-weight:var(--fw-700);
+  letter-spacing:var(--ls-caps); text-transform:uppercase; color:var(--muted);
+}
+
+.qn-empty{
+  padding:var(--sp-11) var(--sp-7);
+  text-align:center; color:var(--muted);
+}
+.qn-empty p{ margin:var(--sp-6) 0 0; font-size:var(--fs-sm); }
+
+/* 5 saniyelik geri alma şeridi (§4.2) */
+.qn-undo:empty{ display:none; }
+.qn-undo-bar{
+  display:flex; align-items:center; justify-content:space-between;
+  gap:var(--sp-6); flex-wrap:wrap;
+  padding:var(--sp-6) var(--sp-7);
+  background:var(--ok-tint); border:1px solid var(--ok);
+  border-radius:var(--r-md);
+  font-size:var(--fs-xs); color:var(--ok-ink);
+}
+
+/* Sahiplik ve backend payı beyanı — gizlenmez, küçültülmez */
+.qn-owner{
+  margin:var(--sp-9) 0 0;
+  padding:var(--sp-6);
+  background:var(--bg-sunk); border-radius:var(--r-md);
+  font-size:var(--fs-2xs); color:var(--muted); line-height:var(--lh-base);
+  display:flex; gap:var(--sp-4); align-items:flex-start; flex-wrap:wrap;
+}
+.qn-backend{ display:block; width:100%; color:var(--warn); }
+
+/* Yönetim girdileri — §3.1 "günlük menüyle aynı görsel ağırlıkta olmamalıdır".
+   Ayrı blok, üstünde ince ayraç, soluk etiket ve küçük tipografi. */
+.gv-menu-admin{
+  margin-top:var(--sp-8);
+  padding-top:var(--sp-6);
+  border-top:1px solid var(--line);
+}
+.gv-menu-admin-lbl{
+  padding:0 var(--sp-7) var(--sp-4);
+  font-size:var(--fs-2xs); font-weight:var(--fw-600);
+  letter-spacing:var(--ls-caps); text-transform:uppercase;
+  color:var(--faint);
+}
+.gv-menu-item.is-admin{ opacity:.72; font-size:var(--fs-xs); }
+.gv-menu-item.is-admin:hover,
+.gv-menu-item.is-admin[aria-current="page"]{ opacity:1; }
