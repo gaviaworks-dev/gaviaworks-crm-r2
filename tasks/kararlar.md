@@ -615,3 +615,140 @@ dosya bu dilimin içinde: `app-gorev-detay.html` tek başına 23 satırı,
 `app-destek-detay.html` 4 satırı kurtarıyor. Menüde kilitli 12 hedefin 5'i bu
 alanda. Proje alt kayıtları (rota 33-47, 15 satır) tek bir sekmeli detay
 ekranıyla kapanıyor — kalan rota satırlarının en yoğun bloğu.
+
+---
+
+## ADR-R2-26 · Bakım paketi seviyesinin kanonu KISA biçimdir
+
+**Karar (K-27).** Veride yalnız **seviye** tutulur (`Standart` · `Kurumsal`).
+Cins adı (`Bakım`) zaten `tip` alanındadır ve seviyeye **yapıştırılmaz**.
+Sözlük ile kayıt aynı kısa değeri konuşur; uzun adı gerektiğinde **ekran**
+birleştirir, veri değil.
+
+**Ölçülen çelişki — üç ayrı biçim:**
+
+| Yer | Önce | Sonra |
+|---|---|---|
+| `DB.supportPackageTypes` | `['Standart Bakım','Kurumsal Bakım']` | `['Standart','Kurumsal']` |
+| `DB.supportPackages[].ad` | `'Kurumsal Bakım'` (7 kayıt) | alan **kaldırıldı** → `[].seviye` = `'Kurumsal'` |
+| `DB.supportPackages[].tip` | `'Bakım'` (7/7) | değişmedi — cins, seviye değil |
+| `DB.tickets[].bakimPaketi` | `'Standart'`/`'Kurumsal'`/`'—'` | `'—'` (2 kayıt) → `null` |
+
+**Veri kaybı sıfır.** Uzun ad `seviye + ' ' + tip` ile birebir yeniden
+kurulur ve 7/7 kayıtta doğrulandı. Birleştirme **tek yerde**:
+`GV.destek.paketAdi(p)`. `'—'` bir seviye değil "yazılmamış" demekti;
+`null` olarak yazılması sözlük dışı değeri de temizledi.
+
+**Kapatılan kusur.** `GV.destek.paketOf` seviyeyi `tip` ile
+karşılaştırıyordu (`'Bakım'` vs `'Kurumsal'`) ve **hiç tutmuyordu** — yordam
+sessizce `aday[0]`a düşüyor, müşterinin birden çok paketi varsa yanlış paketi
+döndürüyordu. Bir önceki turda `ad` önekiyle yamanmıştı; biçim farkı ortadan
+kalktığı için karşılaştırma artık **düz eşitlik**. 5/5 talep doğru pakete
+bağlanıyor.
+
+---
+
+## ADR-R2-27 · `firsatKazan`ın üç hedefi müşteri detayının Finans sekmesine gider
+
+**Karar (K-28).** `app-sozlesme-detay.html` · `app-odemeplani-detay.html` ·
+`app-sozlesme-form.html` **yeni ekrana çevrilmez**. Rota haritasının
+GÖMÜLÜYOR kararına uyulur: üçü de `app-musteri-detay.html?id=<hesap>#finans`
+adresine bağlandı.
+
+Sözleşme oluşturma yüzeyi sekmede henüz yok; bu yüzden öneri etiketi
+"Sözleşme oluştur" değil **"Finans sekmesini aç — sözleşme"** oldu ve
+`yeni:false` işaretlendi. Yapılamayan işi düğme olarak vaat etmemek
+kuralının doğrudan uygulaması.
+
+**Tarama sonucu:** ortak katman + 31 ekran üzerinde yapılan ölü hedef
+taramasında bu üç ad artık geçmiyor. Kalan ölü hedefler ya bu dilimde
+yazılıyor (`app-personel` · `app-zaman` · `app-varlik` · `app-izin-detay` ·
+`app-zaman-onay`) ya da Ayarlar dilimine ait (4 ekran) — hepsi menüde
+`markWip` ile kilitli, sahte buton yok. İki yeni borç bulundu ve deftere
+yazıldı: `app-proje-form.html` (V2-39) ve `app-satinalma-form.html` (V2-40).
+
+---
+
+## ADR-R2-28 · Personel yaşam döngüsü tek eksende; `aktif` tuzağa çevrildi
+
+**Karar (K-18 — R1'den devreden borç KAPANDI).**
+
+**Ölçülen kusur.** `employee` `GV.flow`un 15. geçiş varlığıydı, yedi durumu
+ve yedi geçiş kuralı tanımlıydı — ama **hiçbir ekran `durum` alanını
+okumuyordu**. Yedi ekran bunun yerine `e.aktif !== false` yazıyordu ve o alan
+**16 kaydın 16'sında `true`** idi: hiçbir şey ayırt etmiyordu. Somut sonuç —
+`EMP-015` (Nihan Arslan) `Offboarding` durumunda, çıkış tarihi 2026-08-31
+yazılı, ve yedi ekranın yedisinde de "görev atanabilir personel" listesinde
+görünüyordu.
+
+**Yapılan.**
+1. `DB.employees[].aktif` **tuzağa** çevrildi (`hr.js`): okuyan `undefined`
+   alır, `DB.ikBayat.sayac` artar. K-21'in `DB.customers[].durum` tuzağıyla
+   aynı disiplin.
+2. İki **ayrı soru**, iki ayrı yordam: `GV.hr.istihdamda(e)` (bordroda mı) ·
+   `GV.hr.atanabilir(e)` (YENİ iş verilebilir mi). İkisini tek "aktif"
+   bayrağına sıkıştırmak, izinli çalışanı bordrodan düşürmek ya da
+   ayrılmakta olana iş atamak demekti; ikisi de oluyordu.
+3. Yedi çağrı yeri `GV.hr.atanabilirler()` ile değiştirildi.
+4. `tasks/qa/ik-ekseni.js` yazıldı: **39 kontrol, 7 eksen.**
+
+**Kişisel veri kapısı** (kararın parçası değil ama aynı dilimde zorunluydu):
+özlük ve sağlık alanları için kapı **yoktu** — kan grubu ve acil kişi bilgisi
+kontrolsüz basılabilirdi. Yeni matris anahtarı **açılmadı**; kapı var olan
+`personel` kapsamından türetildi (`GV.hr.ozlukGorebilir`). Maaş kapısı zaten
+`permMatrix.maas`taydı (4 rol).
+
+**Beyar'a sorulan:** `Offboarding → Aktif` kenarı yok — yanlışlıkla çıkış
+sürecine alınan personel geri döndürülemez. Bu, "geri almak yapmaktan ağır
+olamaz" kuralına aykırı görünüyor ama `Ayrıldı` gerçek dünyada geri alınmaz.
+Kenar **eklenmedi**; karar Beyar'ındır.
+
+---
+
+## ADR-R2-29 · Zimmet kabulü envanterin tek kaynağıdır
+
+**Karar (K-18 eki).** `DB.assets[].zimmetli` ve `[].durum` **türetilmiş
+görünümdür**; otorite `DB.assignments`tir. Envanter yükleme anında zimmet
+defterinden yeniden hesaplanır (`GV.varlik.tazeleHepsi`, `Fin.tazeleHepsi`
+ile aynı desen) ve elle yazılmış değer hayatta kalmaz.
+
+**Ölçülen çelişki.** Envanter zimmet TUTANAĞI YAZILDIĞI AN güncelleniyordu,
+personelin kabulü beklenmiyordu. `ZMT-2026-007`: tutanak `Aktif`,
+`personelOnay:'Bekliyor'`, ama envanter `zimmetli:'EMP-006'` ·
+`durum:'Zimmetli'` diyordu. İki defter aynı soruya iki cevap veriyordu.
+
+**Kabul kuralı.** Zimmet ancak **personel onayladığında** envanteri
+`Zimmetli` yapar. Onay beklerken demirbaş **`Zimmet bekliyor`**
+durumundadır — ne depoda ne teslim edilmiş. Ara durumu yok saymak, kabul
+edilmemiş bir teslimi teslim edilmiş göstermekti.
+`DB.assetStatuses` yazıldı (sözlük **yoktu**): `Depoda · Zimmet bekliyor ·
+Zimmetli · Aktif · Hurda`.
+
+**Yüklemede 4 kayıt düzeltildi** ve düzeltme `sonTazeleme.degisen` içinde
+saklandı — bilgi silinmedi, ekran gösterebiliyor:
+
+| Demirbaş | Envanter diyordu | Zimmet defteri | Sonuç |
+|---|---|---|---|
+| `DMB-2025-004` | `EMP-006` · Zimmetli | tutanak var, **kabul bekliyor** | `Zimmet bekliyor` |
+| `DMB-2025-007` | `EMP-009` · Zimmetli | **tutanak YOK** | `Depoda` |
+| `DMB-2026-013` | `EMP-011` · Zimmetli | **tutanak YOK** | `Depoda` |
+| `DMB-2026-014` | `EMP-012` · Zimmetli | **tutanak YOK** | `Depoda` |
+
+⚠️ **BEKLENMEDİK BULGU:** üç demirbaşta envanter bir sahip yazıyordu ama
+**hiç zimmet kaydı yoktu**. Tek kaynak kararı gereği tutanak otorite kabul
+edildi ve envanter temizlendi; atılan iddia korunuyor ve raporlanıyor.
+Beyar'a soruldu: üç tutanak mı eksik, yoksa envanter mi yanlıştı?
+
+**Kapı yönü ölçüldü.** `GV.varlik.kabulEt` ve `.kabulGeriAl` **aynı yetki
+kümesinden** geçer (zimmetli personel · ik · sahip · genelmudur). Geri
+almada gerekçe zorunludur — bu yetki değil KAYIT koşuludur ve kimseyi
+kilitlemez.
+
+---
+
+## ADR-R2-30 · Sıradaki dilim Ekip ve Kaynaklar
+
+**Karar (K-29).** Şartname §3.1'in üç ana sayfası: **Personel · Zaman ve
+İzin · Varlıklar**. Kapasite, performans, eğitim, işe giriş/çıkış, demirbaş,
+zimmet ve filo bu üçünün **bağlamsal görünümleridir** — ayrı ekran ailesi
+açılmaz. Kapasite "İş ve Kapasite" raporudur (yayında).
