@@ -232,5 +232,41 @@ ol('yükleme tazelemesi artık çelişki DÜZELTMİYOR (literal defterle uyumlu)
   GV.varlik.sonTazeleme.degisen.length === 0,
   GV.varlik.sonTazeleme.degisen.length + ' değişen');
 
+/* =====================================================================
+   [7] KAYNAK TARAFLI `zorunlu` — MANDAL (V2-58 · Beyar kararı bekliyor)
+
+   Kapılar taşındı ama `zorunlu` alanı aynı kusur sınıfını taşımaya devam
+   ediyor: kaynak durumda tanımlıdır ve oradan çıkan HER hedefe uygulanır.
+   Sonuç, ölçüldü — bir taslağı İPTAL ETMEK için onu GÖNDERMEK üzere gereken
+   alanları doldurmak gerekiyor.
+
+   Bu tur DÜZELTİLMEDİ: 19 durumu birden değiştirmek verilen üç kararın
+   kapsamı dışında. Ama sessizce büyümesin diye MANDAL kondu: sayı bugünkü
+   ölçümü aşarsa kırmızı yanar. Azalması serbesttir.
+   ===================================================================== */
+console.log('\n[7] Kaynak taraflı `zorunlu` — mandal (düzeltilmedi, Beyar kararı)');
+const GERI = /İptal|Ret|Redded|Kayb|Geri|İade|Mükerrer|Beklemeye/;
+let genisDurum = 0;
+for (const tur of Object.keys(DB.transitions))
+  for (const [d, k] of Object.entries(DB.transitions[tur]))
+    if (k && k.zorunlu && k.zorunlu.length && k.next && k.next.length > 1 &&
+        k.next.some(h => GERI.test(h))) genisDurum++;
+
+let kilitli = [];
+for (const tur of Object.keys(DB.transitions)) {
+  const tan = DB.flowEntities[tur];
+  if (!tan || !DB[tan.koleksiyon]) continue;
+  for (const rec of DB[tan.koleksiyon]) {
+    const k = DB.transitions[tur][rec[tan.alan]];
+    if (!k || !k.zorunlu || !k.zorunlu.length || !k.next) continue;
+    if (!k.next.some(h => GERI.test(h))) continue;
+    const eksik = GV.flow.eksikAlanlar(rec, k, null, null);
+    if (eksik.length) kilitli.push(`${tur}/${rec.kod} eksik:${eksik.join('+')}`);
+  }
+}
+ol(`geri dönüşü kaynak taraflı \`zorunlu\` ile daralan durum ≤ 19`, genisDurum <= 19, genisDurum + ' durum');
+ol(`bu yüzden İPTAL EDİLEMEYEN kayıt ≤ 1`, kilitli.length <= 1,
+  kilitli.length ? kilitli.join(' · ') : '0');
+
 console.log(`\n${kaldi === 0 ? '✓ TEMİZ' : '✗ ' + kaldi + ' BULGU'} · ${gecti + kaldi} kontrol koşuldu`);
 process.exit(kaldi === 0 ? 0 : 1);
