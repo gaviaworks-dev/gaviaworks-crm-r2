@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Yeni Destek Talebi — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="operasyon" data-screen="destek">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   DESTEK TALEBİ FORMU — ekran brief §5 (CreateEditPage deseni) · §18.6 ·
+   §19.0 · §19.2 · §19.6
+
+   DESEN: `GV.pageHead` + `GV.form` + `GV.afterSave`. Bu depoda
+   `CreateEditPage` ADINDA BİR BİLEŞEN YOKTUR (brief §5); "oluştur/düzenle
+   sayfası" bu üç çağrının desenidir ve burada birebir uygulanır.
+
+   ⚠️ KAYIT YAZMA TEK KAPI: `GV.destek.olustur(v)` (brief §19.2).
+   `DB.tickets.push(...)` bu ekranda YOK. Kod üretimi, başlangıç durumu,
+   SLA taahhüdünün politikadan okunması ve denetim izi ORTAK YORDAMDADIR.
+
+   ⚠️ SLA — bu ekranın en kolay yanlış yapılacak yeri.
+   `DB.slaPolicies[].ilkYanit` ve `.cozum` DAKİKADIR (60 · 120 · 240 · 480 ·
+   1440 · 2880 · 4320). `DB.tickets[].sla` ise politikanın `etiket`
+   DİZESİDİR ('4 saat' · '8 saat' · '2 gün' · '3 gün'). İkisi ayrı birimdir.
+   Bu yüzden `sla` FORMA KONMADI: alanı kullanıcı yazmaz,
+   `GV.destek.olustur` politikadan kendisi okur. Form yalnız kategori ve
+   önceliği sorar; sağ panel hangi politikanın düşeceğini CANLI gösterir.
+
+   ÖLÇÜLDÜ (bu ekranda uydurma yok): 7 politikanın 7'sinde `etiket`,
+   `cozum` dakikasının insan okunur karşılığıdır — `ilkYanit`ın değil.
+   SLA-01 cozum 240 dk = '4 saat' · SLA-04 cozum 4320 dk = '3 gün' ·
+   SLA-06 cozum 2880 dk = '2 gün'. `ilkYanit` ayrı ve daha kısa bir
+   taahhüttür (60 · 120 · 240 · 480 · 1440 dk) ve kayda YAZILMAZ.
+   Sağ panel üçünü de ayrı satırda, birimiyle gösterir.
+
+   ⚠️ Üç politika `oncelik:'Tümü'` jokeri taşır (SLA-05 · 06 · 07).
+   Eşleştirmeyi `GV.destek.slaPolitikasi` yapar; bu ekran İKİNCİ BİR
+   EŞLEŞTİRME KURMAZ.
+
+   ⚠️ `slaDurum` yeni kayıtta `null` kalır (BE-D1). Sayaç canlı çalışmaz;
+   'Zamanında' yazmak ölçülmemişi ölçülmüş göstermek olurdu (L-13). Ekran
+   bunu "henüz ölçülmedi" diye söyler, boş bırakmaz ve sıfır yazmaz.
+
+   DURUM ALANI FORMDA YOKTUR. Yeni talep `DB.ticketStatuses[0]` durumunda
+   doğar (sabit dize yazılmaz, sözlükten okunur) ve durum yalnız
+   `GV.flow.gec('ticket', …)` ile değişir — düğmeleri talep detayında.
+   Düzenleme kipinde durum sağ panelde SALT OKUNUR bilgi olarak durur.
+
+   VERİ: `org.js` · `crm.js` · `work.js` · `misc.js` · `ops.js` ·
+   `lifecycle.js`. `hr.js` GEREKMEZ — bu ekran `DB.timelogs` okumaz
+   (brief §19.0). `firsat.js` ve `odeme.js` yüklenmez.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F     = GV.fmt;
+  var esc   = GV.esc;
+  var ico   = GV.ico;
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var GERI = 'app-destek.html';
+
+  var q   = new URLSearchParams(location.search);
+  var kod = q.get('id');
+  var rec = kod ? GV.destek.kayit(kod) : null;
+
+  /* ---- Kayıt yok durumu (brief §10) -------------------------------- */
+  if(kod && !rec){
+    GV.pageHead({
+      eyebrow:'Operasyon · Destek', title:'Kayıt bulunamadı', sub:kod,
+      actions:[{ label:'Destek listesine dön', icon:'i-arrow-left', href:GERI }]
+    });
+    mount.innerHTML = GV.errorState({
+      title:kod + ' bulunamadı',
+      desc:'Bu kod hiçbir destek talebiyle eşleşmedi. Adres çubuğundaki kaydı kontrol edin ' +
+           'ya da destek listesinden talebi seçin.',
+      action:'<a class="btn btn-acc" href="' + GERI + '">Destek listesine dön</a>' });
+    return;
+  }
+
+  /* ---- Yetki kapısı -------------------------------------------------
+     `GV.destek.olustur` kendi içinde de `ekle` kapısını tutuyor; buradaki
+     kapı onu tekrarlamak için değil, YETKİSİZ KULLANICIYA DOLDURULAMAYACAK
+     BİR FORM AÇMAMAK için var. İki kapı da aynı matris anahtarını okur. */
+  var izinli = rec ? GV.perm.can('duzenle') : GV.perm.can('ekle');
+  if(!izinli){
+    GV.pageHead({
+      eyebrow:'Operasyon · Destek',
+      title:rec ? rec.kod : 'Yeni Destek Talebi',
+      sub:'Bu ekran için yetkiniz yok',
+      actions:[{ label:'Destek listesine dön', icon:'i-arrow-left', href:GERI }]
+    });
+    mount.innerHTML = GV.empty({
+      icon:'i-lock',
+      title:rec ? 'Talebi düzenleme yetkiniz yok' : 'Destek talebi açma yetkiniz yok',
+      desc:'Rolünüz (' + GV.perm.role() + ') bu işlem için yetkili değil. ' +
+           'Talepleri görüntülemeye devam edebilirsiniz.',
+      action:'<a class="btn btn-line" href="' + GERI + '">Destek listesine dön</a>' });
+    return;
+  }
+
+  /* =================================================================
+     1. SÖZLÜKLER — hepsi veriden, hiçbiri elle
+     ================================================================= */
+  function benzersiz(list){
+    return (list || []).filter(function(v, i, s){
+      return v != null && v !== '' && v !== '—' && s.indexOf(v) === i; });
+  }
+  function bosNull(x){
+    var s = (x == null) ? '' : String(x).trim();
+    return s === '' ? null : s;
+  }
+
+  var TALEPLER  = DB.tickets || [];
+  var DURUMLAR  = DB.ticketStatuses || [];
+  /* Yeni talebin doğum durumu — SABİT DİZE YAZILMAZ, sözlüğün ilk değeri.
+     `GV.destek.olustur` da aynı yerden okur; ekran yalnız GÖSTERİR. */
+  var ILK_DURUM = DURUMLAR[0] || null;
+
+  /* KATEGORİ SÖZLÜĞÜ AYRI BİR KOLEKSİYON DEĞİLDİR (ölçüldü: `DB.ticketCategories`
+     diye bir şey yok). İki yazılı kaynaktan TÜRETİLİR ve hangisinden geldiği
+     ekranda yazılır:
+       (a) `DB.slaPolicies[].kategori` — SLA matrisinin kategori ekseni,
+       (b) mevcut taleplerin `kategori` alanı.
+     Ölçüm: ikisi de aynı dört değeri veriyor, (b)'de fazladan değer yok. */
+  var KAT_POLITIKA = benzersiz((DB.slaPolicies || []).map(function(p){ return p.kategori; }));
+  var KAT_KAYIT    = benzersiz(TALEPLER.map(function(t){ return t.kategori; }));
+  var KAT_EKSTRA   = KAT_KAYIT.filter(function(k){ return KAT_POLITIKA.indexOf(k) === -1; });
+  var KATEGORILER  = KAT_POLITIKA.concat(KAT_EKSTRA);
+
+  var ONCELIKLER = DB.priorities || [];   /* brief §18.4 — 4 değer */
+  /* ETKİ: brief bir etki SÖZLÜĞÜ adı bildirmiyor, o yüzden ekran bir sözlük
+     adı UYDURMAZ — seçenekler mevcut taleplerin `etki` alanından türetilir
+     (`app-destek.html`in filtre seçeneklerini üretme biçimiyle aynı) ve
+     nereden geldiği "Sözlük kaynakları" kartında yazılıdır. */
+  var ETKILER    = benzersiz(TALEPLER.map(function(t){ return t.etki; }));
+  var KANALLAR   = DB.ticketChannels || [];
+
+  /* ⚠️ PAKET TİPİ SÖZLÜĞÜ İLE KAYITLAR ÇELİŞİYOR — ölçüm, yorum değil.
+     `DB.supportPackageTypes` iki değer taşıyor: 'Standart Bakım' ·
+     'Kurumsal Bakım'. Mevcut 7 talebin `bakimPaketi` alanında ise KISA
+     biçim yazılı: 'Standart' (2) · 'Kurumsal' (3) · '—' (2, yani paket yok).
+     Seçenekler SÖZLÜKTEN üretilir (tek doğru kaynak L-40); kısa biçimler
+     seçenek olarak basılmaz çünkü sözlükte yoklar. Çelişki gizlenmez:
+     aşağıdaki alanın ipucunda ve "Sözlük kaynakları" kartında yazılıdır ve
+     ortak katman sahibine raporlandı. */
+  var PAKET_TIPLERI  = DB.supportPackageTypes || [];
+  var PAKET_KAYITTA  = benzersiz(TALEPLER.map(function(t){ return t.bakimPaketi; }));
+  var PAKET_CELISKI  = PAKET_KAYITTA.filter(function(v){ return PAKET_TIPLERI.indexOf(v) === -1; });
+
+  var HESAPLAR = (DB.accounts || []);
+  var PROJELER = (DB.projects || []);
+  var PERSONEL = (DB.employees || []).filter(function(e){ return e.aktif !== false; });
+  var KONTAKLAR = (DB.contacts || []).filter(function(c){ return c.aktif !== false; });
+
+  /* ⚠️ DÜZENLEME KİPİNDE SESSİZ SİLME OLMAZ — ölçülerek yakalandı.
+     Bir `<select>`in seçenek listesinde kayıttaki değer YOKSA alan boş
+     açılır ve kaydetme, kullanıcının hiç dokunmadığı o alanı `null`a
+     düşürür. Ölçüm: DST-2026-118 düzenlenirken `bakimPaketi:'Standart'`
+     siliniyordu, çünkü sözlük ('Standart Bakım' · 'Kurumsal Bakım') o
+     kısa biçimi taşımıyor. Sözlüğü tek kaynak saymak doğru; ama sözlükle
+     çelişen bir kaydı sessizce boşaltmak veri kaybıdır. Kayıttaki değer
+     listeye KAYNAĞI YAZILARAK eklenir — yeni kayıtta eklenmez, yani
+     çelişki yayılmaz, yalnız korunur. */
+  function korunanSecenek(secenekler, alan, etiket){
+    if(!rec) return secenekler;
+    var v = rec[alan];
+    if(v == null || v === '') return secenekler;
+    var mevcut = secenekler.some(function(o){
+      return String(typeof o === 'string' ? o : o.value) === String(v); });
+    return mevcut ? secenekler : secenekler.concat([{ value:v, label:v + ' · ' + etiket }]);
+  }
+
+  /* ---- Bağ okuma yüzeyleri ---------------------------------------- */
+  function hesapKaydi(k){ return k ? GV.lifecycle.hesap(k) : null; }
+  function hesapAd(k){
+    var h = hesapKaydi(k);
+    return h ? (h.kisa || h.unvan) : (k || null);
+  }
+  function hesapUnvan(k){
+    var h = hesapKaydi(k);
+    return h ? h.unvan : (k || null);
+  }
+  function projeKaydi(k){
+    return k ? PROJELER.filter(function(p){ return p.kod === k; })[0] || null : null;
+  }
+  function kontakKaydi(k){
+    return k ? KONTAKLAR.filter(function(c){ return c.kod === k; })[0] || null : null;
+  }
+  /* Dakika alanları HAM tutulur; saat karşılığı yalnız okunurluk içindir —
+     yeni bir SLA aritmetiği DEĞİLDİR, aynı sayının ikinci yazımıdır.
+     Aynı biçim `app-destek-detay.html:155`te de yazılı; ortak katmanda bir
+     `GV.fmt.dakika` yuvası yok ve bu eksik raporlandı. */
+  function dakika(n){
+    if(n == null) return null;
+    return F.num(n) + ' dk' + (n >= 60 ? ' · ' + F.num(Math.round(n / 6) / 10, 1) + ' saat' : '');
+  }
+  function not(metin){ return '<span class="u-faint u-xs">' + esc(metin) + '</span>'; }
+  function bos(sebep){
+    return '<span class="u-faint">—</span>' + (sebep ? ' ' + not(sebep) : '');
+  }
+
+  /* =================================================================
+     2. ÖN DOLGU — `?musteri=` · `?proje=` (brief §19.0)
+     -----------------------------------------------------------------
+     Parametre ÇÖZÜLEMİYORSA sessizce yutulmaz: kullanıcı hangi bağlamdan
+     geldiğini biliyor, ekran onu neden kuramadığını söylemek zorunda.
+     `?proje=` verilip `?musteri=` verilmediyse müşteri projenin YAZILI
+     `musteri` alanından okunur — tarih yakınlığı değil, yazılı bir alandan
+     türetme olduğu için bağ sayılır (brief §13.1).
+     ================================================================= */
+  var onDolguNotlari = [];
+  var onMusteri = null, onProje = null;
+
+  if(!rec){
+    var pMus = bosNull(q.get('musteri'));
+    var pPrj = bosNull(q.get('proje'));
+
+    if(pMus){
+      if(hesapKaydi(pMus)) onMusteri = pMus;
+      else onDolguNotlari.push({ tone:'warn',
+        title:'Adresteki müşteri kodu çözülemedi',
+        text:'“' + pMus + '” hiçbir hesap kaydıyla eşleşmedi; müşteri alanı boş açıldı. ' +
+             'Defterde ' + HESAPLAR.length + ' hesap var.' });
+    }
+    if(pPrj){
+      var pk = projeKaydi(pPrj);
+      if(!pk){
+        onDolguNotlari.push({ tone:'warn',
+          title:'Adresteki proje kodu çözülemedi',
+          text:'“' + pPrj + '” hiçbir proje kaydıyla eşleşmedi; proje alanı boş açıldı. ' +
+               'Defterde ' + PROJELER.length + ' proje var.' });
+      }else{
+        onProje = pPrj;
+        if(!onMusteri && pk.musteri){
+          onMusteri = pk.musteri;
+          onDolguNotlari.push({ tone:'info',
+            title:'Müşteri projeden türetildi',
+            text:'Adreste müşteri kodu yoktu; ' + pk.kod + ' projesinin yazılı `musteri` alanından ' +
+                 (hesapUnvan(pk.musteri) || pk.musteri) + ' okundu. Değiştirebilirsiniz.' });
+        }else if(onMusteri && pk.musteri !== onMusteri){
+          onDolguNotlari.push({ tone:'warn',
+            title:'Ön dolgudaki proje ile müşteri eşleşmiyor',
+            text:pk.kod + ' projesi ' + (hesapUnvan(pk.musteri) || pk.musteri) + ' hesabına bağlı, ' +
+                 'adresteki müşteri ise ' + (hesapUnvan(onMusteri) || onMusteri) + '. İkisi de dolduruldu; ' +
+                 'kaydetmeden önce birini düzeltin.' });
+        }
+      }
+    }
+  }
+
+  /* Müşteri oturumu kendi hesabı dışına talep açamaz: `GV.session.musteri`
+     doluysa alan kilitlenir (brief §2.2). Bu bir kapı değil, alanın
+     KAYNAĞIDIR — gerçek kapı sunucuda olmalıdır (backend payı). */
+  var oturumMusteri = (GV.session && GV.session.musteri) || null;
+  var oturumKontak  = (GV.session && GV.session.kontak) || null;
+
+  /* Form taslağı — kaydın kendisi değil, bileşenin okuyacağı başlangıç
+     değerleri. `durum`, `sla` ve `slaDurum` BİLEREK YOK: üçü de bu formun
+     yazmadığı alanlardır. */
+  var ALANLAR = ['baslik','proje','kategori','oncelik','etki','sorumlu',
+                 'acan','kanal','aciklama','bakimPaketi'];
+  var formKayit = {};
+  if(rec){
+    ALANLAR.forEach(function(k){ formKayit[k] = rec[k] == null ? '' : rec[k]; });
+    formKayit.musteri = rec.musteri || '';
+    formKayit.ucretli = rec.ucretli === true;
+  }else{
+    formKayit.musteri = oturumMusteri || onMusteri || '';
+    formKayit.proje   = onProje || '';
+    formKayit.acan    = oturumKontak || '';
+    formKayit.ucretli = false;
+  }
+
+  /* =================================================================
+     3. SAYFA BAŞLIĞI — form bileşeninden ÖNCE (brief §2.4)
+     ================================================================= */
+  GV.pageHead({
+    eyebrow:'Operasyon · Destek',
+    title:rec ? rec.kod : 'Yeni Destek Talebi',
+    sub:rec
+      ? esc(rec.baslik) + ' · durum bu ekrandan değişmez'
+      : 'Talep ' + (ILK_DURUM ? '“' + ILK_DURUM + '”' : 'sözlüğün ilk') + ' durumunda doğar · ' +
+        'SLA taahhüdü politikadan okunur',
+    actions:[
+      { label:'Vazgeç', icon:'i-arrow-left', href:GERI },
+      { label:rec ? 'Kaydet' : 'Talebi Aç', icon:'i-check', cls:'btn-acc',
+        run:function(){ kaydet(); } }
+    ]
+  });
+
+  mount.innerHTML =
+    '<div id="dstNot" class="u-mb-8"></div>' +
+    '<div id="dstForm"></div>' +
+    '<div id="dstKaynak"></div>' +
+    '<div id="dstBackend"></div>';
+
+  /* ---- Ön dolgu ve sözlük uyarıları ------------------------------- */
+  var acilisNotlari = onDolguNotlari.slice();
+  if(!DURUMLAR.length){
+    acilisNotlari.unshift({ tone:'danger',
+      title:'Destek durum sözlüğü yüklenemedi',
+      text:'Yeni talebin doğum durumu DB.ticketStatuses[0] üzerinden okunur. Sözlük ' +
+           'olmadan ortak yordam kayıt açmayı reddeder; form doldurulabilir ama kaydedilemez.' });
+  }
+  if(!KATEGORILER.length){
+    acilisNotlari.unshift({ tone:'warn',
+      title:'Kategori değeri türetilemedi',
+      text:'Kategori sözlüğü ayrı bir koleksiyon değildir; DB.slaPolicies kategori ekseninden ' +
+           've mevcut taleplerin kategori alanından türetilir. İkisi de boş olduğu için ' +
+           'seçenek üretilemedi ve SLA politikası eşleşemez.' });
+  }
+  document.getElementById('dstNot').innerHTML = acilisNotlari.map(function(n){
+    return GV.notice({ tone:n.tone,
+      icon:n.tone === 'info' ? 'i-info' : n.tone === 'danger' ? 'i-alert-circle' : 'i-alert',
+      title:n.title, text:n.text });
+  }).join('');
+
+  /* =================================================================
+     4. FORM
+     ================================================================= */
+  var form = GV.form({
+    mount:'#dstForm',
+    id:'destekForm',
+    record:formKayit,
+    tabs:[
+      { key:'talep',        label:'Talep',                icon:'i-support' },
+      { key:'yonlendirme',  label:'Yönlendirme ve bakım', icon:'i-user-check' }
+    ],
+    aside:function(veri){ return yanPanel(veri); },
+    sections:[
+      { title:'Talep', icon:'i-support', tab:'talep',
+        desc:'Zorunlu iki alan var: başlık ve müşteri. Ortak yordam ' +
+             '(GV.destek.olustur) ikisi olmadan kayıt açmaz. Proje ZORUNLU DEĞİLDİR — ' +
+             'ölçüldü: yayındaki 7 talebin 6’sı bir projeye bağlı, DST-2026-117 hiçbir ' +
+             'projeye bağlı değil ve bu bir eksiklik değil, bir ölçümdür.',
+        fields:[
+          { key:'baslik', label:'Talep başlığı', type:'text', cols:12, required:true,
+            placeholder:'Örn. Randevu formunda tarih seçici mobilde açılmıyor',
+            hint:'Tek cümlede sorunu söyleyin; ayrıntı açıklama alanına yazılır.' },
+
+          { key:'musteri', label:'Müşteri', type:'select', cols:6, required:true,
+            readonly:!!rec || !!oturumMusteri,
+            options:HESAPLAR.map(function(h){
+              return { value:h.kod, label:h.unvan + ' · ' + h.kod }; }),
+            hint:rec
+              ? 'Talebin müşterisi bu ekrandan değiştirilmez: SLA politikası, bakım paketi ve ' +
+                'satır kapsamı bu alana bağlıdır. Yanlış hesapta açılmış bir talep taşınmaz, ' +
+                'kapatılıp doğru hesapta yeniden açılır.'
+              : oturumMusteri
+                ? 'Müşteri oturumundasınız; talep kendi hesabınıza açılır.'
+                : HESAPLAR.length + ' hesap listeleniyor. 8 hesap aday kaydından türetildi — ' +
+                  'onlarda yetkili, proje ve bakım paketi kaydı yoktur.' },
+
+          { key:'proje', label:'İlgili proje', type:'select', cols:6,
+            options:korunanSecenek(PROJELER.map(function(p){
+              return { value:p.kod, label:p.ad + ' · ' + (hesapAd(p.musteri) || p.musteri || '—') };
+            }), 'proje', 'kayıtta yazılı; proje defterinde bulunamadı'),
+            hint:'Zorunlu değil. Seçilen proje talebin müşterisine ait olmalıdır; ' +
+                 'defterdeki 14 projenin 14’ünde müşteri alanı yazılı.',
+            validate:function(v, veri){
+              if(!v) return '';
+              var p = projeKaydi(v);
+              if(!p) return 'Bu proje kodu defterde bulunamadı.';
+              if(veri.musteri && p.musteri && p.musteri !== veri.musteri)
+                return 'Seçilen proje ' + (hesapUnvan(p.musteri) || p.musteri) +
+                       ' hesabına bağlı; talebin müşterisiyle eşleşmiyor.';
+              return '';
+            } },
+
+          { key:'aciklama', label:'Açıklama', type:'textarea', cols:12, rows:4,
+            placeholder:'Ne oldu, hangi ekranda, nasıl tekrarlanıyor?',
+            hint:'Boş bırakılabilir. Talebe DOSYA/EKRAN GÖRÜNTÜSÜ eklemek bu formda YOKTUR: ' +
+                 'ortak yordamda dosya yuvası bulunmadığı için seçilen dosya hiçbir yere ' +
+                 'yazılamazdı — çalışmayan bir alan bırakmak yerine hiç açılmadı (BE-S4).' }
+        ] },
+
+      { title:'Sınıflandırma ve SLA', icon:'i-hourglass', tab:'talep',
+        desc:'SLA taahhüdü BU İKİ ALANDAN doğar: kategori × öncelik. ' +
+             'Süre alanı forma konmadı — onu GV.destek.olustur, ' +
+             'GV.destek.slaPolitikasi üzerinden kendisi yazar. Hangi politikanın ' +
+             'düşeceğini sağ panel canlı gösterir.',
+        fields:[
+          { key:'kategori', label:'Kategori', type:'select', cols:6,
+            options:korunanSecenek(KATEGORILER, 'kategori', 'kayıtta yazılı'),
+            hint:'Sözlük olarak ayrı bir koleksiyon yok; ' + KATEGORILER.length +
+                 ' değer DB.slaPolicies kategori ekseninden (' + KAT_POLITIKA.length + ') ve ' +
+                 'mevcut taleplerin kategori alanından (' + KAT_KAYIT.length + ') türetildi.' +
+                 (KAT_EKSTRA.length
+                   ? ' Kayıtta olup politikada olmayan ' + KAT_EKSTRA.length +
+                     ' değer var: ' + KAT_EKSTRA.join(' · ') + ' — bunlarda SLA boş kalır.'
+                   : ' İki kaynak aynı değerleri veriyor.') },
+
+          { key:'oncelik', label:'Öncelik', type:'select', cols:6,
+            options:korunanSecenek(ONCELIKLER, 'oncelik', 'kayıtta yazılı; sözlükte yok'),
+            hint:'DB.priorities sözlüğü — ' + ONCELIKLER.length + ' değer. ' +
+                 'SLA matrisindeki “Tümü” bir öncelik DEĞİL, politika tarafındaki jokerdir; ' +
+                 'seçenek olarak basılmaz.' },
+
+          { key:'etki', label:'Etki', type:'select', cols:6,
+            options:korunanSecenek(ETKILER, 'etki', 'kayıtta yazılı'),
+            hint:ETKILER.length
+              ? 'Etki için ayrı bir sözlük adı bildirilmedi; ' + ETKILER.length +
+                ' seçenek mevcut taleplerin etki alanından türetildi. Etki SLA politikasını ' +
+                'DEĞİŞTİRMEZ — matris yalnız kategori ve önceliği okur.'
+              : 'Mevcut taleplerin hiçbirinde etki değeri yazılı değil; seçenek türetilemedi.' },
+
+          { key:'kanal', label:'Geliş kanalı', type:'select', cols:6,
+            options:korunanSecenek(KANALLAR, 'kanal', 'kayıtta yazılı; sözlükte yok'),
+            hint:'Sözlükte ' + KANALLAR.length + ' kanal var. Ölçüldü: mevcut 7 talebin ' +
+                 '7’si “Müşteri portalı” — bu tekdüzelik uydurma değil, açan kişinin 7/7 ' +
+                 'bir müşteri yetkilisi (YTK-*) olmasından geliyor.' }
+        ] },
+
+      { title:'Yönlendirme', icon:'i-user-check', tab:'yonlendirme',
+        desc:'Sorumlu atamak talebin DURUMUNU değiştirmez: görev ekseninin aksine ' +
+             'destek talebi sorumlu verilse de sözlüğün ilk durumunda doğar ve ' +
+             'triage adımı talep detayında yürür.',
+        fields:[
+          { key:'sorumlu', label:'Sorumlu', type:'select', cols:6,
+            options:korunanSecenek(PERSONEL.map(function(e){
+              return { value:e.kod, label:e.ad + ' · ' + (e.pozisyon || e.depAd || e.kod) };
+            }), 'sorumlu', 'kayıtta yazılı; kadroda aktif değil'),
+            hint:'Boş bırakılabilir; talep atanmamış olarak açılır. ' + PERSONEL.length +
+                 ' aktif personel listeleniyor.' },
+
+          { key:'acan', label:'Talebi açan yetkili', type:'select', cols:6,
+            options:korunanSecenek(KONTAKLAR.map(function(c){
+              return { value:c.kod, label:c.ad + ' · ' + (hesapAd(c.musteri) || c.musteri) };
+            }), 'acan', 'kayıtta yazılı; yetkili defterinde aktif değil'),
+            hint:'Müşteri yetkilisi (YTK-*). Boş bırakılırsa ortak yordam oturumdaki kişiyi ' +
+                 'yazar; oturumda kişi yoksa alan boş kalır ve uydurma bir ad yazılmaz.',
+            validate:function(v, veri){
+              if(!v) return '';
+              var c = kontakKaydi(v);
+              if(!c) return 'Bu yetkili kaydı defterde bulunamadı.';
+              if(veri.musteri && c.musteri !== veri.musteri)
+                return 'Seçilen yetkili ' + (hesapUnvan(c.musteri) || c.musteri) +
+                       ' hesabına bağlı; talebin müşterisiyle eşleşmiyor.';
+              return '';
+            } }
+        ] },
+
+      { title:'Bakım ve ücretlendirme', icon:'i-wrench', tab:'yonlendirme',
+        desc:'Bakım paketi TİP adıdır, paket KAYDI değildir. Müşterinin gerçek paketi ' +
+             'GV.destek.paketOf ile okunur ve sağ panelde gösterilir.',
+        fields:[
+          { key:'ucretli', label:'Ücretlendirme', type:'switch', cols:6,
+            onLabel:'Ücretli talep',
+            hint:'Ücretli talep bakım kotasından DÜŞMEZ (GV.destek.kotaDusum bunu tek yerden ' +
+                 'uygular). Kapalı bırakılırsa talep bakım kapsamında sayılır.' },
+
+          { key:'bakimPaketi', label:'Bakım paketi tipi', type:'select', cols:6,
+            options:korunanSecenek(PAKET_TIPLERI, 'bakimPaketi', 'kayıtta yazılı; sözlükte yok'),
+            hint:PAKET_CELISKI.length
+              ? 'Seçenekler DB.supportPackageTypes sözlüğünden (' + PAKET_TIPLERI.length +
+                ' değer). ⚠️ Mevcut talepler bu alana KISA biçim yazıyor (' +
+                PAKET_CELISKI.join(' · ') + ') ve bu değerler sözlükte yok; iki küme çelişiyor. ' +
+                'Yeni kayıt sözlük değerini taşır — çelişki yayılmaz. Düzenlemede kaydın kendi ' +
+                'değeri listeye eklenir ki dokunulmayan bir alan sessizce silinmesin. Çelişki ' +
+                'ortak katman sahibine bildirildi.'
+              : 'Seçenekler DB.supportPackageTypes sözlüğünden (' + PAKET_TIPLERI.length + ' değer).' }
+        ] }
+    ]
+  });
+
+  if(!form){
+    mount.innerHTML = GV.errorState({
+      title:'Form çizilemedi',
+      desc:'Form bileşeni bağlanamadı. Sayfayı yeniden açmayı deneyin.',
+      action:'<a class="btn btn-line" href="' + GERI + '">Destek listesine dön</a>' });
+    return;
+  }
+
+  /* =================================================================
+     5. SAĞ PANEL — SLA politikası CANLI, ikinci eşleştirme YOK
+     ================================================================= */
+  function taslak(v){
+    /* `GV.destek.paketOf` kod da kayıt da kabul eder (`Destek.kayit`
+       nesneyi olduğu gibi döndürür), yani henüz kaydedilmemiş taslak da
+       ölçülebilir. İkinci bir paket eşleştirme kuralı yazılmadı. */
+    return { kod:rec ? rec.kod : null,
+             musteri:bosNull(v.musteri),
+             proje:bosNull(v.proje),
+             bakimPaketi:bosNull(v.bakimPaketi),
+             ucretli:v.ucretli === true };
+  }
+
+  function kunyeKarti(v){
+    var pKayit = projeKaydi(bosNull(v.proje));
+    var cKayit = kontakKaydi(bosNull(v.acan));
+    return '<section class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + ico('i-support') + 'Kayıt özeti</h3>' +
+        (rec ? '<span class="gc-meta">' + esc(rec.kod) + '</span>' : '') + '</div>' +
+      '<div class="gc-body">' + GV.dl([
+        ['Kayıt no', rec
+          ? '<span class="cell-code">' + esc(rec.kod) + '</span>'
+          : bos('kaydederken ortak yordam defterden üretir')],
+        /* DURUM SALT OKUNUR BİLGİDİR — form alanı değildir. Durum yalnız
+           GV.flow.gec('ticket', …) ile değişir ve düğmeleri talep detayında. */
+        ['Durum', rec
+          ? GV.badge(rec.durum) + not('bu ekrandan değişmez; talep detayındaki geçiş düğmeleri yürütür')
+          : (ILK_DURUM
+              ? GV.badge(ILK_DURUM) + not('DB.ticketStatuses[0] — yeni talep bu durumda doğar')
+              : bos('durum sözlüğü yüklenmedi'))],
+        ['Müşteri', bosNull(v.musteri)
+          ? esc(hesapUnvan(v.musteri)) + '<span class="cell-sub">' + esc(v.musteri) + '</span>'
+          : bos('zorunlu alan — seçilmeden kayıt açılmaz')],
+        ['Proje', pKayit
+          ? esc(pKayit.ad) + '<span class="cell-sub">' + esc(pKayit.kod) + '</span>'
+          : bos('zorunlu değil; talep projesiz de açılabilir')],
+        ['Sorumlu', bosNull(v.sorumlu)
+          ? GV.user(v.sorumlu, { sm:true })
+          : bos('atanmadı — talep atanmamış olarak açılır')],
+        ['Açan yetkili', cKayit
+          ? esc(cKayit.ad) + '<span class="cell-sub">' + esc(cKayit.pozisyon || cKayit.kod) + '</span>'
+          : bos('boşsa ortak yordam oturumdaki kişiyi yazar')],
+        ['Öncelik', bosNull(v.oncelik) ? GV.pri(v.oncelik) : bos('seçilmedi')]
+      ]) + '</div></section>';
+  }
+
+  function slaKarti(v){
+    var kat = bosNull(v.kategori), onc = bosNull(v.oncelik);
+
+    /* ⚠️ EŞLEŞTİRME BU EKRANDA YAZILMAZ. Joker (`oncelik:'Tümü'`) kuralı
+       `GV.destek.slaPolitikasi` içindedir; ikinci bir eşleştirme kurmak
+       sözlük değişince sessizce ayrışan iki kural üretirdi (L-40). */
+    var pol = kat ? GV.destek.slaPolitikasi(kat, onc) : null;
+
+    var govde;
+    if(!kat){
+      govde = GV.notice({ tone:'info', icon:'i-info',
+        title:'Kategori seçilmedi',
+        text:'SLA politikası kategori × öncelik matrisinden okunur. Kategori seçilene kadar ' +
+             'eşleşme ölçülemez — “yok” değil, henüz ölçülmedi.' });
+    }else if(!pol){
+      /* Uydurma değer BASILMAZ. Ölçüldü: dört kategori × dört önceliğin
+         16’sında da politika var; eşleşmesiz kalan tek hâl, öncelik boşken
+         jokersiz bir kategori seçmektir. */
+      govde = GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Bu kategori/öncelik çiftine politika tanımlı değil',
+        text:'“' + kat + '”' + (onc ? ' × “' + onc + '”' : ' (öncelik seçilmedi)') +
+             ' için DB.slaPolicies içinde ne birebir kayıt ne de “Tümü” jokeri var. ' +
+             'Talep açılabilir ama SLA alanı BOŞ KALIR; uydurma bir süre yazılmaz.' });
+    }else{
+      var joker = pol.oncelik === 'Tümü';
+      govde = GV.dl([
+        ['Politika', '<span class="cell-code">' + esc(pol.kod) + '</span>' +
+          '<span class="cell-sub">' + esc(pol.kategori) + ' × ' + esc(pol.oncelik) + '</span>' +
+          (joker ? not('“Tümü” jokeriyle eşleşti — bu kategoride öncelik SLA’yı değiştirmez') : '')],
+        ['Hedef ilk yanıt', esc(dakika(pol.ilkYanit)) +
+          not('DB.slaPolicies[].ilkYanit — DAKİKA. Kayda yazılmaz, taahhüdün ölçüsüdür.')],
+        ['Hedef çözüm', esc(dakika(pol.cozum)) +
+          not('DB.slaPolicies[].cozum — DAKİKA. Etiket bu sürenin insan okunur karşılığıdır.')],
+        ['Kayda yazılacak SLA', '<b>' + esc(pol.etiket) + '</b>' +
+          not('DB.tickets[].sla = politikanın etiket dizesi. Ölçüldü: 7 politikanın 7’sinde ' +
+              'etiket, cozum dakikasının karşılığı — ilkYanit’ın değil.')],
+        ['Çalışma saati', pol.calismaSaati ? esc(pol.calismaSaati) : bos('politikada yazılı değil')],
+        ['Eskalasyon', pol.eskalasyon ? esc(pol.eskalasyon) : bos('politikada yazılı değil')]
+      ], { skipEmpty:false });
+    }
+
+    /* SLA DURUMU — sayaç canlı çalışmaz (BE-D1). */
+    var durumSatiri = rec
+      ? (rec.slaDurum
+          ? GV.dl([['SLA durumu', GV.badge(rec.slaDurum) +
+              not('kaynak veride yazılı sabit; bu formdan değişmez ve yeniden hesaplanmaz (BE-D1)')]])
+          : GV.dl([['SLA durumu', bos('bu kayıtta ölçülmemiş; sayaç canlı çalışmaz (BE-D1)')]]))
+      : GV.dl([['SLA durumu', bos('yeni kayıtta null kalır — henüz ölçülmedi, “Zamanında” varsayılmaz (BE-D1)')]]);
+
+    return '<section class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + ico('i-hourglass') + 'SLA politikası</h3>' +
+        '<span class="gc-meta">' + (DB.slaPolicies || []).length + ' politika</span></div>' +
+      '<div class="gc-body">' + govde + durumSatiri + '</div>' +
+    '</section>';
+  }
+
+  function bakimKarti(v){
+    var t = taslak(v);
+    var paket = t.musteri ? GV.destek.paketOf(t) : null;
+    var govde;
+
+    if(!t.musteri){
+      govde = bos('müşteri seçilmeden paket aranamaz');
+      govde = GV.dl([['Aktif paket', govde]]);
+    }else if(!paket){
+      govde = GV.dl([
+        ['Aktif paket', bos('bu müşterinin defterde aktif bakım paketi yok')],
+        ['Kota düşümü', bos('paket olmadığı için kota düşümü yapılmaz')]
+      ]);
+    }else{
+      govde = GV.dl([
+        ['Aktif paket', '<span class="cell-code">' + esc(paket.kod) + '</span>' +
+          '<span class="cell-sub">' + esc(paket.ad) + ' · ' + esc(paket.tip || '—') + '</span>' +
+          not('GV.destek.paketOf ile müşteri üzerinden bulundu')],
+        ['Kalan saat', esc(F.num(paket.kalan)) + ' saat' +
+          not('kullanılan ' + F.num(paket.kullanilan) + ' · aylık ' + F.num(paket.aylikSaat) + ' saat')],
+        ['Kota düşümü', t.ucretli
+          ? 'Yapılmayacak' + not('ücretli talep bakım kotasından düşmez')
+          : 'Yapılacak' + not('harcanan süre girildikçe kotadan düşer; yeni talepte harcanan süre 0 doğar')]
+      ]);
+    }
+
+    return '<section class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + ico('i-wrench') + 'Bakım paketi</h3></div>' +
+      '<div class="gc-body">' + govde +
+        (t.bakimPaketi
+          ? not('Seçilen “' + t.bakimPaketi + '” bir TİP adıdır; paket kaydı bu değerden ' +
+                'değil, müşteri bağından bulunur.')
+          : '') +
+      '</div></section>';
+  }
+
+  function acikTalepKarti(v){
+    var mus = bosNull(v.musteri);
+    if(!mus) return '';
+    var hepsi = TALEPLER.filter(function(t){
+      return t.musteri === mus && (!rec || t.kod !== rec.kod); });
+    var acik = hepsi.filter(function(t){ return GV.destek.acik(t); });
+
+    if(!hepsi.length){
+      return GV.notice({ tone:'ok', icon:'i-check-circle',
+        title:'Bu müşterinin başka talebi yok',
+        text:'Defterdeki ' + TALEPLER.length + ' talebin hiçbiri ' +
+             (hesapUnvan(mus) || mus) + ' hesabına bağlı değil.' });
+    }
+    if(!acik.length){
+      return GV.notice({ tone:'ok', icon:'i-check-circle',
+        title:'Bu müşterinin açık talebi yok',
+        text:hepsi.length + ' talebin hepsi kapalı sayılan bir durumda (' +
+             GV.destek.kapaliDurumlar().join(' · ') + ').' });
+    }
+    return GV.notice({ tone:'warn', icon:'i-inbox',
+      title:'Bu müşterinin ' + acik.length + ' açık talebi var',
+      text:'Aynı sorunun ikinci kez açılmaması için bakın: ' +
+           acik.map(function(t){ return t.kod + ' (' + t.durum + ')'; }).join(' · ') +
+           '. Kayıtlar otomatik birleştirilmez; karar sizindir.',
+      actions:[{ label:'Bu müşterinin taleplerini aç', cls:'btn-line',
+                 href:'app-destek.html?f_musteri=' + encodeURIComponent(mus) }] });
+  }
+
+  function yanPanel(v){
+    return kunyeKarti(v) + slaKarti(v) + bakimKarti(v) + acikTalepKarti(v);
+  }
+
+  /* =================================================================
+     6. KAYDETME
+     ================================================================= */
+  function kaydet(){
+    var v = form.submit();
+    if(!v) return false;
+
+    var hedefKod, mesaj;
+
+    if(!rec){
+      /* ---- YENİ KAYIT — TEK KAPI ---------------------------------
+         `DB.tickets.push(...)` YOK. Kod üretimi, doğum durumu, SLA
+         etiketinin politikadan okunması, `slaDurum:null` ve denetim izi
+         ortak yordamdadır (brief §19.2). Ekran yalnız alanları taşır. */
+      var r = GV.destek.olustur({
+        baslik:      v.baslik,
+        musteri:     bosNull(v.musteri),
+        proje:       bosNull(v.proje),
+        kategori:    bosNull(v.kategori),
+        oncelik:     bosNull(v.oncelik),
+        etki:        bosNull(v.etki),
+        sorumlu:     bosNull(v.sorumlu),
+        acan:        bosNull(v.acan),
+        kanal:       bosNull(v.kanal),
+        aciklama:    bosNull(v.aciklama),
+        ucretli:     v.ucretli === true,
+        bakimPaketi: bosNull(v.bakimPaketi)
+      });
+
+      /* Hata metni tek yerden çevrilir (`GV.flowHata`); ekran kendi
+         cümlesini yazmaz. `zorunlu` dalı formda `required` ile zaten
+         kapalı, `yetki` dalı da yukarıdaki kapıda — bu çağrı geriye kalan
+         hâller (sözlük yüklenmemiş gibi) için ağdır. */
+      if(r.ok === false){ GV.toast(GV.flowHata(r), 'danger'); return false; }
+
+      hedefKod = r.talep.kod;
+      mesaj = 'Talep “' + r.talep.durum + '” durumunda açıldı. ' +
+        (r.politika
+          ? 'SLA taahhüdü ' + r.politika.kod + ' politikasından okundu: “' + r.talep.sla +
+            '” (hedef çözüm ' + r.politika.cozum + ' dk, hedef ilk yanıt ' + r.politika.ilkYanit + ' dk).'
+          : 'Kategori/öncelik çiftine politika düşmediği için SLA alanı boş bırakıldı; ' +
+            'uydurma bir süre yazılmadı.') +
+        ' SLA durumu ölçülmedi (BE-D1).';
+
+    }else{
+      /* ---- DÜZENLEME ---------------------------------------------
+         ⚠️ ORTAK KATMANDA `GV.destek.guncelle` YOKTUR (raporlandı):
+         brief §19.2 yalnız `olustur` imzasını taşıyor. Alanlar bu yüzden
+         doğrudan yazılıyor — `app-musteri-form.html:575-582` ile aynı
+         desen. Yazılmayan alanlar bilerek dışarıda:
+           · `durum`      — yalnız GV.flow.gec('ticket', …),
+           · `slaDurum`   — canlı sayaç yok, kaynak veride sabit (BE-D1),
+           · `musteri` / `musteriAd` — alan salt okunur,
+           · ölçüm alanları (`mudahaleSuresi` · `cozumSuresi` ·
+             `harcananSure` · `memnuniyet`) — bu form onları ölçmez. */
+      hedefKod = rec.kod;
+      var degisen = [];
+
+      ALANLAR.forEach(function(k){
+        var yeni = bosNull(v[k]);
+        if(yeni !== bosNull(rec[k])) degisen.push(k);
+        rec[k] = yeni;
+      });
+
+      var yeniUcretli = v.ucretli === true;
+      if(yeniUcretli !== (rec.ucretli === true)) degisen.push('ucretli');
+      rec.ucretli = yeniUcretli;
+
+      /* SLA TAAHHÜDÜ TÜRETİLİR, YAZILMAZ. Kategori ya da öncelik
+         değiştiyse `sla` eski çiftin etiketini taşımaya devam ederdi ve
+         kayıt kendi kendisiyle çelişirdi (destek listesi bunu “politika
+         ile çelişiyor” diye zaten basıyor). Eşleştirme yine tek yerden:
+         `GV.destek.slaPolitikasi` — ikinci bir matris kurulmadı. */
+      var pol = rec.kategori ? GV.destek.slaPolitikasi(rec.kategori, rec.oncelik) : null;
+      var yeniSla = pol ? pol.etiket : null;
+      var slaNotu = '';
+      if(yeniSla !== (rec.sla || null)){
+        slaNotu = ' SLA taahhüdü ' +
+          (yeniSla ? '“' + yeniSla + '” olarak politikadan (' + pol.kod + ') yeniden okundu.'
+                   : 'boşaltıldı: yeni kategori/öncelik çiftine politika düşmüyor.');
+        degisen.push('sla');
+        rec.sla = yeniSla;
+      }
+
+      GV.audit.yaz({
+        kayit:hedefKod, modul:'Destek',
+        islem:degisen.length
+          ? 'Destek talebi güncellendi — değişen alan: ' + degisen.join(', ')
+          : 'Destek talebi kaydedildi — alan değişmedi',
+        tone:'info', icon:'i-edit' });
+
+      mesaj = 'Talep bilgileri güncellendi; durum (' + rec.durum + ') değişmedi — ' +
+              'durum yalnız talep detayındaki geçiş düğmeleriyle ilerler.' + slaNotu;
+    }
+
+    /* `location.href` YAZILMAZ — karar ortak yordamda (brief §5.4). */
+    GV.afterSave({
+      kod:hedefKod,
+      liste:GERI,
+      detay:'app-destek-detay.html',
+      yeni:!rec,
+      mesaj:mesaj
+    });
+    return true;
+  }
+
+  /* =================================================================
+     7. SÖZLÜK KAYNAKLARI — hangi seçenek nereden geldi
+     -----------------------------------------------------------------
+     "Uydurma veri yok" bir iddia değil, gösterilebilir olmalı: her seçim
+     listesinin kaynağı ve kaç değer verdiği burada yazılı.
+     ================================================================= */
+  var KAYNAKLAR = [
+    ['Doğum durumu',
+     '<span class="cell-code">DB.ticketStatuses[0]</span>' +
+     '<span class="cell-sub">' + (ILK_DURUM ? esc(ILK_DURUM) : '—') + ' · sözlükte ' +
+     DURUMLAR.length + ' durum · sabit dize yazılmadı, durum alanı forma konmadı</span>'],
+    ['Kategori (' + KATEGORILER.length + ')',
+     '<span class="cell-code">DB.slaPolicies[].kategori ∪ DB.tickets[].kategori</span>' +
+     '<span class="cell-sub">ayrı bir kategori koleksiyonu YOK. Politikadan ' + KAT_POLITIKA.length +
+     ', taleplerden ' + KAT_KAYIT.length + ' benzersiz değer çıktı; birleşim ' + KATEGORILER.length +
+     (KAT_EKSTRA.length ? ' (yalnız kayıtta geçen: ' + esc(KAT_EKSTRA.join(' · ')) + ')' : ' — iki kaynak örtüşüyor') +
+     '</span>'],
+    ['Öncelik (' + ONCELIKLER.length + ')',
+     '<span class="cell-code">DB.priorities</span>' +
+     '<span class="cell-sub">politika tablosundaki “Tümü” bir öncelik değil joker; seçeneğe girmedi</span>'],
+    ['Etki (' + ETKILER.length + ')',
+     '<span class="cell-code">DB.tickets[].etki</span>' +
+     '<span class="cell-sub">etki için bildirilmiş bir sözlük adı yok; seçenekler mevcut ' +
+     'taleplerden türetildi. SLA matrisini etkilemez</span>'],
+    ['Kanal (' + KANALLAR.length + ')',
+     '<span class="cell-code">DB.ticketChannels</span>' +
+     '<span class="cell-sub">mevcut 7 talebin 7’si “Müşteri portalı”; kalan altı değer yeni kayıtlar için</span>'],
+    ['Müşteri (' + HESAPLAR.length + ')',
+     '<span class="cell-code">DB.accounts</span>' +
+     '<span class="cell-sub">yaşam evresi OKUNMADI (K-21 bayat alan); hesap yalnız unvan için açıldı</span>'],
+    ['Proje (' + PROJELER.length + ')',
+     '<span class="cell-code">DB.projects</span>' +
+     '<span class="cell-sub">14/14 kayıtta müşteri alanı yazılı; seçim o alana karşı doğrulanır</span>'],
+    ['Sorumlu (' + PERSONEL.length + ')',
+     '<span class="cell-code">DB.employees</span>' +
+     '<span class="cell-sub">pasif kayıtlar süzüldü</span>'],
+    ['Açan yetkili (' + KONTAKLAR.length + ')',
+     '<span class="cell-code">DB.contacts</span>' +
+     '<span class="cell-sub">yetkili kaydı yalnız MUS-* hesaplarda var; aday kaynaklı 8 hesapta yoktur</span>'],
+    ['Bakım paketi tipi (' + PAKET_TIPLERI.length + ')',
+     '<span class="cell-code">DB.supportPackageTypes</span>' +
+     '<span class="cell-sub">' +
+       (PAKET_CELISKI.length
+         ? '⚠️ mevcut talepler kısa biçim yazıyor (' + esc(PAKET_CELISKI.join(' · ')) +
+           ') ve bu değerler sözlükte yok — iki küme çelişiyor, seçenek sözlükten üretildi'
+         : 'kayıtlarla örtüşüyor') +
+     '</span>'],
+    ['SLA taahhüdü',
+     '<span class="cell-code">GV.destek.slaPolitikasi(kategori, oncelik)</span>' +
+     '<span class="cell-sub">FORMDA ALANI YOK. ' + (DB.slaPolicies || []).length +
+     ' politikanın 3’ü “Tümü” jokeri taşır; eşleştirmeyi ortak yordam yapar, ekran ikinci bir ' +
+     'eşleştirme kurmaz. Yazılan değer politikanın etiket dizesidir; ilkYanit ve cozum DAKİKADIR.</span>']
+  ];
+
+  document.getElementById('dstKaynak').innerHTML =
+    '<section class="gv-card u-mt-8">' +
+      '<div class="gc-head"><h3 class="gc-title">' + ico('i-list') + 'Sözlük kaynakları</h3>' +
+        '<span class="gc-meta">' + KAYNAKLAR.length + ' alan</span></div>' +
+      '<div class="gc-body">' + GV.dl(KAYNAKLAR) + '</div>' +
+      '<div class="gc-body u-faint u-sm">Bu formun YAZMADIĞI alanlar: ' +
+        '<b>durum</b> (yalnız GV.flow.gec ile, düğmeleri talep detayında) · ' +
+        '<b>sla</b> (politikadan türetilir) · ' +
+        '<b>slaDurum</b> (canlı sayaç yok, BE-D1) · ' +
+        '<b>ilkYanit · mudahaleSuresi · cozumSuresi · harcananSure · memnuniyet · ' +
+        'cozumAciklama · cozenPersonel · musteriOnay · kapanisTarihi</b> ' +
+        '(ölçüm ve çözüm alanları — talep detayında, kendi akışlarında doğar). ' +
+        'Bunlar yeni kayıtta boş/sıfır olarak DOĞAR ve bu ekran onlara uydurma değer yazmaz.</div>' +
+    '</section>';
+
+  /* =================================================================
+     8. BACKEND PAYI — brief §19.6, tablo KOPYALANIR
+     -----------------------------------------------------------------
+     Üç madde: `BE-D1` (destek ekseni) · `BE-S4` (belge) · `BE-S5` (her
+     ekran). `BE-P2` YAZILMAZ — zaman kaydı bu ekranın işi değildir ve
+     ilgisiz madde beyanı beyanı gürültüye çevirir (brief §18.10).
+     ================================================================= */
+  document.getElementById('dstBackend').innerHTML =
+    '<section class="gv-card u-mt-8">' +
+      '<div class="gc-head"><h3 class="gc-title">' + ico('i-shield') + 'Backend payı</h3>' +
+        '<span class="u-faint u-sm">3 madde</span></div>' +
+      '<div class="gc-body">' +
+        '<ul class="odl-gap">' +
+          '<li><span class="odl-gap-kod">BE-D1</span>' +
+            '<span>SLA sayacı gerçek zamanlı çalışmaz; slaDurum kaynak veride yazılı ' +
+              'sabittir, yeni kayıtta null</span>' +
+            '<span class="odl-gap-bolum">§9</span></li>' +
+          '<li><span class="odl-gap-kod">BE-S4</span>' +
+            '<span>Belge yükleme gerçek depoya yazmaz; dosya adı ve boyutu bellekte tutulur</span>' +
+            '<span class="odl-gap-bolum">§9</span></li>' +
+          '<li><span class="odl-gap-kod">BE-S5</span>' +
+            '<span>Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır</span>' +
+            '<span class="odl-gap-bolum">§9 audit_event</span></li>' +
+        '</ul>' +
+        '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+          '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+        '<p class="u-faint u-sm">BE-D1 bu formda doğrudan görünür: sağ panel SLA hedeflerini ' +
+          '<b>politikadan okur</b>, hesaplamaz. Açılış saatine süreyi ekleyip bir termin ' +
+          'üretmek bilerek yapılmadı — destek talebinde termin alanı yoktur ve o sayı ölçüm ' +
+          'gibi görünen bir kurgu olurdu.</p>' +
+        '<p class="u-faint u-sm">BE-S4 bu ekranda bir alanın <b>eksikliği</b> olarak görünür: ' +
+          'ortak oluşturma yordamı bir dosya yuvası taşımadığı için talebe ek dosya alanı ' +
+          '<b>hiç açılmadı</b>. Seçilen dosyanın hiçbir yere yazılmayacağı bir yükleme kutusu ' +
+          'basmak, çalışıyormuş gibi görünen ölü bir alan bırakmak olurdu.</p>' +
+        '<p class="u-faint u-sm">BE-S5’in bu ekrandaki en görünür sonucu: kayıt açıldıktan sonra ' +
+          'talep detayına <b>tam sayfa yüklemesiyle</b> gidilir ve veri dosyaları baştan koşar — ' +
+          'yani az önce açılan talep bellekten silinir, detay ekranı “kayıt bulunamadı” der. ' +
+          'Sebep bu ekran değil prototipin kendisidir (brief §5.4) ve yönlendirme kararı ortak ' +
+          'yordamdadır; taklit bir kalıcılık kurulmadı.</p>' +
+        '<p class="u-faint u-sm">Müşteri alanının müşteri oturumunda kilitlenmesi bir arayüz ' +
+          'kolaylığıdır, yetki kontrolü <b>değildir</b>: gerçek sistemde talebin hangi hesaba ' +
+          'açılabileceği sunucuda doğrulanmalıdır.</p>' +
+      '</div>' +
+    '</section>';
+});
+</script>
+</body>
+</html>
