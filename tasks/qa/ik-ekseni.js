@@ -181,6 +181,59 @@ Object.keys(T).forEach(k => (T[k].next || []).forEach(h => {
 }));
 console.log(`     · tek yönlü kenar (bilgi): ${tekYon.join(' · ') || 'yok'}`);
 
+/* KAYNAK TARAFLI KAPI — bütün çıkışları birden engelliyor mu.
+   Bir durumun `kapi`si o durumdan ÇIKAN HER hedefe uygulanır. Hedef sayısı
+   birden fazlaysa kapı, onaylamanın yanında REDDETMEYİ ve İPTALİ de
+   engelliyor olabilir — yani kaydı defterde asılı bırakır.
+   Ölçülen gerçek vaka: `leave` tablosunda `Onay bekliyor` durumunda
+   `kapi:'izinBakiye'` vardı; bakiyesi 0 olan `IZN-2026-039` ne onaylanıyor
+   ne reddediliyor ne iptal edilebiliyordu. Kapı `girisKapi` ile `Onaylandı`
+   hedefine taşındı. Bu eksen aynı sınıfın TÜM tablolarda tekrarını arar.
+
+   İKİ SINIF AYRILIR:
+     · KUSUR   — kapı bir İPTAL / RET / terminal hedefi de engelliyorsa.
+                 Kayıt defterde asılı kalır, kullanıcı ondan kurtulamaz.
+                 Bu kesin ihlaldir ve eksen KIRMIZI yanar.
+     · BİLGİ   — kapı yalnız GERİ DÖNÜŞ hedefini engelliyorsa. Bu bir iş
+                 kuralı tercihi olabilir (ileri gitmeden geri de gitme);
+                 kusur ilan etmek yerine listelenir ve Beyar'a sorulur.
+   Sessiz istisna listesi TUTULMAZ: dört kalan vaka her koşumda basılır. */
+const kapiKusur = [], kapiBilgi = [];
+Object.keys(DB.transitions || {}).forEach(tur => {
+  const tb = DB.transitions[tur];
+  Object.keys(tb).forEach(durum => {
+    const k = tb[durum];
+    if(!k || !k.kapi || (k.next || []).length <= 1) return;
+    const cikis = (k.next || []).filter(h =>
+      /İptal|Reddedil|Geri Çek|Feshedil|Kayb/i.test(h) || (tb[h] && tb[h].terminal));
+    const satir = `${tur}.${durum} kapi:'${k.kapi}' → [${(k.next || []).join(', ')}]`;
+    if(cikis.length) kapiKusur.push(satir + ` — İPTAL/RET hedefi de engelli: ${cikis.join(', ')}`);
+    else kapiBilgi.push(satir);
+  });
+});
+ol('kaynak taraflı kapı bir İPTAL/RET hedefini engelliyor',
+   kapiKusur.join(' · ') || 'yok', 'yok');
+console.log(`     · ${Object.keys(DB.transitions || {}).length} geçiş tablosu tarandı`);
+console.log(`     · yalnız GERİ DÖNÜŞÜ engelleyen kaynak kapı (bilgi, Beyar kararı bekliyor): ${kapiBilgi.length}`);
+kapiBilgi.forEach(x => console.log('       ~ ' + x));
+
+/* İzin tablosu özel ölçüm: bakiyesi yetmeyen talep REDDEDİLEBİLMELİ. */
+const bakiyesiz = DB.leaves.filter(l => {
+  const e = DB.employees.filter(x => x.kod === l.personel)[0];
+  return l.durum === 'Onay bekliyor' && e && (e.izinBakiye || 0) < (l.gun || 0);
+})[0];
+if(bakiyesiz){
+  const eskiDurum = bakiyesiz.durum;
+  const red = GV.flow.gec('leave', bakiyesiz.kod, 'Reddedildi', null, { neden:'DIGER', not:'eksen sınaması' });
+  ol('bakiyesi yetmeyen izin REDDEDİLEBİLİYOR (olumlu vaka)', red.ok === true, true);
+  if(red.ok === true) bakiyesiz.durum = eskiDurum;
+  const onay = GV.flow.gec('leave', bakiyesiz.kod, 'Onaylandı', null, {});
+  ol('bakiyesi yetmeyen izin ONAYLANAMIYOR (olumsuz vaka)', onay.why, 'kapi');
+  if(onay.ok === true) bakiyesiz.durum = eskiDurum;
+}else{
+  console.log('  ! bakiyesi yetmeyen bekleyen izin yok — kapı yönü ölçülemedi');
+}
+
 /* =====================================================================
    [I6] ZİMMET — envanter zimmet defterinden türüyor mu
    ===================================================================== */

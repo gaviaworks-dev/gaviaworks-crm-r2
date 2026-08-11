@@ -496,8 +496,13 @@ DB.transitions = {
   /* Proje — şartname [5.2.1]/[5.2.2] · kapanış kapısı ADR-04 */
   project:{
     'Plan':            { next:['Başlatma Onayı','İptal Edildi'], yetki:['pm','sahip','genelmudur'], zorunlu:['pm','baslangic','planlananBitis'], etiket:'Başlatma Onayına Gönder', tone:'btn-acc' },
-    'Başlatma Onayı':  { next:['Aktif','Plan','İptal Edildi'],   yetki:['sahip','genelmudur'],      zorunlu:[], kapi:'projeAktif', etiket:'Projeyi Başlat', tone:'btn-ok' },
-    'Aktif':           { next:['Test/Kabul','Beklemede','İptal Edildi'], yetki:['pm','sahip'], zorunlu:[], anaHedef:'Test/Kabul', etiket:'Teste Al', tone:'btn-acc' },
+    /* ⚠️ `projeAktif` kapısı HEDEFE bağlıdır. Kaynakta dururken `Başlatma
+       Onayı`ndan çıkan ÜÇ hedefi birden engelliyordu — `Plan`a geri dönmeyi
+       ve `İptal Edildi`ye gitmeyi de. Yani başlatma koşulunu sağlamayan bir
+       proje İPTAL DE EDİLEMİYORDU. Bir işi iptal etmek, onu başlatmaktan
+       daha ağır koşula bağlanamaz (aynı sınıf düzeltme: `leave`, `quote`). */
+    'Başlatma Onayı':  { next:['Aktif','Plan','İptal Edildi'],   yetki:['sahip','genelmudur'],      zorunlu:[], etiket:'Projeyi Başlat', tone:'btn-ok' },
+    'Aktif':           { next:['Test/Kabul','Beklemede','İptal Edildi'], yetki:['pm','sahip'], zorunlu:[], girisKapi:'projeAktif', anaHedef:'Test/Kabul', etiket:'Teste Al', tone:'btn-acc' },
     'Beklemede':       { next:['Aktif','İptal Edildi'],          yetki:['pm','sahip'],      zorunlu:[], girisGerekce:true, etiket:'Devam Ettir', tone:'btn-acc' },
     'Test/Kabul':      { next:['Teslim','Aktif'],                yetki:['pm','sahip'],      zorunlu:[], kapi:'projeTeslim', istisnaRol:['sahip','genelmudur'], etiket:'Teslime Al', tone:'btn-acc' },
     'Teslim':          { next:['Kapanış','Test/Kabul'],          yetki:['pm','sahip'],      zorunlu:[], etiket:'Kapanışa Al', tone:'btn-acc' },
@@ -512,8 +517,12 @@ DB.transitions = {
     'Taslak':            { next:['İç İnceleme','İptal Edildi'],            yetki:['satismudur','satistemsilci','sahip','genelmudur'], zorunlu:['musteri','tutar'], etiket:'İç İncelemeye Gönder', tone:'btn-acc' },
     'İç İnceleme':       { next:['Müşteri İncelemesi','Taslak','İptal Edildi'], yetki:['sahip','genelmudur'],    zorunlu:[], etiket:'Müşteriye Gönder', tone:'btn-acc' },
     'Müşteri İncelemesi':{ next:['İmza','İç İnceleme','İptal Edildi'],     yetki:['satismudur','satistemsilci','sahip','genelmudur'], zorunlu:[], etiket:'İmzaya Al', tone:'btn-acc' },
-    'İmza':              { next:['Aktif','Müşteri İncelemesi','İptal Edildi'], yetki:['sahip','genelmudur'],     zorunlu:['imzaTarihi'], kapi:'sozlesmeAktif', etiket:'Sözleşmeyi Aktive Et', tone:'btn-ok' },
-    'Aktif':             { next:['Tamamlandı','Askıda','Yenileme/Zeyil','Feshedildi'], yetki:['sahip','genelmudur'], zorunlu:[], anaHedef:'Tamamlandı', etiket:'Tamamlandı İşaretle', tone:'btn-ok' },
+    /* ⚠️ `sozlesmeAktif` kapısı HEDEFE bağlıdır. Kaynakta dururken `İmza`dan
+       çıkan üç hedefi birden engelliyordu: ödeme planı dengesiz bir sözleşme
+       ne aktive edilebiliyor, ne müşteri incelemesine geri gönderilebiliyor,
+       NE DE İPTAL EDİLEBİLİYORDU. İptal, aktive etmekten ağır olamaz. */
+    'İmza':              { next:['Aktif','Müşteri İncelemesi','İptal Edildi'], yetki:['sahip','genelmudur'],     zorunlu:['imzaTarihi'], etiket:'Sözleşmeyi Aktive Et', tone:'btn-ok' },
+    'Aktif':             { next:['Tamamlandı','Askıda','Yenileme/Zeyil','Feshedildi'], yetki:['sahip','genelmudur'], zorunlu:[], girisKapi:'sozlesmeAktif', anaHedef:'Tamamlandı', etiket:'Tamamlandı İşaretle', tone:'btn-ok' },
     'Askıda':            { next:['Aktif','Feshedildi'],                    yetki:['sahip','genelmudur'],         zorunlu:[], girisGerekce:true, etiket:'Askıyı Kaldır', tone:'btn-acc' },
     'Yenileme/Zeyil':    { next:['Aktif','İptal Edildi'],                  yetki:['sahip','genelmudur'],         zorunlu:[], etiket:'Zeyili Yürürlüğe Al', tone:'btn-ok' },
     'Tamamlandı':        { next:[], terminal:true },
@@ -613,8 +622,19 @@ DB.transitions = {
   /* İzin — şartname [11.1.1]/[11.1.2] · bakiye kapısı ADR-06 */
   leave:{
     'Taslak':        { next:['Onay bekliyor','İptal edildi'],  yetki:['veren'],            zorunlu:['baslangic','bitis','tur'], etiket:'Onaya Gönder', tone:'btn-acc' },
-    'Onay bekliyor': { next:['Onaylandı','Reddedildi','İptal edildi'], yetki:['onaylayan','ik','sahip','genelmudur'], zorunlu:[], kapi:'izinBakiye', etiket:'Onayla', tone:'btn-ok' },
-    'Onaylandı':     { next:['İptal edildi'],                   yetki:['ik','sahip','genelmudur'],  zorunlu:[], gerekce:true, etiket:'İptal Et', tone:'btn-danger-line' },
+    /* ⚠️ BAKİYE KAPISI HEDEFE BAĞLIDIR, KAYNAĞA DEĞİL (ölçüldü ve düzeltildi).
+       Eskiden `kapi:'izinBakiye'` BURADA, yani `Onay bekliyor` durumundan
+       ÇIKAN her hedefte koşuyordu. Sonuç: bakiyesi yetmeyen bir talep ne
+       onaylanabiliyor NE REDDEDİLEBİLİYOR NE İPTAL EDİLEBİLİYORDU —
+       `IZN-2026-039` (1 gün isteniyor, bakiye 0) üç hedefte de `why:'kapi'`
+       alıyor ve defterde sonsuza dek asılı kalıyordu.
+       Bakiye yalnız ONAYLAMAYI ilgilendirir: bir talebi reddetmek ya da
+       iptal etmek bakiye harcamaz, bakiye İADE eder. Bir işi geri almak ya
+       da kaybetmek, onu tamamlamaktan daha ağır koşula bağlanamaz. Kapı
+       `girisKapi` ile `Onaylandı` hedefine taşındı (motor bunu destekliyor,
+       aynı sınıf düzeltme `quote` tablosunda da yapılmıştı). */
+    'Onay bekliyor': { next:['Onaylandı','Reddedildi','İptal edildi'], yetki:['onaylayan','ik','sahip','genelmudur'], zorunlu:[], etiket:'Onayla', tone:'btn-ok' },
+    'Onaylandı':     { next:['İptal edildi'],                   yetki:['ik','sahip','genelmudur'],  zorunlu:[], gerekce:true, girisKapi:'izinBakiye', etiket:'İptal Et', tone:'btn-danger-line' },
     'Reddedildi':    { next:[], terminal:true, girisGerekce:true },
     'İptal edildi':  { next:[], terminal:true, girisGerekce:true }
   },
