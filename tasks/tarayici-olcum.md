@@ -294,3 +294,46 @@ bazı kusurlar iki grafikte birden çıkıyor).
 
 **Ders:** bir tavan koda uygulanırsa, o tavanın ihlali sonuçta görünmez
 olur. Ölçüm o zaman sonucu değil, **kararın izini** aramalıdır.
+
+---
+
+## Dilim 1 — Müşteri ve Satış zinciri (11 Ağustos 2026)
+
+Koşum: `node tasks/qa/tarayici.js` · gerçek Chromium · seri (paralel değil).
+
+| | |
+|---|---:|
+| Ölçülen ekran | **19** (önceki 10 + dilim 1'in 9 yüzeyi) |
+| Genişlik | **6** — 1600 · 1440 · 1280 · 1024 · 768 · 390 |
+| Toplam ölçüm | **114** |
+| Yatay taşma | **0** |
+| Konsol / sayfa hatası | **0** |
+| Sprite'ta olmayan ikon | **0** |
+| Odak bulgusu | **0** |
+| Düzeltme gerektiren bulgu | **0** |
+| Dış kaynak (Google Fonts CDN) başarısız isteği | 4 — depo kusuru değil, ayrı sayılıyor |
+
+Dilim 1'de eklenen ekranlar ve ölçüm kaydı (hepsi 6 genişlikte temiz):
+`app-musteri-detay.html?id=MUS-2026-008` · `app-musteri-form.html` (yeni ve
+düzenleme kipi ayrı ayrı) · `app-satis-akisi.html` ·
+`app-firsat-detay.html?id=FRS-2026-001` · `app-firsat-form.html` ·
+`app-teklif.html` · `app-teklif-detay.html?id=TKL-2026-014` ·
+`app-teklif-form.html`.
+
+**Kayıt seçimi ölçümden geldi, rastgele değil:** `MUS-2026-008` hem fırsat hem
+teklif taşıyan hesap, `FRS-2026-001` ön analiz + teklif + aktivite taşıyan tek
+fırsat, `TKL-2026-014` kalem dökümü **olan tek** teklif. Boş bir `?id=` yalnız
+hata durumunu ölçer ve asıl yerleşimi hiç çizmez.
+
+### Eksenin kusur yakaladığı kanıtlandı
+
+Sıfır bulgu tek başına temiz değildir. Bozulmuş kopyaya iki kusur enjekte edildi
+(daraltılmış eksen: 1 ekran × 2 genişlik):
+
+| Kusur | Sonuç |
+|---|---|
+| 3000 px genişliğinde sabit blok | **Yakalandı** — iki genişlikte de `TAŞMA`, en içteki suçlular listelendi |
+| Sprite'ta olmayan ikon adı (`i-olmayan-ikon`) | **Yakalandı** — iki genişlikte de `SPRITE — belgede olmayan ikon` |
+
+2 kusur → 4 bulgu (her genişlikte ayrı). Enjeksiyon kopyası silindi; depo
+dosyası değiştirilmedi.

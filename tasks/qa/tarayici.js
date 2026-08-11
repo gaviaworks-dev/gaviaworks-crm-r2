@@ -31,6 +31,21 @@ const EKRANLAR = [
   { dosya: 'index.html',       ad: 'Giriş',            oturum: false },
   { dosya: 'app-panel.html',   ad: 'Gündem',           oturum: true },
   { dosya: 'app-musteri.html', ad: 'Müşteriler',       oturum: true },
+  /* ---- Dilim 1: Müşteri ve Satış zinciri ----------------------------
+     Kayıt taşıyan ekranlar GERÇEK bir kodla ölçülür; boş `?id=` yalnız
+     hata durumunu ölçer ve asıl yerleşimi hiç çizmez. Seçilen kayıtlar
+     veri ölçümünden geldi: MUS-2026-008 hem fırsat hem teklif taşıyor,
+     FRS-2026-001 ön analiz + teklif + aktivite taşıyan tek fırsat,
+     TKL-2026-014 kalem dökümü OLAN tek teklif. */
+  { dosya: 'app-musteri-detay.html?id=MUS-2026-008', ad: 'Müşteri Detayı', oturum: true },
+  { dosya: 'app-musteri-form.html',                  ad: 'Müşteri Formu',  oturum: true },
+  { dosya: 'app-musteri-form.html?id=MUS-2024-001',  ad: 'Müşteri Düzenle',oturum: true },
+  { dosya: 'app-satis-akisi.html',                   ad: 'Satış Akışı',    oturum: true },
+  { dosya: 'app-firsat-detay.html?id=FRS-2026-001',  ad: 'Fırsat Detayı',  oturum: true },
+  { dosya: 'app-firsat-form.html',                   ad: 'Fırsat Formu',   oturum: true },
+  { dosya: 'app-teklif.html',                        ad: 'Teklifler',      oturum: true },
+  { dosya: 'app-teklif-detay.html?id=TKL-2026-014',  ad: 'Teklif Detayı',  oturum: true },
+  { dosya: 'app-teklif-form.html',                   ad: 'Teklif Formu',   oturum: true },
   { dosya: 'app-operasyon.html', ad: 'Operasyon',      oturum: true },
   { dosya: 'app-odeme-linki.html',       ad: 'Ödeme Linkleri', oturum: true },
   { dosya: 'app-odeme-linki-form.html',  ad: 'Yeni Link',      oturum: true },
