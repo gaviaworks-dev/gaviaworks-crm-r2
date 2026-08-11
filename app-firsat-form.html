@@ -303,8 +303,13 @@ document.addEventListener('gv:ready', function(){
         fields:[
           { key:'kaynak', label:'Kaynak', type:'select', cols:6, options:DB.refTypes || [] },
           { key:'referans', label:'Yönlendiren / referans', type:'select', cols:6,
+            /* Pasif kaynak seçenekten ATILMAZ, işaretlenir (K-33): mevcut
+               kayıtlar ona bağlı olabilir ve seçeneği atmak o kayıtların
+               değerini formda sessizce yutardı. Kanon `durum`dur; `aktif`
+               alanı bu koleksiyonda ikinci eksendi ve artık tuzaktır. */
             options:(DB.referrers || []).map(function(r){
-              return { value:r.kod, label:r.ad + ' · ' + r.tur }; }) },
+              return { value:r.kod,
+                       label:r.ad + ' · ' + r.tur + (r.durum === 'Pasif' ? ' · pasif' : '') }; }) },
           { key:'sonrakiAksiyon', label:'Sonraki aksiyon', type:'text', cols:6,
             placeholder:'Örn. Teklif sunum toplantısı' },
           { key:'sonrakiTarih', label:'Sonraki aksiyon tarihi', type:'date', cols:6 }

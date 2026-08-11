@@ -715,7 +715,8 @@ document.addEventListener('gv:ready', function(){
        basılmaz — tamamlanmış bir tedarik geçmiş değil, sonuçtur. */
     rowClass:function(p){
       if(p.durum === AT.ret || p.durum === AT.iade) return 'is-late';
-      if(p.aktif === false || p.arsiv === true) return 'is-passive';
+      /* K-33: `p.aktif === false` kaldırıldı — talepte `durum` kanondur. */
+      if(GV.arsivli(p)) return 'is-passive';
       return '';
     },
 

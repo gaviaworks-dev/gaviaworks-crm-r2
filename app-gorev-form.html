@@ -214,6 +214,7 @@ document.addEventListener('gv:ready', function(){
     return { value:e.kod, label:e.ad + (d ? ' · ' + d.kisa : '') };
   });
   var DEPARTMANLAR = (DB.departments || []).map(function(d){
+    /* `departments` — `durum` ekseni yok, `aktif` kanon (K-33). 3 pasif kayıt. */
     return { value:d.kod, label:d.ad + (d.aktif === false ? ' · pasif' : '') };
   });
   var PROJELER = (DB.projects || []).map(function(p){

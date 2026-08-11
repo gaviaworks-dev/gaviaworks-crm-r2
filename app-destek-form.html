@@ -173,6 +173,7 @@ document.addEventListener('gv:ready', function(){
   var HESAPLAR = (DB.accounts || []);
   var PROJELER = (DB.projects || []);
   var PERSONEL = GV.hr.atanabilirler();
+  /* `contacts` — `durum` ekseni yok, `aktif` kanon (K-33). */
   var KONTAKLAR = (DB.contacts || []).filter(function(c){ return c.aktif !== false; });
 
   /* ⚠️ DÜZENLEME KİPİNDE SESSİZ SİLME OLMAZ — ölçülerek yakalandı.

@@ -542,7 +542,8 @@ document.addEventListener('gv:ready', function(){
 
       /* Onay bekleyen satır SOLUK basılmaz — bekleyen bir kayıt geçmiş değil,
          iştir. Yalnız kaynak veride pasifleştirilmiş kayıt soluk basılır. */
-      rowClass:function(l){ return l.aktif === false ? 'is-passive' : ''; },
+      /* K-33: izin kaydında `durum` kanondur, `aktif` 7/7 `true`ydu. */
+      rowClass:function(l){ return GV.arsivli(l) ? 'is-passive' : ''; },
 
       card:function(l){
         var p = projeKaydi(l.proje);
@@ -1088,7 +1089,7 @@ document.addEventListener('gv:ready', function(){
       ],
 
       rowClass:function(l){ return l.durum === 'Reddedildi' ? 'is-late'
-                                 : l.aktif === false ? 'is-passive' : ''; },
+                                 : GV.arsivli(l) ? 'is-passive' : ''; },
 
       card:function(l){
         return '<div class="gv-rcard-top"><div>' +

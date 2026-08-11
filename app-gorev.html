@@ -928,7 +928,8 @@ document.addEventListener('gv:ready', function(){
     /* Geciken görev uyarı tonu alır; kapanan görev SOLUK basılmaz —
        tamamlanmış bir iş geçmiş değil, sonuçtur. Arşivli kayıt soluktur. */
     rowClass:function(t){
-      if(t.arsiv === true || t.aktif === false || icinde(SON, t.durum)) return 'is-passive';
+      /* K-33: `t.aktif === false` kaldırıldı — görevde `durum` kanondur. */
+      if(GV.arsivli(t) || icinde(SON, t.durum)) return 'is-passive';
       if(gecikenMi(t)) return 'is-late';
       return '';
     },

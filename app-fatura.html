@@ -404,7 +404,9 @@ document.addEventListener('gv:ready', function(){
     rowClass:function(f){
       if(celiskiliMi(f)) return 'is-late';
       if(gecikmisMi(f)) return 'is-late';
-      if(f.aktif === false) return 'is-passive';
+      /* K-33: `f.aktif === false` kaldırıldı — faturada `belgeDurum` kanondur
+         ve alan 17/17 kayıtta `true`ydu. Ölü koşuldu. */
+      if(f.arsiv === true) return 'is-passive';
       return '';
     },
 

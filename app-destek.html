@@ -784,7 +784,9 @@ document.addEventListener('gv:ready', function(){
        BASILMAZ: çözülmüş bir destek talebi geçmiş değil, sonuçtur.
        Yalnız gerçekten pasifleştirilmiş kayıt soluklaşır. */
     rowClass:function(t){
-      if(t.arsiv === true || t.aktif === false) return 'is-passive';
+      /* K-33: `t.aktif === false` kaldırıldı — talepte `durum` kanondur ve
+         alan 7/7 kayıtta `true`ydu, hiçbir satırı soluk yapmıyordu. */
+      if(GV.arsivli(t)) return 'is-passive';
       if(slaKotuMu(t)) return 'is-late';
       return '';
     },

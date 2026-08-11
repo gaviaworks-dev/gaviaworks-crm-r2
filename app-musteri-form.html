@@ -271,8 +271,13 @@ document.addEventListener('gv:ready', function(){
           { key:'kaynak', label:'Kaynak', type:'select', cols:6, options:DB.refTypes || [],
             hint:'Kaydın nereden geldiği. Yönlendiren kişi ayrı alandır.' },
           { key:'referans', label:'Yönlendiren / referans', type:'select', cols:6,
+            /* Pasif kaynak seçenekten ATILMAZ, işaretlenir (K-33): mevcut
+               kayıtlar ona bağlı olabilir ve seçeneği atmak o kayıtların
+               değerini formda sessizce yutardı. Kanon `durum`dur; `aktif`
+               alanı bu koleksiyonda ikinci eksendi ve artık tuzaktır. */
             options:(DB.referrers || []).map(function(r){
-              return { value:r.kod, label:r.ad + ' · ' + r.tur }; }) },
+              return { value:r.kod,
+                       label:r.ad + ' · ' + r.tur + (r.durum === 'Pasif' ? ' · pasif' : '') }; }) },
           /* `type:'url'` DEĞİL — ölçüldü: 12 müşteri kaydının 12'si web adresini
              şemasız tutuyor ('denizlojistik.com'). Bileşenin url doğrulaması
              `http(s)://` dayatır ve mevcut HER kaydın düzenlenmesini kilitlerdi.

@@ -351,12 +351,14 @@ document.addEventListener('gv:ready', function(){
         c.tel ? esc(c.tel) : BOS,
         c.eposta ? esc(c.eposta) : BOS,
         roller || BOS,
+        /* `contacts` — `durum` ekseni yok, `aktif` KANON (K-33). */
         c.aktif === false ? GV.badge('Pasif') : GV.badge('Aktif')
       ];
     });
     var mobil = yetkililer.map(function(c){
       return GV.cell.mrow(
         '<span class="cell-main">' + esc(c.ad) + '</span>' +
+          /* K-33: kanon okuma — bkz. yukarısı. */
           (c.aktif === false ? GV.badge('Pasif') : GV.badge('Aktif')),
         esc(c.kod) + (c.pozisyon ? ' · ' + esc(c.pozisyon) : ''),
         [ c.tel ? ico('i-phone','ic-sm') + esc(c.tel) : '',
