@@ -67,6 +67,20 @@ document.addEventListener('gv:ready', function(){
     return (DB.opportunities || []).filter(function(o){ return o.hesap === h.kod; });
   }
 
+  /* ⚠️ SIRA ÖNEMLİ — `GV.pageHead` ÖNCE çağrılır.
+     `GV.list` satır sayısını `[data-listcount]` düğümüne yazıyor ve o düğümü
+     BELGE GENELİNDE arıyor. Başlık sonra basılsaydı ilk çizimde sayaç düğümü
+     henüz yok olurdu ve liste "—" ile açılırdı (R1'de başlık statik markup'ta
+     durduğu için bu sıra sorunu hiç doğmamıştı). */
+  GV.pageHead({
+    eyebrow:'Müşteri ve Satış',
+    title:'Müşteriler',
+    sub:(DB.accounts || []).length + ' hesap · aday ve müşteri tek listede',
+    actions:[
+      { label:'Yeni Müşteri', icon:'i-plus', cls:'btn-acc', href:'app-musteri-form.html' }
+    ]
+  });
+
   GV.list({
     mount:'#liste', id:'musteri', key:'kod',
     source:function(){ return DB.accounts; },
@@ -245,15 +259,6 @@ document.addEventListener('gv:ready', function(){
     emptyState:{ icon:'i-building', title:'Bu görünümde hesap yok',
       desc:'Filtreleri değiştirebilirsiniz. Aday ve müşteri aynı listede, ' +
            'yaşam evresi kolonuyla ayrışır.' }
-  });
-
-  GV.pageHead({
-    eyebrow:'Müşteri ve Satış',
-    title:'Müşteriler',
-    sub:(DB.accounts || []).length + ' hesap · aday ve müşteri tek listede',
-    actions:[
-      { label:'Yeni Müşteri', icon:'i-plus', cls:'btn-acc', href:'app-musteri-form.html' }
-    ]
   });
 });
 </script>
