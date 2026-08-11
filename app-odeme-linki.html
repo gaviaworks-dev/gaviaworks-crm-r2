@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Ödeme Linkleri — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="finans" data-screen="odemelinki">
+<div id="testSerit"></div>
+<div id="liste"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/notes.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/data/odeme.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   ÖDEME LİNKLERİ — şartname §8.1
+   "Link, müşteri, tutar, kalan, durum, son kullanma ve son işlem"
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F = GV.fmt;
+  var canFinans = GV.perm.can('finans');
+
+  /* Sağlayıcı seçilmedi — §8.7. Bu şerit her ödeme ekranında durur ve
+     kapatılamaz; TEST kipinde olduğumuzu gizlemek yasaktır. */
+  document.getElementById('testSerit').innerHTML =
+    GV.notice({ tone:'warn', icon:'i-alert',
+      title:'TEST kipi — ödeme sağlayıcısı seçilmedi',
+      text:'Bu modül ' + GV.esc(DB.paymentLinkDefaults.saglayici) + ' mock adaptörüyle çalışır. ' +
+           'Gerçek kart formu bulunmaz, gerçek tahsilat yapılmaz. ' +
+           DB.paymentBackendGaps.length + ' madde backend payıdır ve link detayında tek tek listelenir.' });
+
+  function evre(l){
+    var s = DB.paymentLinkStages[l.durum];
+    if(!s) return '<span class="u-faint">—</span>';
+    return '<span class="badge' + (s.tone ? ' ' + s.tone : '') + '" title="' + GV.esc(s.anlam) + '">' +
+           GV.esc(s.ad) + '</span>';
+  }
+
+  GV.pageHead({
+    eyebrow:'Finans',
+    title:'Ödeme Linkleri',
+    sub:(DB.paymentLinks || []).length + ' link · açık bakiyeli faturalardan türetildi',
+    actions:[
+      { label:'Yeni Ödeme Linki', icon:'i-plus', cls:'btn-acc', href:'app-odeme-linki-form.html' }
+    ]
+  });
+
+  GV.list({
+    mount:'#liste', id:'odemelinki', key:'kod',
+    source:function(){ return DB.paymentLinks; },
+    exportName:'odeme-linkleri', exportTitle:'Ödeme Linkleri', pageSize:10, views:['table','card'],
+    search:{ placeholder:'Link, müşteri, fatura veya açıklama ara',
+             fields:['kod','musteriAd','fatura','aciklama'] },
+    defaultSort:'sonKullanma',
+
+    kpis:[
+      { label:'Toplam link', icon:'i-link', calc:function(a){ return a.length; } },
+      { label:'Aktif', icon:'i-check-circle', tone:'ok',
+        calc:function(a){ return a.filter(function(l){ return l.durum === 'AKTIF'; }).length; } },
+      { label:'Süresi dolmuş', icon:'i-hourglass', tone:'warn',
+        calc:function(a){ return a.filter(function(l){ return l.durum === 'SURESI_DOLDU'; }).length; } },
+      { label:'Bekleyen tutar', icon:'i-wallet', tone:'', format:F.moneyK, perm:'finans',
+        calc:function(a){ return a.reduce(function(s,l){ return s + (l.kalan || 0); }, 0); } }
+    ],
+
+    /* Sekmeler durum sözlüğünden üretilir; yalnız KAYDI OLAN durumlar
+       sekme açar — boş sekme dizisi kullanıcıya tıklanacak bir hiç sunar. */
+    tabs:[{ key:'tumu', label:'Tüm Linkler', icon:'i-list', filter:null }].concat(
+      DB.paymentLinkOrder.filter(function(k){
+        return (DB.paymentLinks || []).some(function(l){ return l.durum === k; });
+      }).map(function(k){
+        return { key:k.toLowerCase(), label:DB.paymentLinkStages[k].ad,
+                 icon:k === 'AKTIF' ? 'i-check-circle' : k === 'SURESI_DOLDU' ? 'i-hourglass' : 'i-link',
+                 filter:function(l){ return l.durum === k; } };
+      })
+    ),
+
+    columns:[
+      { key:'kod', label:'Link', width:'18%', locked:true,
+        render:function(l){
+          return '<a class="cell-main" href="app-odeme-linki-detay.html?id=' + l.kod + '">' + GV.esc(l.kod) + '</a>' +
+                 '<span class="cell-code">' + GV.esc(l.legacy_id) + '</span>';
+        } },
+      { key:'musteriAd', label:'Müşteri', cellClass:'cell-wrap',
+        render:function(l){ return GV.esc(l.musteriAd || l.musteri); } },
+      { key:'tutar', label:'Tutar', cellClass:'num',
+        render:function(l){
+          return canFinans ? '<span class="cell-money">' + F.money(l.tutar) + '</span>'
+                           : '<span class="cell-mask">••••••</span>';
+        },
+        exportValue:function(l){ return canFinans ? l.tutar : ''; } },
+      { key:'kalan', label:'Kalan', cellClass:'num',
+        render:function(l){
+          if(!canFinans) return '<span class="cell-mask">••••••</span>';
+          return l.kalan ? '<span class="cell-money">' + F.money(l.kalan) + '</span>'
+                         : '<span class="u-faint">—</span>';
+        },
+        exportValue:function(l){ return canFinans ? l.kalan : ''; } },
+      { key:'durum', label:'Durum', render:function(l){ return evre(l); },
+        sortValue:function(l){ return (DB.paymentLinkStages[l.durum] || {}).sira || 99; },
+        exportValue:function(l){ return (DB.paymentLinkStages[l.durum] || {}).ad || ''; } },
+      { key:'sonKullanma', label:'Son kullanma',
+        render:function(l){
+          if(!l.sonKullanma) return '<span class="u-faint">—</span>';
+          var gecti = l.sonKullanma < DB.today;
+          return '<span class="cell-date' + (gecti ? ' u-danger' : '') + '">' + F.date(l.sonKullanma) + '</span>';
+        } },
+      /* §8.1 "son işlem" — bu depoda hiçbir link üzerinden işlem geçmedi.
+         Sıfır yazmak yerine yokluğu söylüyoruz (L-13). */
+      { key:'sonIslem', label:'Son işlem',
+        render:function(){ return '<span class="u-faint">işlem yok</span>'; },
+        exportValue:function(){ return ''; } },
+      { key:'fatura', label:'Fatura', visible:false,
+        render:function(l){ return GV.esc(l.fatura || '—'); } },
+      { key:'saglayici', label:'Sağlayıcı', visible:false,
+        render:function(l){ return '<span class="badge is-warn">' + GV.esc(l.saglayici) + '</span>'; } }
+    ],
+
+    filters:[
+      { key:'durum', label:'Durum', type:'multi',
+        options:DB.paymentLinkOrder.map(function(k){
+          return { value:k, label:DB.paymentLinkStages[k].ad }; }) },
+      { key:'musteri', label:'Müşteri', type:'select',
+        options:(DB.customers || []).map(function(c){ return { value:c.kod, label:c.unvan }; }) },
+      { key:'sonKullanma', label:'Son kullanma', type:'daterange' }
+    ],
+
+    rowClass:function(l){ return l.durum === 'SURESI_DOLDU' || l.durum === 'IPTAL' ? 'is-passive' : ''; },
+
+    card:function(l){
+      return '<div class="gv-rcard-top"><div>' +
+        '<a class="cell-main" href="app-odeme-linki-detay.html?id=' + l.kod + '">' + GV.esc(l.kod) + '</a>' +
+        '<div class="cell-code">' + GV.esc(l.musteriAd || l.musteri) + '</div></div>' + evre(l) + '</div>' +
+        '<div class="gv-rcard-meta"><span>' + GV.esc(l.fatura || '—') + '</span></div>' +
+        '<div class="gv-rcard-foot">' +
+          (canFinans ? '<span class="cell-money">' + F.money(l.kalan) + '</span>' : '<span class="cell-mask">••••</span>') +
+          (l.sonKullanma ? '<span class="cell-date">' + F.dateShort(l.sonKullanma) + '</span>' : '') +
+        '</div>';
+    },
+
+    mobile:function(l){
+      return '<div class="gv-mrow-top">' +
+        '<a class="cell-main" href="app-odeme-linki-detay.html?id=' + l.kod + '">' + GV.esc(l.kod) + '</a>' +
+        evre(l) + '</div>' +
+        '<div class="gv-mrow-code">' + GV.esc(l.musteriAd || l.musteri) + ' · ' + GV.esc(l.fatura || '—') + '</div>' +
+        '<div class="gv-mrow-bottom">' +
+          (canFinans ? '<span class="cell-money">' + F.money(l.kalan) + '</span>' : '<span class="cell-mask">••••</span>') +
+          (l.sonKullanma ? '<span class="cell-date">' + F.dateShort(l.sonKullanma) + '</span>' : '') +
+        '</div>';
+    },
+
+    rowActions:[
+      { key:'ac', icon:'i-external', label:'Link detayı',
+        href:function(l){ return 'app-odeme-linki-detay.html?id=' + l.kod; } },
+      { key:'kopya', icon:'i-link', label:'Ödeme adresini kopyala',
+        run:function(l){
+          /* §8.6: gerçek sistemde adres tahmin edilemez token taşır.
+             Prototipte token ÜRETİLMEZ; kopyalanan adres kayıt kodudur ve
+             ekran bunun backend payı olduğunu söyler. */
+          var u = location.origin + location.pathname.replace(/[^/]*$/, '') +
+                  'app-odeme.html?link=' + l.kod;
+          if(navigator.clipboard) navigator.clipboard.writeText(u);
+          GV.toast('Adres kopyalandı — TEST adresi, gerçek token backend payıdır', 'info');
+        } }
+    ],
+
+    bulk:[{ key:'disa', label:'Dışa aktar', icon:'i-download', export:true }],
+
+    emptyState:{ icon:'i-link', title:'Bu görünümde ödeme linki yok',
+      desc:'Linkler açık bakiyeli faturalardan türetilir. Kapalı faturaya link üretilmez.' }
+  });
+});
+</script>
+</body>
+</html>

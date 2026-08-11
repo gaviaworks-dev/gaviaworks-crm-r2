@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Yeni Ödeme Linki — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="finans" data-screen="odemelinki">
+<div id="testSerit"></div>
+<div id="formMount"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/notes.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/data/odeme.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   YENİ ÖDEME LİNKİ — şartname §8.2
+
+   "İlk görünümde YALNIZ şu alanlar yer almalıdır: Müşteri (zorunlu,
+   aranabilir) · Fatura (isteğe bağlı) · Tutar (zorunlu, sıfırdan büyük) ·
+   Para birimi (zorunlu, şirket varsayılanı) · Açıklama · Son kullanma
+   tarihi (şirket varsayılanı) · Link Oluştur — TEK BİRİNCİL EYLEM."
+
+   "E-posta/SMS gönderimi, taksit, tek kullanımlık/çok kullanımlı, kısmi
+   ödeme ve dil ayarları GELİŞMİŞ SEÇENEKLER altında KAPALI gelmelidir."
+
+   ⚠️ KART ALANI YOK — §8.2: "Kart bilgisi CRM formuna girilmemeli."
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F = GV.fmt;
+
+  document.getElementById('testSerit').innerHTML =
+    GV.notice({ tone:'warn', icon:'i-alert',
+      title:'TEST kipi — ödeme sağlayıcısı seçilmedi',
+      text:'Oluşturulan link ' + GV.esc(DB.paymentLinkDefaults.saglayici) + ' mock adaptörüne bağlanır. ' +
+           'Gerçek tahsilat yapılmaz; token üretimi ve sunucu doğrulaması backend payıdır.' });
+
+  var acikFaturalar = (DB.invoices || []).filter(function(f){
+    var b = GV.fin.balance(f.kod);
+    return b && b.acik > 0;
+  });
+
+  function bugunArti(gun){
+    var d = new Date(DB.today + 'T00:00:00');
+    d.setDate(d.getDate() + gun);
+    return d.toISOString().slice(0, 10);
+  }
+
+  var mount = document.getElementById('formMount');
+
+  GV.pageHead({
+    eyebrow:'Finans · Ödeme Linkleri',
+    title:'Yeni Ödeme Linki',
+    sub:'Müşteri ve tutarla hızlı link oluşturma'
+  });
+
+  mount.innerHTML =
+    '<form class="gv-card odl-form" id="odlForm" novalidate>' +
+      '<div class="form-err-summary" role="alert"><span>' + GV.ico('i-alert') + '</span>' +
+        '<div><b>Link oluşturulamadı.</b><ul></ul></div></div>' +
+
+      '<div class="odl-govde">' +
+        /* --- İLK GÖRÜNÜM: yedi alan, fazlası yok --- */
+        '<div class="field">' +
+          '<label for="odlMusteri">Müşteri<span class="req" aria-hidden="true">*</span></label>' +
+          '<input type="text" class="inp" id="odlMusteri" list="odlMusteriList" ' +
+            'placeholder="Firma adı ya da müşteri no ile arayın" autocomplete="off" required>' +
+          '<datalist id="odlMusteriList">' +
+            (DB.customers || []).map(function(c){
+              return '<option value="' + GV.esc(c.unvan) + '" data-kod="' + c.kod + '">' + GV.esc(c.kod) + '</option>';
+            }).join('') +
+          '</datalist>' +
+          '<div class="f-err">' + GV.ico('i-alert-circle','ic-sm') + '<span></span></div>' +
+        '</div>' +
+
+        '<div class="field">' +
+          '<label for="odlFatura">Fatura <span class="u-faint u-sm">(isteğe bağlı)</span></label>' +
+          '<select class="inp" id="odlFatura">' +
+            '<option value="">Faturaya bağlama — serbest tutar</option>' +
+            acikFaturalar.map(function(f){
+              var b = GV.fin.balance(f.kod);
+              return '<option value="' + f.kod + '" data-kalan="' + b.acik + '" data-musteri="' + GV.esc(f.musteriAd || '') + '">' +
+                     GV.esc(f.kod) + ' · ' + GV.esc(f.musteriAd || f.musteri) + ' · kalan ' + F.money(b.acik) +
+                     '</option>';
+            }).join('') +
+          '</select>' +
+          '<div class="f-hint" id="odlKalanBilgi"></div>' +
+        '</div>' +
+
+        '<div class="odl-ikili">' +
+          '<div class="field">' +
+            '<label for="odlTutar">Tutar<span class="req" aria-hidden="true">*</span></label>' +
+            '<input type="number" class="inp" id="odlTutar" min="0.01" step="0.01" placeholder="0,00" required>' +
+            '<div class="f-err">' + GV.ico('i-alert-circle','ic-sm') + '<span></span></div>' +
+          '</div>' +
+          '<div class="field">' +
+            '<label for="odlPara">Para birimi<span class="req" aria-hidden="true">*</span></label>' +
+            '<select class="inp" id="odlPara" required>' +
+              ['TRY','USD','EUR'].map(function(p){
+                return '<option value="' + p + '"' +
+                  (p === DB.paymentLinkDefaults.paraBirimi ? ' selected' : '') + '>' + p + '</option>';
+              }).join('') +
+            '</select>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="field">' +
+          '<label for="odlAciklama">Açıklama</label>' +
+          '<input type="text" class="inp" id="odlAciklama" maxlength="120" ' +
+            'placeholder="Müşterinin ödeme ekranında göreceği kısa açıklama">' +
+        '</div>' +
+
+        '<div class="field">' +
+          '<label for="odlSon">Son kullanma tarihi<span class="req" aria-hidden="true">*</span></label>' +
+          '<input type="date" class="inp" id="odlSon" required ' +
+            'value="' + bugunArti(DB.paymentLinkDefaults.gecerlilikGun) + '">' +
+          '<div class="f-hint">Şirket varsayılanı ' + DB.paymentLinkDefaults.gecerlilikGun + ' gün.</div>' +
+        '</div>' +
+
+        /* --- GELİŞMİŞ SEÇENEKLER: kapalı gelir (§8.2) --- */
+        '<details class="odl-gelismis">' +
+          '<summary>' + GV.ico('i-settings','ic-sm') + ' Gelişmiş seçenekler</summary>' +
+          '<div class="odl-gelismis-ic">' +
+            '<label class="f-check"><input type="checkbox" id="odlMail"><span>Oluşunca e-posta ile gönder</span></label>' +
+            '<label class="f-check"><input type="checkbox" id="odlSms"><span>Oluşunca SMS ile gönder</span></label>' +
+            '<label class="f-check"><input type="checkbox" id="odlTaksit"><span>Taksite izin ver</span></label>' +
+            '<label class="f-check"><input type="checkbox" id="odlKismi"><span>Kısmi ödemeye izin ver</span></label>' +
+            '<label class="f-check"><input type="checkbox" id="odlTek" checked><span>Tek kullanımlık link</span></label>' +
+            '<div class="field">' +
+              '<label for="odlDil">Ödeme sayfası dili</label>' +
+              '<select class="inp" id="odlDil"><option value="tr">Türkçe</option><option value="en">English</option></select>' +
+            '</div>' +
+            '<p class="f-hint">' + GV.ico('i-alert-circle','ic-sm') +
+              ' E-posta ve SMS gönderimi backend payıdır; bu prototipte işaretlense de mesaj gitmez.</p>' +
+          '</div>' +
+        '</details>' +
+      '</div>' +
+
+      /* TEK BİRİNCİL EYLEM (§8.2 · §2 "Birincil eylem tek olmalı") */
+      '<div class="odl-foot">' +
+        '<a class="btn btn-line" href="app-odeme-linki.html">Vazgeç</a>' +
+        '<button type="submit" class="btn btn-acc btn-lg">' + GV.ico('i-link') + ' Link Oluştur</button>' +
+      '</div>' +
+    '</form>' +
+
+    '<div id="odlSonuc"></div>';
+
+  var form = document.getElementById('odlForm');
+  var faturaEl = document.getElementById('odlFatura');
+  var tutarEl = document.getElementById('odlTutar');
+  var musteriEl = document.getElementById('odlMusteri');
+  var kalanBilgi = document.getElementById('odlKalanBilgi');
+
+  /* Fatura seçilince kalan bakiye gösterilir ve tutar ön doldurulur (§8.2). */
+  faturaEl.addEventListener('change', function(){
+    var opt = faturaEl.selectedOptions[0];
+    var kalan = opt ? parseFloat(opt.dataset.kalan || '0') : 0;
+    if(!faturaEl.value){ kalanBilgi.textContent = ''; return; }
+    kalanBilgi.innerHTML = 'Bu faturanın kalan bakiyesi <b>' + F.money(kalan) + '</b>. ' +
+      'Şirket ayarı fazla tahsilata izin vermiyor; tutar bunu aşamaz.';
+    if(!tutarEl.value) tutarEl.value = kalan;
+    if(opt && opt.dataset.musteri && !musteriEl.value) musteriEl.value = opt.dataset.musteri;
+  });
+
+  function musteriKodu(ad){
+    var c = (DB.customers || []).filter(function(x){
+      return x.unvan === ad || x.kod === ad || x.kisa === ad; })[0];
+    return c ? c.kod : null;
+  }
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    var hatalar = [];
+
+    var mKod = musteriKodu(musteriEl.value.trim());
+    if(!musteriEl.value.trim()) hatalar.push('Müşteri zorunludur.');
+    else if(!mKod) hatalar.push('Müşteri bulunamadı — listeden seçin.');
+
+    var tutar = parseFloat(tutarEl.value);
+    if(!(tutar > 0)) hatalar.push('Tutar sıfırdan büyük olmalıdır.');
+
+    var son = document.getElementById('odlSon').value;
+    if(!son) hatalar.push('Son kullanma tarihi zorunludur.');
+    else if(son < DB.today) hatalar.push('Son kullanma tarihi geçmiş olamaz.');
+
+    /* §8.5 — "Faturaya bağlı link tutarı varsayılan olarak kalan bakiyeyi
+       AŞAMAZ. Fazla tahsilat yetkisi ayrı şirket ayarı ve rol gerektirir."
+       Bu prototipte o ayar YOK, dolayısıyla kural katıdır. */
+    if(faturaEl.value){
+      var b = GV.fin.balance(faturaEl.value);
+      if(b && tutar > b.acik + 0.001){
+        hatalar.push('Tutar, faturanın kalan bakiyesini (' + F.money(b.acik) + ') aşamaz. ' +
+                     'Fazla tahsilat ayrı şirket ayarı ve rol gerektirir.');
+      }
+    }
+
+    var ozet = form.querySelector('.form-err-summary');
+    if(hatalar.length){
+      ozet.querySelector('ul').innerHTML = hatalar.map(function(h){ return '<li>' + GV.esc(h) + '</li>'; }).join('');
+      ozet.classList.add('is-on');
+      ozet.scrollIntoView({ behavior:'smooth', block:'center' });
+      return;
+    }
+    ozet.classList.remove('is-on');
+
+    /* Kayıt TASLAK doğar, sonra AKTIF'e geçirilir — geçiş `GV.flow`tan
+       geçer ki denetim izi ve kural kontrolü atlanmasın. */
+    var mus = (DB.customers || []).filter(function(c){ return c.kod === mKod; })[0];
+    var kod = 'ODL-2026-' + String(100 + (DB.paymentLinks || []).length + 1);
+    var yeni = {
+      kod:kod, legacy_kaynak:'kullanıcı girişi', legacy_id:null,
+      tokenHash:null,
+      musteri:mKod, musteriAd:mus ? mus.unvan : mKod,
+      fatura:faturaEl.value || null, proje:null,
+      tutar:tutar, paraBirimi:document.getElementById('odlPara').value,
+      aciklama:document.getElementById('odlAciklama').value.trim() ||
+               (faturaEl.value ? faturaEl.value + ' numaralı fatura ödemesi' : 'Ödeme'),
+      olusturma:DB.today, sonKullanma:son,
+      durum:'TASLAK', odenen:0, kalan:tutar,
+      saglayici:DB.paymentLinkDefaults.saglayici,
+      sorumlu:GV.session.emp,
+      kismiOdeme:document.getElementById('odlKismi').checked,
+      tekKullanim:document.getElementById('odlTek').checked,
+      taksit:document.getElementById('odlTaksit').checked,
+      dil:document.getElementById('odlDil').value,
+      acilma:0, deneme:0
+    };
+    (DB.paymentLinks || (DB.paymentLinks = [])).unshift(yeni);
+
+    GV.audit.yaz({ kayit:kod, islem:'Ödeme linki oluşturuldu (' + yeni.saglayici + ')',
+                   yeni:'TASLAK', tone:'ok', icon:'i-link', modul:'odeme' });
+
+    var g = GV.flow.gec('paymentLink', kod, 'AKTIF');
+    if(g.ok === false){
+      GV.toast('Link taslak olarak kaldı: ' + (g.mesaj || g.why), 'warn');
+    }
+
+    sonucGoster(yeni);
+  });
+
+  /* §8.2 — "Link oluşturulduğunda kopyalama, e-posta/SMS ile gönderme ve
+     QR kod eylemleri görünür." */
+  function sonucGoster(l){
+    var adres = location.origin + location.pathname.replace(/[^/]*$/, '') + 'app-odeme.html?link=' + l.kod;
+    document.getElementById('odlForm').style.display = 'none';
+    document.getElementById('odlSonuc').innerHTML =
+      '<div class="gv-card odl-sonuc">' +
+        '<div class="odl-sonuc-bas">' + GV.ico('i-check-circle','ic-xl') +
+          '<div><h2>Link oluşturuldu</h2>' +
+          '<p>' + GV.esc(l.kod) + ' · ' + GV.esc(l.musteriAd) + ' · ' +
+            F.money(l.tutar) + ' ' + GV.esc(l.paraBirimi) + '</p></div>' +
+        '</div>' +
+        '<div class="odl-adres"><code id="odlAdres">' + GV.esc(adres) + '</code></div>' +
+        '<div class="odl-sonuc-acts">' +
+          '<button type="button" class="btn btn-acc" id="odlKopya">' + GV.ico('i-link') + ' Kopyala</button>' +
+          '<button type="button" class="btn btn-line" id="odlGonder">' + GV.ico('i-send') + ' E-posta / SMS ile gönder</button>' +
+          '<button type="button" class="btn btn-line" id="odlQr">' + GV.ico('i-grid') + ' QR kod</button>' +
+          '<a class="btn btn-line" href="app-odeme-linki-detay.html?id=' + l.kod + '">' +
+            GV.ico('i-external') + ' Link detayı</a>' +
+        '</div>' +
+        GV.notice({ tone:'warn', icon:'i-shield',
+          title:'Bu adres TEST adresidir',
+          text:'Gerçek sistemde adres, sıralı kimlik içermeyen ve en az 128 bit entropili ' +
+               'tahmin edilemez bir token taşır; token veritabanında hash olarak saklanır. ' +
+               'Prototipte token üretilmez, adres kayıt kodunu taşır — bu backend payıdır (B-03).' }) +
+      '</div>';
+
+    document.getElementById('odlKopya').addEventListener('click', function(){
+      if(navigator.clipboard) navigator.clipboard.writeText(adres);
+      GV.toast('Adres kopyalandı', 'ok');
+    });
+    document.getElementById('odlGonder').addEventListener('click', function(){
+      /* L-23 — olmayan yeteneğin yerine başarı VARSAYILMAZ. */
+      GV.toast('Gönderim backend payıdır — bu prototipte mesaj gitmez.', 'warn');
+      GV.audit.yaz({ kayit:l.kod, islem:'Gönderim denendi (backend yok, mesaj gitmedi)',
+                     tone:'warn', icon:'i-send', modul:'odeme' });
+    });
+    document.getElementById('odlQr').addEventListener('click', function(){
+      GV.modal({
+        title:'QR kod', size:'sm', icon:'i-grid',
+        body:'<div class="odl-qr">' + GV.ico('i-grid','ic-xl') +
+             '<p>QR üretimi bir kütüphane gerektirir ve bu buildless prototipte ' +
+             'dış bağımlılık kurulmadı. Adres yukarıdan kopyalanabilir.</p>' +
+             '<code>' + GV.esc(adres) + '</code></div>',
+        actions:[{ label:'Kapat', cls:'btn-line' }]
+      });
+    });
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Ödeme Linki — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="finans" data-screen="odemelinki">
+<div id="detayMount"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/notes.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/data/odeme.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   ÖDEME LİNKİ DETAYI — şartname §8.1
+   "Paylaşım, açılma, deneme, ödeme, iptal ve iade geçmişi"
+
+   Durum geçişleri GV.flow'un ONALTINCI varlığı üzerinden yürür. Ekran
+   kendi durum listesini YAZMAZ — `GV.flow.adimlar` ne veriyorsa onu basar.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F = GV.fmt;
+  var canFinans = GV.perm.can('finans');
+  var kod = new URLSearchParams(location.search).get('id');
+  var mount = document.getElementById('detayMount');
+
+  function link(){ return (DB.paymentLinks || []).filter(function(l){ return l.kod === kod; })[0] || null; }
+
+  if(!link()){
+    GV.pageHead({ eyebrow:'Finans · Ödeme Linkleri', title:'Kayıt bulunamadı', sub:kod || '—' });
+    mount.innerHTML = '<div class="gv-card">' + GV.errorState({
+      title:'Ödeme linki bulunamadı',
+      desc:'Aradığınız link silinmiş ya da adres hatalı olabilir.',
+      action:'<a class="btn btn-acc" href="app-odeme-linki.html">Ödeme linkleri listesine dön</a>' }) + '</div>';
+    return;
+  }
+
+  function evre(l){
+    var s = DB.paymentLinkStages[l.durum] || {};
+    return '<span class="badge' + (s.tone ? ' ' + s.tone : '') + '">' + GV.esc(s.ad || l.durum) + '</span>';
+  }
+
+  function ciz(){
+    var l = link();
+    var s = DB.paymentLinkStages[l.durum] || {};
+    var adres = location.origin + location.pathname.replace(/[^/]*$/, '') + 'app-odeme.html?link=' + l.kod;
+    var adimlar = GV.flow.adimlar('paymentLink', l.kod) || [];
+    var kural = (DB.transitions.paymentLink || {})[l.durum] || {};
+    var gecmis = GV.audit.oku(l.kod, 20);
+    var fatura = l.fatura ? GV.fin.balance(l.fatura) : null;
+
+    GV.pageHead({
+      eyebrow:'Finans · Ödeme Linkleri',
+      title:l.kod,
+      sub:l.musteriAd + ' · ' + (canFinans ? F.money(l.tutar) + ' ' + l.paraBirimi : '••••••'),
+      actions:[{ label:'Listeye dön', icon:'i-arrow-left', cls:'btn-line', href:'app-odeme-linki.html' }]
+    });
+
+    mount.innerHTML =
+      GV.notice({ tone:'warn', icon:'i-alert',
+        title:'TEST kipi — ' + GV.esc(l.saglayici),
+        text:'Ödeme sağlayıcısı seçilmedi. Gerçek kart formu yoktur, gerçek tahsilat yapılmaz.' }) +
+
+      '<div class="gv-grid gv-grid-main odl-detay">' +
+        '<div class="odl-kol">' +
+
+          /* --- Özet --- */
+          '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+            GV.ico('i-link') + 'Link özeti</h3>' + evre(l) + '</div>' +
+            '<div class="odl-blok"><dl class="ops-dl">' +
+              '<dt>Durum</dt><dd>' + GV.esc(s.ad || l.durum) +
+                ' <span class="u-faint u-sm">— ' + GV.esc(s.anlam || '') + '</span></dd>' +
+              '<dt>Müşteri</dt><dd>' + GV.esc(l.musteriAd) + '</dd>' +
+              '<dt>Fatura</dt><dd>' + (l.fatura ? GV.esc(l.fatura) : '<span class="u-faint">bağlı değil</span>') + '</dd>' +
+              (fatura && canFinans
+                ? '<dt>Fatura bakiyesi</dt><dd>' + F.money(fatura.acik) + ' / ' + F.money(fatura.brut) +
+                  ' <span class="u-faint u-sm">(GV.fin)</span></dd>' : '') +
+              '<dt>Tutar</dt><dd>' + (canFinans ? F.money(l.tutar) + ' ' + GV.esc(l.paraBirimi) : '••••••') + '</dd>' +
+              '<dt>Ödenen</dt><dd>' + (canFinans ? F.money(l.odenen) : '••••••') + '</dd>' +
+              '<dt>Kalan</dt><dd>' + (canFinans ? F.money(l.kalan) : '••••••') + '</dd>' +
+              '<dt>Açıklama</dt><dd>' + GV.esc(l.aciklama) + '</dd>' +
+              '<dt>Oluşturma</dt><dd>' + F.date(l.olusturma) + '</dd>' +
+              '<dt>Son kullanma</dt><dd>' + (l.sonKullanma
+                ? '<span class="' + (l.sonKullanma < DB.today ? 'u-danger' : '') + '">' + F.date(l.sonKullanma) + '</span>'
+                : '<span class="u-faint">—</span>') + '</dd>' +
+              '<dt>Sağlayıcı</dt><dd><span class="badge is-warn">' + GV.esc(l.saglayici) + '</span></dd>' +
+              '<dt>Kaynak kayıt</dt><dd>' + GV.esc(l.legacy_id || l.legacy_kaynak || '—') + '</dd>' +
+            '</dl></div>' +
+            '<div class="odl-adres-sar"><code>' + GV.esc(adres) + '</code>' +
+              '<button type="button" class="btn btn-line btn-sm" id="odlKopya">' +
+                GV.ico('i-link','ic-sm') + ' Kopyala</button></div>' +
+          '</section>' +
+
+          /* --- Paylaşım, açılma, deneme, ödeme, iade geçmişi --- */
+          '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+            GV.ico('i-activity') + 'İşlem geçmişi</h3></div>' +
+            '<div class="odl-blok">' +
+              '<div class="odl-sayaclar">' +
+                '<div><b>' + l.acilma + '</b><span>Açılma</span></div>' +
+                '<div><b>' + l.deneme + '</b><span>Deneme</span></div>' +
+                '<div><b>' + (DB.paymentTransactions || []).filter(function(t){ return t.link === l.kod; }).length +
+                  '</b><span>Tahsilat</span></div>' +
+                '<div><b>' + (DB.webhookEvents || []).filter(function(w){ return w.link === l.kod; }).length +
+                  '</b><span>Webhook</span></div>' +
+              '</div>' +
+              /* Bu üç koleksiyon BİLEREK BOŞTUR — bu depoda hiçbir ödeme bir
+                 sağlayıcıdan geçmedi. Sıfır yazmak uydurma değil, gerçektir. */
+              '<p class="u-faint u-sm">Bu depoda hiçbir ödeme bir sağlayıcıdan geçmedi; ' +
+                'deneme, tahsilat ve webhook koleksiyonları bilerek boştur.</p>' +
+              (gecmis.length
+                ? '<ul class="gv-tl">' + gecmis.map(function(h){
+                    return '<li><b>' + GV.esc(h.metin) + '</b><span class="gv-tl-meta">' +
+                      GV.esc(String(h.tarih || '').replace('T',' ')) +
+                      (h.kisi ? ' · ' + GV.esc(DB.empName(h.kisi) || h.kisi) : '') +
+                      (h.eski || h.yeni ? ' · ' + GV.esc(h.eski || '—') + ' → ' + GV.esc(h.yeni || '—') : '') +
+                      '</span></li>';
+                  }).join('') + '</ul>'
+                : '<p class="u-faint u-sm">Bu link için hareket geçmişi yok.</p>') +
+            '</div>' +
+          '</section>' +
+        '</div>' +
+
+        '<aside class="odl-kol">' +
+
+          /* --- Durum geçişleri: GV.flow'dan türetilir --- */
+          '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+            GV.ico('i-refresh') + 'Durum geçişleri</h3></div>' +
+            '<div class="odl-blok">' +
+              (kural.terminal
+                ? '<p class="u-faint u-sm">Bu durum terminaldir. ' +
+                  (l.durum === 'IPTAL'
+                    ? 'İptal edilen link yeniden açılmaz — <a href="app-odeme-linki-form.html">yeni link oluşturun</a>.'
+                    : 'Başka geçiş tanımlı değil.') + '</p>'
+                : '<div class="odl-adimlar">' + adimlar.map(function(a){
+                    var hk = (DB.transitions.paymentLink || {})[a.hedef] || {};
+                    var bk = kural.backend || hk.backend;
+                    return '<button type="button" class="btn ' + (a.birincil ? 'btn-acc' : 'btn-line') + ' btn-sm" ' +
+                      'data-hedef="' + GV.esc(a.hedef) + '"' +
+                      (!a.izin ? ' disabled title="Bu geçiş için yetkiniz yok"' : '') +
+                      (a.eksik && a.eksik.length ? ' disabled title="Eksik alan: ' + GV.esc(a.eksik.join(', ')) + '"' : '') +
+                      '>' + GV.esc((DB.paymentLinkStages[a.hedef] || {}).ad || a.hedef) +
+                      (bk ? ' <span class="odl-bk">TEST</span>' : '') + '</button>';
+                  }).join('') + '</div>' +
+                  '<p class="u-faint u-sm">TEST işaretli geçişler gerçek sistemde ' +
+                    'sağlayıcı bildirimiyle tetiklenir; burada elle uygulanır.</p>') +
+            '</div>' +
+          '</section>' +
+
+          /* --- Backend payı: tek tek, gizlenmeden --- */
+          '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+            GV.ico('i-shield') + 'Backend payı</h3>' +
+            '<span class="gc-meta">' + DB.paymentBackendGaps.length + ' madde</span></div>' +
+            '<div class="odl-blok"><ul class="odl-gap">' +
+              DB.paymentBackendGaps.map(function(g){
+                return '<li><span class="odl-gap-kod">' + GV.esc(g.kod) + '</span>' +
+                  '<span>' + GV.esc(g.madde) + '</span>' +
+                  '<span class="odl-gap-bolum">' + GV.esc(g.bolum) + '</span></li>';
+              }).join('') +
+            '</ul>' +
+            '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+              '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+            '</div>' +
+          '</section>' +
+
+          '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+            GV.ico('i-external') + 'Müşteri görünümü</h3></div>' +
+            '<div class="odl-blok">' +
+              '<p class="u-sm">Müşterinin göreceği dış ödeme ekranını açar. ' +
+                'CRM menüsü göstermez, TEST etiketlidir.</p>' +
+              '<a class="btn btn-line btn-block" href="app-odeme.html?link=' + GV.esc(l.kod) + '" target="_blank">' +
+                GV.ico('i-external') + ' Dış ödeme ekranını aç</a>' +
+            '</div>' +
+          '</section>' +
+        '</aside>' +
+      '</div>';
+
+    var kopya = document.getElementById('odlKopya');
+    if(kopya) kopya.addEventListener('click', function(){
+      if(navigator.clipboard) navigator.clipboard.writeText(adres);
+      GV.toast('Adres kopyalandı — TEST adresi', 'info');
+    });
+
+    mount.querySelectorAll('[data-hedef]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var hedef = b.dataset.hedef;
+        var hk = (DB.transitions.paymentLink || {})[hedef] || {};
+        var gerekceli = kural.gerekce || hk.girisGerekce;
+        if(!gerekceli){
+          var r = GV.flow.gec('paymentLink', l.kod, hedef);
+          if(r.ok === false){ GV.toast(r.mesaj || r.why || 'Geçiş uygulanamadı', 'danger'); return; }
+          GV.toast(l.kod + ' → ' + ((DB.paymentLinkStages[hedef] || {}).ad || hedef), 'ok');
+          GV.refresh();
+          return;
+        }
+        GV.action({
+          eylem:(DB.paymentLinkStages[hedef] || {}).ad || hedef,
+          kayit:{ kod:l.kod, baslik:l.aciklama }, gerekce:true,
+          tone:/IPTAL|IADE/.test(hedef) ? 'danger' : 'accent',
+          run:function(v){
+            var r = GV.flow.gec('paymentLink', l.kod, hedef, null, { neden:v.neden, not:v.not });
+            if(r.ok === false) return { ok:false, mesaj:r.mesaj || r.why };
+            GV.refresh();
+            return { mesaj:l.kod + ' → ' + ((DB.paymentLinkStages[hedef] || {}).ad || hedef) };
+          }
+        });
+      });
+    });
+  }
+
+  ciz();
+  /* GV.refresh() `gv:ready` tetikler; ekran kendini güncel veriyle
+     yeniden kurar. location.reload KULLANILMAZ (L-15). */
+});
+</script>
+</body>
+</html>
