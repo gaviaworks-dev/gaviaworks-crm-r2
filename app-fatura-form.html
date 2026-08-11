@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Fatura Formu — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="finans" data-screen="fatura">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   FATURA FORMU — ekran brief §5 (GV.form deseni) · §17 (finans zinciri)
+
+   DÖRT KİP, TEK EKRAN:
+     ?id=FTR-…       → düzenleme
+     ?sozlesme=SZL-… → o sözleşmeden fatura kes (müşteri ve proje sözleşmeden
+                       gelir; faturalanmamış taksitler seçim listesi olur)
+     ?taksit=MS-…    → o taksitten fatura kes (sözleşme, müşteri, proje ve
+                       NET tutar taksitten gelir; tutar SALT OKUNUR olur)
+     (argümansız)    → serbest yeni fatura
+
+   FATURA KOPUK DOĞMAZ. Bu ekranın asıl işi bir alan formu doldurmak değil,
+   faturayı zincirin İÇİNDE doğurmaktır: sözleşme → ödeme planı taksiti →
+   fatura. Taksite bağlanmayan fatura da kesilebilir, ama ekran bunu SÖYLER:
+   `GV.fin.zincirDenetim`in "Ödeme planı → Fatura" halkası taksitsiz faturayı
+   atlar (domain.js:1489) — yani o fatura zincirde "tutuyor" değil
+   ÖLÇÜLEMEDİ olarak görünür. Bu bir hata değildir; ölçüm yapılamadığının
+   beyanıdır ve sessizce geçilmez.
+
+   İKİ DURUM ALANI DA BU FORMDA YOKTUR:
+     · `belgeDurum` → yeni fatura `DB.transitions.invoice` tablosunun İLK
+       durumunda doğar. O değer burada ÖLÇÜLÜR (`Object.keys(TI)[0]`), elle
+       yazılmaz ve nesne literalinde verilir; kayda durum yazan bir atama
+       satırı yoktur. Belge geçişleri fatura DETAYINDA `GV.flow.gec` ile yürür.
+     · `durum` (ödeme durumu) → TÜRETİLMİŞTİR. Tahsis defterinin toplamından
+       hesaplanır; ekran onu ne okur ne yazar, `GV.fin.durumTazele` türetir.
+
+   PARA TEK KAYNAKTAN: net · KDV · brüt yalnız `GV.fin.tutar` ile hesaplanır,
+   bakiye yalnız `GV.fin.balance` ile okunur. Bu ekranda ikinci bir KDV ya da
+   bakiye formülü YOKTUR — R1'in çift KDV kusuru tam olarak "ekranın kendi
+   net × oran satırını yazması" ile doğmuştu.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var F         = GV.fmt;
+  var esc       = GV.esc;
+  var ico       = GV.ico;
+  var canFinans = GV.perm.can('finans');
+
+  /* Fatura BELGE makinesinin tek kaynağı (org.js:542). */
+  var TI        = (DB.transitions || {}).invoice || {};
+  var ILK_DURUM = Object.keys(TI)[0] || null;
+
+  var qs        = new URLSearchParams(location.search);
+  var kodArg    = qs.get('id');
+  var sozArg    = qs.get('sozlesme');
+  var taksitArg = qs.get('taksit');
+
+  var rec = kodArg ? (DB.invoices || []).filter(function(x){ return x.kod === kodArg; })[0] : null;
+
+  function basitBaslik(baslik, alt){
+    GV.pageHead({
+      eyebrow:'Finans · Faturalar', title:baslik, sub:alt,
+      actions:[{ label:'Fatura listesine dön', icon:'i-arrow-left', href:'app-fatura.html' }]
+    });
+  }
+
+  /* ---- Kayıt yok durumu (brief §10) -------------------------------- */
+  if(kodArg && !rec){
+    basitBaslik('Kayıt bulunamadı', kodArg);
+    mount.innerHTML = GV.errorState({
+      title:kodArg + ' bulunamadı',
+      desc:'Bu kod hiçbir fatura kaydıyla eşleşmedi. Adres çubuğundaki kodu kontrol edin ' +
+           'ya da fatura listesinden kaydı seçin. Az önce üretilmiş bir kaydı arıyorsanız ' +
+           'sebebi başkadır: prototipte kayıtlar bellekte tutulur, sayfa yenilendiğinde ' +
+           'sıfırlanır (BE-S5).',
+      action:'<a class="btn btn-acc" href="app-fatura.html">Fatura listesine dön</a>' });
+    return;
+  }
+
+  /* ---- Yetki kapısı ------------------------------------------------ */
+  var izinli = rec ? GV.perm.can('duzenle') : GV.perm.can('ekle');
+  if(!izinli){
+    basitBaslik(rec ? 'Fatura ' + rec.kod : 'Yeni Fatura', 'Bu ekran için yetkiniz yok');
+    mount.innerHTML = GV.empty({
+      icon:'i-lock',
+      title:rec ? 'Fatura kaydını düzenleme yetkiniz yok' : 'Yeni fatura kesme yetkiniz yok',
+      desc:'Rolünüz (' + GV.perm.role() + ') bu işlem için yetkili değil. Faturaları ' +
+           'görüntülemeye devam edebilirsiniz.',
+      action:'<a class="btn btn-line" href="app-fatura.html">Fatura listesine dön</a>' });
+    return;
+  }
+
+  /* ---- Müşteri oturumu kapısı (brief §6 adım 2) --------------------- */
+  if(rec && !GV.guardRecord({ mount:'#rec', musteri:rec.musteri, kod:rec.kod,
+                              eyebrow:'Finans · Faturalar', title:rec.kod,
+                              geriHref:'app-fatura.html', geriLabel:'Fatura listesine dön' })) return;
+
+  /* ---- Doğum durumu ölçülemiyorsa yeni kayıt AÇILMAZ ----------------
+     "Taslak" dizesini elle yazmak, tablo değiştiğinde sessizce yanlış belge
+     durumunda fatura doğurmak demektir (brief §7.4). Ölçülemiyorsa söylenir. */
+  if(!rec && !ILK_DURUM){
+    basitBaslik('Yeni Fatura', 'Doğum durumu türetilemedi');
+    mount.innerHTML = GV.errorState({
+      title:'Fatura belge geçiş tablosu yüklenemedi',
+      desc:'Yeni faturanın doğacağı belge durumu DB.transitions.invoice tablosunun ilk ' +
+           'kaydından ölçülür. Tablo yüklenmediği için bu değer türetilemedi ve ' +
+           'uydurulmadı; kayıt açılmadı.' });
+    return;
+  }
+
+  /* =================================================================
+     DEFTERLER VE BAĞ ÇÖZÜCÜLER — ekran kendi eşlemesini kurmaz
+     ================================================================= */
+  var SOZLESMELER = DB.contracts  || [];
+  var TAKSITLER   = DB.milestones || [];
+  var PROJELER    = DB.projects   || [];
+
+  function sozlesmeById(k){
+    return k ? (SOZLESMELER.filter(function(x){ return x.kod === k; })[0] || null) : null;
+  }
+  function taksitById(k){
+    return k ? (TAKSITLER.filter(function(x){ return x.kod === k; })[0] || null) : null;
+  }
+  function projeById(k){
+    return k ? (PROJELER.filter(function(x){ return x.kod === k; })[0] || null) : null;
+  }
+  /* Hesap kaydı `DB.accounts` üzerinden çözülür; müşteri kaydındaki bayat
+     durum alanı OKUNMAZ (K-21) — yaşam evresi `GV.lifecycle` işidir. */
+  function hesapKaydi(k){ return k ? GV.lifecycle.hesap(k) : null; }
+
+  /* ---- ÖLÇÜM: hangi taksitin faturası var --------------------------
+     Varsayım yok, sayaç yok: bağ `DB.invoices[].milestone` alanından
+     OKUNUR. Düzenleme kipinde kaydın KENDİ taksiti "dolu" sayılmaz. */
+  var taksitFaturasi = {};
+  (DB.invoices || []).forEach(function(f){
+    if(!f.milestone) return;
+    if(rec && f.kod === rec.kod) return;
+    if(!taksitFaturasi[f.milestone]) taksitFaturasi[f.milestone] = f.kod;
+  });
+  function faturaliMi(msKod){ return !!taksitFaturasi[msKod]; }
+
+  function sozlesmeTaksitleri(szKod){
+    return TAKSITLER.filter(function(m){ return m.sozlesme === szKod; })
+      .slice().sort(function(a, b){ return (a.taksit || 0) - (b.taksit || 0); });
+  }
+
+  /* KDV oranı fatura şemasında YOKTUR (brief §17.2: `invoices` → tutar /
+     vergi / toplam; oran alanı yok, tutardan türer). Varsayılan oran bu
+     yüzden defterden ÖLÇÜLÜR: her faturanın oranı `GV.fin.tutar` ile
+     okunur, defterde tek bir oran varsa varsayılan odur. Ölçülemezse
+     şartname varsayılanı 20 kullanılır — iki kaynak tutmamak için (L-40). */
+  var ORANLAR = [];
+  (DB.invoices || []).forEach(function(f){
+    var t = GV.fin.tutar(f, 'invoice');
+    if(t && t.oran != null && ORANLAR.indexOf(t.oran) === -1) ORANLAR.push(t.oran);
+  });
+  var ORAN_VARSAYILAN = ORANLAR.length === 1 ? ORANLAR[0] : 20;
+
+  /* =================================================================
+     SAYI VE PARA YARDIMCILARI
+     ================================================================= */
+  function bosMu(v){ return v == null || String(v).trim() === ''; }
+  function sayi(v){
+    var n = parseFloat(String(v == null ? '' : v).replace(',', '.'));
+    return isFinite(n) ? n : 0;
+  }
+  function bosNull(x){
+    var s = (x == null) ? '' : String(x).trim();
+    return s === '' ? null : s;
+  }
+  /* İki ayrı cümle, iki ayrı biçim (brief §10.1 · UID-11):
+       · değer YOK / türetilemedi        → `—`
+       · değer var ama rol göremez       → `••••••`, asla `0` */
+  function paraHtml(v){
+    if(v == null) return GV.cell.faint('—');
+    return canFinans
+      ? '<span class="cell-money">' + F.money(v) + '</span>'
+      : '<span class="cell-mask">••••••</span>';
+  }
+  function paraMetin(v){
+    if(v == null) return '—';
+    return canFinans ? F.money(v) : '••••••';
+  }
+
+  /* ---- TUTAR ÇAPASI — tek hesap yeri, ikisi de MOTORDAN -------------
+     Fatura ekseninde oran alanı yoktur: `GV.fin.tutar(f,'invoice')` oranı
+     KDV/net üzerinden TÜRETİR. Formda kullanıcı ise oranı GİRER, yani ters
+     yöne (oran → KDV) bir hesap gerekir. O hesap da ekranda değil motorda
+     durur: motorun `contract` ekseni tam olarak oran → KDV çevirisidir
+     (domain.js:1397). Böylece `net * oran / 100` satırı bu dosyada HİÇ
+     yazılmaz; iki çağrı da aynı tek formüle gider.
+       1) oran → KDV  : GV.fin.tutar({ tutar, kdvOran }, 'contract')
+       2) KDV → brüt  : GV.fin.tutar({ tutar, vergi }, 'invoice')  ← kaydın
+          DOĞACAĞI biçim; ikinci çağrı aynı zamanda kaydı doğrular. */
+  function tutarCapasi(netHam, oranHam){
+    if(bosMu(netHam)) return null;
+    var net  = sayi(netHam);
+    var oran = bosMu(oranHam) ? 0 : sayi(oranHam);
+    var kdvOl = GV.fin.tutar({ tutar:net, kdvOran:oran, kdv:null, toplam:null }, 'contract');
+    if(!kdvOl) return null;
+    var T = GV.fin.tutar({ tutar:net, vergi:kdvOl.kdv, toplam:null }, 'invoice');
+    if(!T) return null;
+    T.girilenOran = oran;
+    return T;
+  }
+
+  /* =================================================================
+     KİP ÇÖZÜMÜ — adres çubuğundaki argümanlar
+     ================================================================= */
+  var argNotu = '';
+  var acilisTaksit = null, acilisSozlesme = null;
+
+  if(!rec && taksitArg){
+    acilisTaksit = taksitById(taksitArg);
+    if(!acilisTaksit)
+      argNotu += 'Adres çubuğundaki taksit kodu (' + taksitArg + ') hiçbir ödeme planı ' +
+                 'taksitiyle eşleşmedi; form serbest fatura olarak açıldı. ';
+  }
+  if(!rec && sozArg && !acilisTaksit){
+    acilisSozlesme = sozlesmeById(sozArg);
+    if(!acilisSozlesme)
+      argNotu += 'Adres çubuğundaki sözleşme kodu (' + sozArg + ') hiçbir sözleşme kaydıyla ' +
+                 'eşleşmedi; sözleşme alanı boş açıldı. ';
+  }
+
+  /* ---- Alanların BAŞLANGIÇ değerleri -------------------------------- */
+  function varsayilanTaslak(){
+    if(rec){
+      var rT = GV.fin.tutar(rec, 'invoice') || {};
+      return {
+        musteri:rec.musteri || '',
+        sozlesme:rec.sozlesme || '',
+        taksit:rec.milestone || '',
+        tarih:rec.tarih || DB.today,
+        vade:rec.vade || '',
+        tutar:rec.tutar != null ? rec.tutar : '',
+        proje:rec.proje || '',
+        /* Oran kayıtta YOK; mevcut KDV ile netten TÜRETİLİR. */
+        kdvOran:rT.oran != null ? rT.oran : ORAN_VARSAYILAN,
+        aciklama:rec.aciklama || ''
+      };
+    }
+    var ms = acilisTaksit;
+    var sz = ms ? sozlesmeById(ms.sozlesme) : acilisSozlesme;
+    return {
+      musteri:sz ? (sz.musteri || '') : '',
+      sozlesme:sz ? sz.kod : '',
+      taksit:ms ? ms.kod : '',
+      tarih:DB.today,
+      vade:'',
+      tutar:ms ? ms.odeme : '',
+      proje:ms ? (ms.proje || '') : (sz ? (sz.proje || '') : ''),
+      kdvOran:ORAN_VARSAYILAN,
+      aciklama:''
+    };
+  }
+
+  /* ---- ZİNCİRDEN TÜRETME — tek karar noktası ------------------------
+     Hangi alanın nereden geldiği ve hangisinin kilitleneceği YALNIZ burada
+     kararlaştırılır; form yapılandırması bu sonucu okur. */
+  function cozum(t){
+    t = t || {};
+    var ms  = taksitById(t.taksit);
+    var szK = ms ? ms.sozlesme : (t.sozlesme || '');
+    var sz  = sozlesmeById(szK);
+    var musK = sz ? (sz.musteri || '') : (t.musteri || '');
+    var prjK = (ms && ms.proje) ? ms.proje : ((sz && sz.proje) ? sz.proje : (t.proje || ''));
+    return {
+      taksit:ms,      taksitKod:ms ? ms.kod : '',
+      sozlesme:sz,    sozlesmeKod:sz ? sz.kod : (szK || ''),
+      musteriKod:musK, hesap:hesapKaydi(musK),
+      projeKod:prjK,
+      /* Kilitler: türetilmiş alan salt okunurdur ([3.1.11]). */
+      netKilit:!!ms,
+      musteriKilit:!!sz,
+      sozlesmeKilit:!!ms,
+      projeKilit:!!((ms && ms.proje) || (sz && sz.proje))
+    };
+  }
+
+  /* =================================================================
+     SAYFA BAŞLIĞI — form bileşeninden ÖNCE (brief §2.4)
+     ================================================================= */
+  var acilisCozum = cozum(varsayilanTaslak());
+
+  GV.pageHead({
+    eyebrow:'Finans · Faturalar',
+    title:rec ? 'Fatura ' + rec.kod : 'Yeni Fatura',
+    sub:rec
+      ? (rec.musteriAd || '—') + ' · belge durumu ' + rec.belgeDurum +
+        ' · durum alanları bu ekrandan değiştirilmez'
+      : (acilisCozum.taksit
+          ? acilisCozum.taksit.kod + ' taksitinden kesiliyor · '
+          : acilisCozum.sozlesme
+            ? acilisCozum.sozlesme.kod + ' sözleşmesinden kesiliyor · '
+            : 'Serbest fatura · ') +
+        ILK_DURUM + ' belge durumunda doğar',
+    actions:[
+      { label:'Vazgeç', icon:'i-arrow-left', href:'app-fatura.html' },
+      { label:'Kaydet', icon:'i-check', cls:'btn-acc', run:function(){ kaydet(); } }
+    ]
+  });
+
+  mount.innerHTML =
+    '<div id="ftrNot"></div>' +
+    '<div id="ftrForm"></div>' +
+    '<div id="ftrBackend" class="u-mt-8"></div>';
+
+  var notEl  = document.getElementById('ftrNot');
+  var formEl = document.getElementById('ftrForm');
+
+  /* =================================================================
+     AÇILIŞ NOTLARI
+     ================================================================= */
+  var acilisNotu = '';
+
+  if(argNotu){
+    acilisNotu += GV.notice({ tone:'warn', icon:'i-alert',
+      title:'Adres çubuğundaki bağ çözülemedi', text:argNotu.trim() });
+  }
+
+  if(!rec && acilisTaksit){
+    var aSz = sozlesmeById(acilisTaksit.sozlesme);
+    acilisNotu += GV.notice({ tone:'info', icon:'i-milestone',
+      title:acilisTaksit.kod + ' taksitinden ön dolduruldu',
+      text:'Sözleşme (' + (aSz ? aSz.kod : acilisTaksit.sozlesme) + '), müşteri' +
+           (acilisTaksit.proje ? ', proje (' + acilisTaksit.proje + ')' : '') +
+           ' ve NET tutar (' + paraMetin(acilisTaksit.odeme) + ') bu taksitten alındı. ' +
+           'Ödeme planı taksiti NET eksendedir; faturanın NET tutarı taksitin tutarına ' +
+           'eşit olmalıdır, bu yüzden tutar alanı salt okunurdur. Değiştirmek için ' +
+           'taksit seçimini kaldırın.' });
+    if(faturaliMi(acilisTaksit.kod)){
+      acilisNotu += GV.notice({ tone:'danger', icon:'i-x-circle',
+        title:'Bu taksitin faturası zaten var: ' + taksitFaturasi[acilisTaksit.kod],
+        text:'Bir ödeme planı taksitine en fazla BİR fatura bağlanır (misc.js:70). ' +
+             'Aynı taksite ikinci fatura kesmek, sözleşme bedelini iki kez faturalamak ' +
+             'olurdu; kaydetme bu hâliyle REDDEDİLİR. Faturalanmamış bir taksit seçin ya ' +
+             'da taksit seçimini kaldırıp serbest fatura kesin.',
+        actions:[{ label:'Mevcut faturayı aç',
+                   href:'app-fatura-detay.html?id=' + encodeURIComponent(taksitFaturasi[acilisTaksit.kod]) }] });
+    }
+  }
+
+  if(!rec && acilisSozlesme){
+    var sTaksit = sozlesmeTaksitleri(acilisSozlesme.kod);
+    var sAcik   = sTaksit.filter(function(m){ return !faturaliMi(m.kod); });
+    acilisNotu += GV.notice({ tone:'info', icon:'i-layers',
+      title:acilisSozlesme.kod + ' sözleşmesinden fatura kesiliyor',
+      text:'Müşteri' + (acilisSozlesme.proje ? ' ve proje' : '') + ' sözleşmeden türetildi ' +
+           've salt okunur. ' + (sTaksit.length
+             ? 'Bu sözleşmenin ' + sTaksit.length + ' taksitinden ' +
+               (sTaksit.length - sAcik.length) + ' tanesinin faturası var, ' + sAcik.length +
+               ' tanesinin yok; taksit listesinde yalnız faturalanmamış olanlar seçilebilir. ' +
+               'Ölçüm DB.invoices kayıtlarının milestone alanından yapıldı, sayaç tutulmadı.'
+             : 'Bu sözleşmede ödeme planı taksiti YOK — seçilecek taksit türetilemedi. ' +
+               'Sıfır taksit yazmak yerine söylenir: fatura taksitsiz kesilecektir.') });
+  }
+
+  if(!canFinans){
+    acilisNotu += GV.notice({ tone:'warn', icon:'i-wallet',
+      title:'Tutar özetleri rolünüzde maskeli',
+      text:'Rolünüz (' + GV.perm.role() + ') finans yetkisi taşımıyor; girdiğiniz değerler ' +
+           'kaydedilir ama TÜRETİLEN tutarlar (net, KDV, brüt, tahsil edilen) "••••••" ' +
+           'basılır — bu bir SIFIR değildir, değer vardır ve size gösterilmez. Bu bir ölçüm ' +
+           'bulgusudur: yetki matrisinde fatura ekleyebilen roller ile finans yetkisi ayrı ' +
+           'eksenlerdir; ekran ikisini birleştirmez.' });
+  }
+
+  if(rec){
+    acilisNotu += GV.notice({ tone:'neutral', icon:'i-info',
+      title:'Düzenleme kipinde iki durum alanı da korunur',
+      text:'Belge durumu (' + rec.belgeDurum + ') bu formdan değişmez; geçişler fatura ' +
+           'detayında GV.flow.gec ile yürür. Ödeme durumu ise türetilmiş bir görünümdür ve ' +
+           'tahsis defterinden okunur — formda hiç görünmez. Net tutarı değiştirirseniz ' +
+           'brüt de değişir; tahsis edilmiş tutarın altına düşen bir brüt bakiyeyi bozacağı ' +
+           'için kaydetme reddedilir.' });
+  }
+
+  notEl.innerHTML = acilisNotu;
+
+  /* =================================================================
+     SAĞ PANEL — canlı çapa (net · oran · KDV · brüt)
+     ================================================================= */
+  function yanPanel(v){
+    var c = cozum(v);
+    var T = tutarCapasi(v.tutar, v.kdvOran);
+    var bak = rec ? GV.fin.balance(rec) : null;
+
+    var out = '<div class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + ico('i-receipt') + 'Fatura künyesi</h3></div>' +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Fatura no', rec
+            ? '<span class="cell-code">' + esc(rec.kod) + '</span>'
+            : '<span class="u-faint">kaydederken defterden türetilir</span>'],
+          ['Belge durumu', rec
+            ? GV.badge(rec.belgeDurum) + GV.cell.sub('salt okunur — geçişler fatura detayında')
+            : GV.badge(ILK_DURUM) + GV.cell.sub('yeni fatura geçiş tablosunun ilk durumunda doğar')],
+          ['Ödeme durumu', rec
+            ? GV.badge(rec.durum) + GV.cell.sub('türetilmiş — tahsis defterinden, formda alanı yok')
+            : '<span class="u-faint">kayıt doğduktan sonra türetilir</span>' +
+              GV.cell.sub('tahsis defteri boş doğar; durumu motor yazar')],
+          ['Müşteri', c.hesap
+            ? esc(c.hesap.unvan) + GV.cell.sub('<span class="cell-code">' + esc(c.hesap.kod) + '</span>' +
+                (c.musteriKilit ? ' · sözleşmeden türetildi' : ''))
+            : (c.musteriKod
+                ? '<span class="cell-code">' + esc(c.musteriKod) + '</span>' +
+                  GV.cell.sub('bu kodla bir hesap kaydı bulunamadı')
+                : '<span class="u-faint">seçilmedi</span>')],
+          ['Sözleşme', c.sozlesme
+            ? '<span class="cell-code">' + esc(c.sozlesme.kod) + '</span>' +
+              GV.cell.sub(esc(c.sozlesme.ad || '—'))
+            : '<span class="u-faint">yok</span>' +
+              GV.cell.sub('sözleşmesiz fatura — zincir denetimi hiç koşmaz')],
+          ['Taksit', c.taksit
+            ? '<span class="cell-code">' + esc(c.taksit.kod) + '</span>' +
+              GV.cell.sub(esc(String(c.taksit.taksit || '—')) + '. taksit · ' +
+                esc(c.taksit.ad || '—') + ' · ' + esc(paraMetin(c.taksit.odeme)) + ' NET')
+            : '<span class="u-faint">yok</span>' +
+              GV.cell.sub('ödeme planı taksitine bağlı değil')],
+          ['Proje', c.projeKod
+            ? '<span class="cell-code">' + esc(c.projeKod) + '</span>' +
+              ((projeById(c.projeKod) || {}).ad
+                ? GV.cell.sub(esc(projeById(c.projeKod).ad)) : '')
+            : '<span class="u-faint">yok</span>']
+        ]) +
+      '</div></div>';
+
+    /* ---- ÇAPA: dört satırın DÖRDÜ de `GV.fin.tutar`tan gelir --------
+       Ekran net + KDV toplamıyor, oranı bölmüyor. `perm:'finans'` maskesi
+       `paraHtml` üzerinden uygulanır: yetkisiz rolde `0` değil `••••••`. */
+    var satir = function(etiket, deger, alt){
+      return '<div class="gv-summary-row"><span class="gv-summary-lbl">' + esc(etiket) +
+        (alt ? ' ' + GV.cell.sub(esc(alt)) : '') + '</span>' +
+        '<span class="gv-summary-val">' + deger + '</span></div>';
+    };
+
+    var tutarBlok;
+    if(!T){
+      tutarBlok = satir('Net', GV.cell.faint('—'), 'çapa ekseni · alan adı: tutar') +
+        satir('KDV oranı', GV.cell.faint('—'), 'girilmedi') +
+        satir('KDV tutarı', GV.cell.faint('—'), 'net girilmeden türetilemez') +
+        satir('Brüt', GV.cell.faint('—'), 'net girilmeden türetilemez');
+    }else{
+      tutarBlok =
+        satir('Net', paraHtml(T.net), 'çapa ekseni · alan adı: tutar') +
+        satir('KDV oranı', '<span class="u-num">%' + esc(String(T.girilenOran)) + '</span>',
+              'girilen oran · faturada oran alanı YOK, kayda yazılmaz') +
+        satir('KDV tutarı', paraHtml(T.kdv), 'alan adı: vergi · motordan türetildi') +
+        satir('Brüt', paraHtml(T.brut), 'KDV dahil · net + KDV olarak yeniden hesaplandı');
+    }
+
+    out += '<div class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + ico('i-wallet') + 'Tutar çapası</h3>' +
+        '<span class="gc-meta">' + (c.netKilit ? 'net taksitten geliyor' : 'net elle giriliyor') +
+      '</span></div>' +
+      '<div class="gc-body"><div class="gv-summary">' + tutarBlok + '</div></div>' +
+      '<div class="gc-body u-faint u-sm">Net · KDV · brüt <code>GV.fin.tutar</code> ile ' +
+        'hesaplanır. Kaydedilirken de aynı üç sayı yazılır: KDV ve brüt elle girilmez, ' +
+        'TÜRETİLİR. Bu ekranda ikinci bir KDV formülü yoktur.</div>' +
+    '</div>';
+
+    /* ---- Girilen oran ile kaydın taşıyacağı oran ayrışıyor mu -------
+       Fatura oranı kayıtta durmaz, KDV/net üzerinden geri okunur. Yuvarlama
+       yüzünden ikisi ayrışabilir; sessizce geçilmez. */
+    if(T && T.oran != null && T.oran !== T.girilenOran){
+      out += GV.notice({ tone:'neutral', icon:'i-percent',
+        title:'Kayıttan geri okunacak oran %' + T.oran,
+        text:'Girdiğiniz oran %' + T.girilenOran + ', ancak faturada oran alanı yoktur: ' +
+             'ekranlar oranı KDV/net üzerinden geri okur ve yuvarlama sonucu %' + T.oran +
+             ' görünür. Kaydedilen sayılar net ve KDV tutarıdır; oran bir görünümdür.' });
+    }
+
+    /* ---- TAKSİT KARŞILAŞTIRMASI — bilgi, engel DEĞİL ----------------
+       Taksit NET eksendedir (brief §17.2). Fark varsa zincir denetiminin
+       "Ödeme planı → Fatura" halkası sapma bildirir; ama bu kaydetmeyi
+       engellemez ve ekran engellediğini de iddia etmez. */
+    if(c.taksit && T){
+      var fark = T.net - (c.taksit.odeme || 0);
+      if(Math.abs(fark) > 1){
+        out += GV.notice({ tone:'warn', icon:'i-alert',
+          title:'Fatura NET tutarı taksitin NET tutarından farklı',
+          text:c.taksit.kod + ' taksiti ' + paraMetin(c.taksit.odeme) + ' NET, bu fatura ' +
+               paraMetin(T.net) + ' NET — fark ' + paraMetin(Math.abs(fark)) +
+               (fark > 0 ? ' fazla' : ' eksik') + '. Kaydedilirse GV.fin.zincirDenetim ' +
+               '"Ödeme planı → Fatura" halkasında sapma bildirir. Bu bir BİLGİ notudur: ' +
+               'hiçbir kapı kapanmaz, kaydetme bu yüzden reddedilmez — kararı siz verirsiniz.' });
+      }else{
+        out += GV.notice({ tone:'ok', icon:'i-check-circle',
+          title:'Fatura NET tutarı taksitle birebir tutuyor',
+          text:c.taksit.kod + ' taksitinin NET tutarı ' + paraMetin(c.taksit.odeme) +
+               '; zincirin "Ödeme planı → Fatura" halkası bu faturayı ölçebilecek.' });
+      }
+    }else if(T || !rec){
+      out += GV.notice({ tone:'neutral', icon:'i-layers',
+        title:'Bu fatura bir ödeme planı taksitine bağlı değil',
+        text:'Serbest fatura kesilebilir; ancak zincir denetiminde "ölçülemedi" olarak ' +
+             'görünür: GV.fin.zincirDenetim "Ödeme planı → Fatura" halkasında taksiti ' +
+             'olmayan faturayı atlar' + (c.sozlesme ? '' : ', sözleşmesiz fatura için ise ' +
+             'halkaların hiçbiri koşmaz') + '. Bu bir sapma bildirimi DEĞİLDİR — ölçüm ' +
+             'yapılamadığı anlamına gelir.' });
+    }
+
+    /* ---- Düzenleme kipinde bakiye — TEK kaynak: GV.fin.balance ------ */
+    if(rec && bak){
+      var bakBlok =
+        satir('Tahsil edilen', paraHtml(bak.tahsil), 'tahsis defteri toplamı') +
+        satir('Kayıtlı brüt', paraHtml(bak.brut), 'bakiyenin dayandığı eksen');
+      out += '<div class="gv-card">' +
+        '<div class="gc-head"><h3 class="gc-title">' + ico('i-percent') + 'Bakiye</h3>' +
+          '<span class="gc-meta">' + GV.badge(rec.durum) + '</span></div>' +
+        '<div class="gc-body"><div class="gv-summary">' + bakBlok + '</div></div>' +
+        '<div class="gc-body u-faint u-sm">Bakiye yalnız <code>GV.fin.balance</code> ' +
+          'yordamından okunur; bu ekranda ikinci bir bakiye formülü yoktur.</div>' +
+      '</div>';
+
+      if(T && bak.tahsil > T.brut){
+        out += GV.notice({ tone:'danger', icon:'i-x-circle',
+          title:'Bu tutarla kaydetme REDDEDİLİR',
+          text:'Faturaya ' + paraMetin(bak.tahsil) + ' tahsis edilmiş; yeni brüt ' +
+               paraMetin(T.brut) + ' bunun altında kalıyor. Kaydedilirse tahsis toplamı ' +
+               'fatura brütünü aşar ve bakiye bozulur — tahsis defteri bakiyenin TEK ' +
+               'kaynağıdır ve tutarsız bir defter bırakılmaz. Önce tahsisi kaldırın ya da ' +
+               'net tutarı yükseltin.' });
+      }
+    }
+
+    return out;
+  }
+
+  /* =================================================================
+     FORM — ilk görünüm ALTI alan, gerisi "Daha fazla bilgi" altında
+     -----------------------------------------------------------------
+     Salt okunurluk motorun ÇİZİM anında okuduğu bir sözleşmedir
+     (ui.js:2043). Bu yüzden zincirden gelen bağ değişince — taksit ya da
+     sözleşme seçilince — form YENİDEN KURULUR; ekran motorun kuralını
+     kopyalamaz, motoru doğru girdiyle tekrar çağırır.
+     ================================================================= */
+  var form = null;
+
+  function musteriSecenekleri(){
+    /* Fatura `musteri` alanı MUS-* kodudur (brief §13.1); aday kaynaklı
+       hesabın MUS kodu yoktur ve faturaya bağlanamaz — listeye de girmez. */
+    return (DB.accounts || [])
+      .filter(function(h){ return /^MUS-/.test(h.kod); })
+      .map(function(h){ return { value:h.kod, label:h.unvan + ' · ' + h.kod }; });
+  }
+
+  function sozlesmeSecenekleri(musK){
+    var list = SOZLESMELER.filter(function(s){ return !musK || s.musteri === musK; });
+    return list.map(function(s){
+      return { value:s.kod, label:s.kod + ' · ' + (s.ad || '—') + ' · ' + (s.musteriAd || '') };
+    });
+  }
+
+  function taksitSecenekleri(szK, seciliKod){
+    if(!szK) return [];
+    return sozlesmeTaksitleri(szK)
+      .filter(function(m){ return !faturaliMi(m.kod) || m.kod === seciliKod; })
+      .map(function(m){
+        var f = taksitFaturasi[m.kod];
+        return { value:m.kod,
+          label:m.kod + ' · ' + (m.taksit || '—') + '. taksit · ' + (m.ad || '—') + ' · ' +
+                paraMetin(m.odeme) + ' NET' + (f ? ' — faturası var: ' + f : '') };
+      });
+  }
+
+  function projeSecenekleri(musK){
+    return PROJELER.filter(function(p){ return !musK || p.musteri === musK; })
+      .map(function(p){ return { value:p.kod, label:p.kod + ' · ' + (p.ad || '—') }; });
+  }
+
+  function formKur(taslak, kirli){
+    var t = taslak || varsayilanTaslak();
+    var c = cozum(t);
+
+    var taksitler = sozlesmeTaksitleri(c.sozlesmeKod);
+    var acikTaksit = taksitler.filter(function(m){ return !faturaliMi(m.kod); });
+
+    /* Türetilmiş alanların DEĞERİ de zincirden gelir; kullanıcı bir üst
+       halkayı değiştirdiğinde alt halka kendiliğinden düzelir. */
+    var kayit = Object.assign({}, t, {
+      musteri:c.musteriKod,
+      sozlesme:c.sozlesmeKod,
+      taksit:c.taksitKod,
+      proje:c.projeKod,
+      tutar:c.netKilit ? c.taksit.odeme : t.tutar
+    });
+
+    form = GV.form({
+      mount:'#ftrForm',
+      id:'faturaForm',
+      record:kayit,
+      tabs:[
+        { key:'temel', label:'Temel bilgiler',   icon:'i-receipt' },
+        { key:'ek',    label:'Daha fazla bilgi', icon:'i-list' }
+      ],
+      aside:function(veri){ return yanPanel(veri); },
+      sections:[
+        { title:'Faturanın muhatabı ve zincirdeki yeri', icon:'i-layers', tab:'temel',
+          desc:'Fatura kopuk doğmaz: sözleşme ve ödeme planı taksiti seçilirse müşteri, ' +
+               'proje ve NET tutar oradan türetilir ve salt okunur olur. Proje, KDV oranı ve ' +
+               'açıklama "Daha fazla bilgi" sekmesindedir ve zorunlu değildir.',
+          fields:[
+            { key:'musteri', label:'Müşteri', type:'select', cols:6, required:true,
+              readonly:c.musteriKilit,
+              options:musteriSecenekleri(),
+              hint:c.musteriKilit
+                ? 'Müşteri ' + c.sozlesmeKod + ' sözleşmesinden türetildi ve salt okunur. ' +
+                  'Değiştirmek için sözleşme seçimini kaldırın.'
+                : 'Listede yalnız MUS kodu olan hesaplar var: fatura müşteri kodu taşır, ' +
+                  'aday kaynaklı hesaba fatura bağlanamaz.' },
+
+            { key:'sozlesme', label:'Sözleşme', type:'select', cols:6,
+              readonly:c.sozlesmeKilit,
+              placeholder:'Sözleşmeye bağlama — serbest fatura',
+              options:sozlesmeSecenekleri(c.musteriKilit ? '' : c.musteriKod),
+              hint:c.sozlesmeKilit
+                ? 'Sözleşme ' + c.taksitKod + ' taksitinden türetildi ve salt okunur. ' +
+                  'Değiştirmek için taksit seçimini kaldırın.'
+                : (c.musteriKod
+                    ? 'Liste seçili müşterinin sözleşmeleriyle sınırlı. Seçilirse müşteri ve ' +
+                      'proje sözleşmeden türer.'
+                    : 'Müşteri seçilmedi; bütün sözleşmeler listede. Seçilirse müşteri ' +
+                      'sözleşmeden türer.') },
+
+            { key:'taksit', label:'Ödeme planı taksiti', type:'select', cols:6,
+              placeholder:'Taksite bağlama — serbest fatura',
+              options:taksitSecenekleri(c.sozlesmeKod, c.taksitKod),
+              hint:!c.sozlesmeKod
+                ? 'Önce sözleşme seçin: taksitler sözleşmeye bağlıdır, sözleşmesiz taksit ' +
+                  'listesi türetilemez.'
+                : (taksitler.length
+                    ? taksitler.length + ' taksitin ' + (taksitler.length - acikTaksit.length) +
+                      ' tanesinin faturası var, ' + acikTaksit.length + ' tanesinin yok; ' +
+                      'listede yalnız faturalanmamış olanlar seçilebilir. Seçilirse NET tutar ' +
+                      'taksitten gelir ve salt okunur olur.'
+                    : 'Bu sözleşmede ödeme planı taksiti YOK; fatura taksitsiz kesilecek.') },
+
+            { key:'tarih', label:'Fatura tarihi', type:'date', cols:6, required:true,
+              hint:'Varsayılan, sistemin ölçüm günü: ' + F.date(DB.today) + '.' },
+
+            { key:'vade', label:'Vade tarihi', type:'date', cols:6, required:true,
+              hint:'Fatura tarihinden önce olamaz. Gecikme bu tarihten türetilir ve ödeme ' +
+                   'durumundan AYRI bir eksendir.',
+              validate:function(deger, veri){
+                if(!deger || !veri.tarih) return '';
+                return deger < veri.tarih
+                  ? 'Vade tarihi fatura tarihinden (' + F.date(veri.tarih) + ') önce olamaz.'
+                  : '';
+              } },
+
+            { key:'tutar', label:'Net tutar (KDV hariç)', type:'money', cols:6, required:true,
+              readonly:c.netKilit,
+              hint:c.netKilit
+                ? 'Kaynak: ' + c.taksitKod + ' taksitinin NET tutarı (' +
+                  paraMetin(c.taksit.odeme) + '). Ödeme planı NET eksendedir; tutar salt ' +
+                  'okunurdur, değiştirmek için taksit seçimini kaldırın.'
+                : 'Çapa NET\'tir: KDV ve brüt bu değerden TÜRETİLİR, elle girilmez. Sağ ' +
+                  'panelde canlı hesaplanır.' }
+          ] },
+
+        { title:'Proje ve vergi', icon:'i-briefcase', tab:'ek',
+          desc:'KDV oranı fatura kaydında SAKLANMAZ (fatura şemasında oran alanı yoktur); ' +
+               'yalnız KDV tutarını türetmek için kullanılır ve kayda net ile KDV yazılır.',
+          fields:[
+            { key:'proje', label:'Proje', type:'select', cols:6,
+              readonly:c.projeKilit,
+              placeholder:'Projeye bağlama',
+              options:projeSecenekleri(c.musteriKod),
+              hint:c.projeKilit
+                ? 'Proje ' + (c.taksit && c.taksit.proje ? c.taksitKod + ' taksitinden'
+                                                         : c.sozlesmeKod + ' sözleşmesinden') +
+                  ' türetildi ve salt okunur.'
+                : (c.sozlesme
+                    ? 'Bu sözleşmede proje bağı yok; isterseniz elle seçebilirsiniz.'
+                    : 'Liste seçili müşterinin projeleriyle sınırlı.') },
+
+            { key:'kdvOran', label:'KDV oranı', type:'percent', cols:3,
+              hint:'Varsayılan %' + ORAN_VARSAYILAN + (ORANLAR.length === 1
+                ? ' — fatura defterindeki tek oran ölçüldü.'
+                : ' — şartname varsayılanı; defterde tek oran ölçülemedi.') },
+
+            { key:'aciklama', label:'Açıklama', type:'textarea', cols:12, rows:3,
+              placeholder:'Faturanın konusu, hizmet dönemi, referans numarası…',
+              hint:'⚠️ Kaynak fatura kayıtlarında açıklama alanı YOKTUR (17 kaydın 17\'si ' +
+                   'taşımıyor). Buraya yazdığınız metin yeni bir alan olarak kaydedilir; ' +
+                   'mevcut faturalarda boş görünmesi normaldir.' }
+          ] }
+      ]
+    });
+
+    if(!form){
+      mount.innerHTML = GV.errorState({ title:'Form çizilemedi',
+        desc:'Form bileşeni bağlanamadı. Sayfayı yeniden açmayı deneyin.' });
+      return;
+    }
+    if(kirli) form.setDirty(true);
+  }
+
+  /* Zincirin bir halkası değişince alt halkaların DEĞERİ ve SALT OKUNURLUĞU
+     değişir → form yeniden kurulur. Dinleyici `#ftrForm` düğümüne bağlıdır:
+     `GV.form` o düğümün İÇİNİ değiştirir, düğümün kendisi ayakta kalır.
+     `#ftrForm` `#rec` içindedir ve `GV.refresh()` `#rec`i taze kopyayla
+     değiştirir — `GV.on` gerekmez (brief §2.6). */
+  formEl.addEventListener('change', function(e){
+    if(!e.target || !e.target.name) return;
+    if(['musteri', 'sozlesme', 'taksit'].indexOf(e.target.name) === -1) return;
+    var t = form.read();
+    /* Üst halka elle değiştiyse alt halkanın eski değeri ARTIK GEÇERSİZDİR:
+       başka bir müşteriye ait sözleşme ya da başka sözleşmeye ait taksit
+       taşımamak için alt halkalar sıfırlanır. */
+    if(e.target.name === 'musteri'){ t.sozlesme = ''; t.taksit = ''; t.proje = ''; }
+    if(e.target.name === 'sozlesme'){ t.taksit = ''; }
+    formKur(t, true);
+  });
+
+  /* ---- İlk çizim ---------------------------------------------------- */
+  formKur(null, false);
+
+  /* =================================================================
+     KAYDETME
+     ================================================================= */
+  function kodUret(){
+    /* Kod defterden türetilir, sabit yazılmaz (brief §13.2). */
+    var yil = String(DB.today).slice(0, 4), max = 0;
+    (DB.invoices || []).forEach(function(x){
+      var m = new RegExp('^FTR-' + yil + '-(\\d+)$').exec(x.kod || '');
+      if(m) max = Math.max(max, +m[1]);
+    });
+    return 'FTR-' + yil + '-' + String(max + 1).padStart(3, '0');
+  }
+
+  function kaydet(){
+    var v = form && form.submit();
+    if(!v) return false;
+
+    var c = cozum(v);
+
+    /* ---- Müşteri bağı ---------------------------------------------- */
+    if(!c.musteriKod || !c.hesap){
+      GV.toast('Müşteri çözülemedi; müşteri ya da bir sözleşme seçin.', 'danger');
+      return false;
+    }
+
+    /* ---- Taksit tekliği — KAPI REDDEDER, uyarmakla yetinmez ---------
+       Bir taksite en fazla BİR fatura bağlanır (misc.js:70). İkincisini
+       kesmek sözleşme bedelini iki kez faturalamaktır. */
+    if(c.taksitKod && faturaliMi(c.taksitKod)){
+      GV.toast(c.taksitKod + ' taksitinin faturası zaten var (' + taksitFaturasi[c.taksitKod] +
+               '). Bir taksite en fazla bir fatura bağlanır; başka bir taksit seçin ya da ' +
+               'taksit bağını kaldırın.', 'danger');
+      return false;
+    }
+
+    /* ---- Tutar çapası ---------------------------------------------- */
+    var T = tutarCapasi(v.tutar, v.kdvOran);
+    if(!T){
+      GV.toast('Net tutar okunamadı; sayısal bir değer girin.', 'danger');
+      return false;
+    }
+
+    var hedefKod;
+
+    if(!rec){
+      /* ---- YENİ KAYIT ---------------------------------------------
+         · Belge durumu geçiş tablosunun İLK kaydıdır ve nesne literalinde
+           verilir; kayda durum yazan bir atama satırı YOKTUR.
+         · `vergi` ve `toplam` TÜRETİLMİŞTİR (`GV.fin.tutar`), elle girilmedi.
+         · `durum` (ödeme durumu) literalde HİÇ YOK: onu motor türetir. */
+      hedefKod = kodUret();
+      var yeni = {
+        kod:hedefKod,
+        musteri:c.musteriKod,
+        musteriAd:c.hesap.unvan,
+        sozlesme:c.sozlesmeKod || null,
+        proje:c.projeKod || null,
+        milestone:c.taksitKod || null,
+        tarih:v.tarih,
+        vade:v.vade,
+        tutar:T.net,
+        vergi:T.kdv,
+        toplam:T.brut,
+        belgeDurum:ILK_DURUM,
+        odemeTarihi:null,
+        aciklama:bosNull(v.aciklama),
+        aktif:true
+      };
+      (DB.invoices || (DB.invoices = [])).unshift(yeni);
+
+      /* Ödeme durumunu EKRAN yazmaz: tahsis defteri boş doğduğu için motor
+         onu türetir ve kayda kendisi işler (domain.js:1149). */
+      var tazele = GV.fin.durumTazele(yeni);
+
+      GV.audit.yaz({
+        kayit:hedefKod, modul:'Finans',
+        islem:'Fatura kesildi · ' + c.hesap.unvan + ' · ' + paraMetin(T.brut) + ' brüt' +
+              (c.taksitKod ? ' · taksit ' + c.taksitKod : ' · taksite bağlı değil') +
+              (c.sozlesmeKod ? ' · sözleşme ' + c.sozlesmeKod : ' · sözleşmesiz'),
+        yeni:ILK_DURUM, tone:'ok', icon:'i-plus' });
+
+      GV.afterSave({
+        kod:hedefKod,
+        liste:'app-fatura.html',
+        detay:'app-fatura-detay.html',
+        yeni:true,
+        mesaj:hedefKod + ' ' + ILK_DURUM + ' belge durumunda oluşturuldu; ödeme durumu ' +
+              'tahsis defterinden "' + (tazele ? tazele.yeni : '—') + '" olarak türetildi. ' +
+              (c.taksitKod
+                ? c.taksitKod + ' taksiti artık faturalanmış sayılır.'
+                : 'Fatura bir taksite bağlı değil; zincir denetiminde "ölçülemedi" görünecek.'),
+        alt:[
+          { label:'Ödeme linki oluştur', cls:'btn-acc',
+            href:'app-odeme-linki-form.html?fatura=' + encodeURIComponent(hedefKod) },
+          { label:'Müşteriyi aç',
+            href:'app-musteri-detay.html?id=' + encodeURIComponent(c.musteriKod) }
+        ]
+      });
+      return true;
+    }
+
+    /* ---- DÜZENLEME --------------------------------------------------
+       ⚠️ TAHSİSİ OLAN FATURADA NET TUTARI DÜŞÜRMEK BAKİYEYİ BOZAR.
+       Bakiye BRÜT eksende yürür ve tahsis defteri onun TEK kaynağıdır;
+       tahsis toplamı yeni brütü aşarsa fatura "fazla ödenmiş" duruma
+       düşerdi. Kapı uyarmaz, REDDEDER (brief §14.12). */
+    var bak = GV.fin.balance(rec);
+    if(bak && bak.tahsil > T.brut){
+      GV.toast('Kaydedilmedi: bu faturaya ' + paraMetin(bak.tahsil) + ' tahsis edilmiş, yeni ' +
+               'brüt ' + paraMetin(T.brut) + ' bunun altında kalıyor. Tahsis toplamı fatura ' +
+               'brütünü aşamaz — önce tahsisi kaldırın ya da net tutarı yükseltin.', 'danger');
+      return false;
+    }
+
+    hedefKod = rec.kod;
+    /* `belgeDurum` ve `durum` bilerek listede YOK: ilki bu ekrandan
+       değişmez, ikincisi türetilmiş bir görünümdür. */
+    var alanlar = {
+      musteri:c.musteriKod,
+      musteriAd:c.hesap.unvan,
+      sozlesme:c.sozlesmeKod || null,
+      proje:c.projeKod || null,
+      milestone:c.taksitKod || null,
+      tarih:v.tarih,
+      vade:v.vade,
+      tutar:T.net,
+      vergi:T.kdv,
+      toplam:T.brut,
+      aciklama:bosNull(v.aciklama)
+    };
+
+    var brutDegisti = String(rec.toplam) !== String(T.brut);
+    var degisen = [];
+    Object.keys(alanlar).forEach(function(k){
+      var eskiD = rec[k] == null ? '' : String(rec[k]);
+      var yeniD = alanlar[k] == null ? '' : String(alanlar[k]);
+      if(eskiD !== yeniD) degisen.push(k);
+      rec[k] = alanlar[k];
+    });
+
+    /* Brüt değiştiyse ödeme durumu ARTIK ESKİDİR. Ekran yeni değeri elle
+       yazmaz — motoru çağırır, o türetir (domain.js:1149). Brüt değişmediyse
+       türetmenin girdisi de değişmemiştir; boş yere çağrılmaz. */
+    if(brutDegisti) GV.fin.durumTazele(rec);
+
+    GV.audit.yaz({
+      kayit:hedefKod, modul:'Finans',
+      islem:(degisen.length
+              ? 'Fatura güncellendi — değişen alan: ' + degisen.join(', ')
+              : 'Fatura kaydedildi — alan değişmedi') +
+            (brutDegisti
+              ? ' · brüt değişti, ödeme durumu tahsis defterinden yeniden türetildi'
+              : ' · brüt değişmedi, ödeme durumuna dokunulmadı'),
+      tone:'info', icon:'i-edit' });
+
+    GV.afterSave({
+      kod:hedefKod,
+      liste:'app-fatura.html',
+      detay:'app-fatura-detay.html',
+      yeni:false,
+      mesaj:'Fatura güncellendi; belge durumu (' + rec.belgeDurum + ') değiştirilmedi — ' +
+            'geçişler fatura detayında yürür. Ödeme durumu tahsis defterinden türetilir.',
+      alt:[
+        { label:'Müşteriyi aç',
+          href:'app-musteri-detay.html?id=' + encodeURIComponent(c.musteriKod) }
+      ]
+    });
+    return true;
+  }
+
+  /* =================================================================
+     BACKEND PAYI — brief §10.2 (b): tek tek, gizlenmeden, taklit edilmeden
+     ================================================================= */
+  var BACKEND = [
+    { kod:'BE-F1', bolum:'§10.4 e-fatura',
+      madde:'E-fatura / e-arşiv entegrasyonu yok. Bu form bir İÇ kayıt üretir: GİB ya da ' +
+            'entegratör gönderimi, UBL belgesi, e-fatura numarası ve kabul/ret bildirimi ' +
+            'prototipte üretilmez — kesilen belgenin resmî bir karşılığı yoktur' },
+    { kod:'BE-S5', bolum:'§9 audit_event',
+      madde:'Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır — burada ' +
+            'kesilen fatura da yeni sekmede bulunamaz' }
+  ];
+
+  document.getElementById('ftrBackend').innerHTML =
+    '<section class="gv-card">' +
+      '<div class="gc-head">' +
+        '<h3 class="gc-title">' + ico('i-shield') + 'Backend payı</h3>' +
+        '<span class="gc-meta">' + BACKEND.length + ' madde</span>' +
+      '</div>' +
+      '<ul class="gv-checklist">' + BACKEND.map(function(g){
+        return '<li><span><b>' + esc(g.kod) + '</b> — ' + esc(g.madde) + '</span>' +
+          '<span class="cell-sub">' + esc(g.bolum) + '</span></li>';
+      }).join('') + '</ul>' +
+      '<div class="gc-body u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+        '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</div>' +
+    '</section>';
+});
+</script>
+</body>
+</html>
