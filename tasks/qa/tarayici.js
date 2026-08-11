@@ -173,6 +173,45 @@ const OLC_SPRITE = new Function(`
   };
 `);
 
+/* =====================================================================
+   NÖBETÇİ — ÖLÇÜLEN SAYFA GERÇEKTEN YÜKLENDİ Mİ
+
+   Bu eksen dört şey ölçüyordu: konsol · taşma · sprite · odak. Dördü de
+   "sayfa ne gösteriyor" sorusunu soruyor, hiçbiri "sayfa doğru sayfa mı"
+   sorusunu sormuyordu. Ölçüldü ve yakalandı: harness oturum parametresini
+   hash'in SONUNA ekliyordu, `…?id=X#test` hedefi `…?id=X#test&role=sahip`
+   oluyordu; kabuk `role`u okuyamıyor, 403 basıyor ve eksen o hata sayfasını
+   ölçüp **YEŞİL yanıyordu**. Taşma yok, ikon yok, konsol temiz — çünkü
+   ekran hiç çizilmemişti.
+
+   403 sayfası da bir `.gv-app` iskeleti kurar, yani iskeletin varlığı
+   yüklenme kanıtı DEĞİLDİR. Üç bağımsız işaret ölçülür:
+     1. `gv:ready` atıldı mı — kabuğun yetki verdiğinin TEK doğru kanıtı
+        (`shell.js:1020` yetkisizde `gv:denied` atar). Sayfa yüklenmeden
+        önce enjekte edilen dinleyiciyle sayılır.
+     2. Belge başlığı 'Yetkisiz erişim' ile başlıyor mu (`shell.js:849`).
+     3. `.gv-page` içinde kaç element var — 403 durumu ~10 düğüm basar,
+        gerçek ekran yüzlerce. Eşik düşük tutulur (25): amaç boş kabuğu
+        yakalamak, ince ekranı kusurlu ilan etmek değil.
+
+   Kabuğu YÜKLEMEYEN dış ödeme ekranlarında (`oturum:false`, şartname §8.3)
+   `gv:ready` beklenmez; orada yalnız gövdenin dolu olması aranır.
+   ===================================================================== */
+const OLC_GECERLILIK = () => {
+  const g = window.__gvOlcum || { ready: 0, denied: 0 };
+  const sayfa = document.querySelector('.gv-page');
+  return {
+    ready: g.ready, denied: g.denied,
+    baslik: document.title || '',
+    yetkisizBaslik: /^Yetkisiz erişim/.test(document.title || ''),
+    sayfaDugum: sayfa ? sayfa.querySelectorAll('*').length : 0,
+    govdeDugum: document.body ? document.body.querySelectorAll('*').length : 0,
+    kabuk: !!document.querySelector('.gv-app'),
+    kilitDurumu: !!document.querySelector('.gv-state.is-danger')
+  };
+};
+const GECERLILIK_ESIK = 25;   /* `.gv-page` içi en az element sayısı */
+
 const OLC_ODAK_HAZIRLIK = new Function(`
   var cizildi = ${CIZILDI_MI};
   var sec = 'a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])';
@@ -246,6 +285,14 @@ const OLC_ODAK_HAZIRLIK = new Function(`
          `test&role=sahip` olduğu için hiçbir sekmeye uymuyordu. Yani ölçüm
          ekranı değil hata sayfasını ölçüyor ve YEŞİL yanıyordu — sahte
          temizlik. Sorgu ile hash ayrı ayrı kurulur. */
+      /* Nöbetçi sayaçları sayfa KODU KOŞMADAN ÖNCE kurulur; `gv:ready`
+         `goto` sırasında atılır ve sonradan bağlanan dinleyici onu kaçırır. */
+      await page.addInitScript(() => {
+        window.__gvOlcum = { ready: 0, denied: 0 };
+        document.addEventListener('gv:ready',  () => { window.__gvOlcum.ready++; });
+        document.addEventListener('gv:denied', () => { window.__gvOlcum.denied++; });
+      });
+
       const [yol, parca] = ek.dosya.split('#');
       const url = base + '/' + yol +
         (ek.oturum ? (yol.indexOf('?') === -1 ? '?role=sahip' : '&role=sahip') : '') +
@@ -256,6 +303,7 @@ const OLC_ODAK_HAZIRLIK = new Function(`
       if (ek.oturum) await page.waitForSelector('.gv-app', { timeout: 5000 }).catch(() => {});
       await page.waitForTimeout(350);
 
+      const gecer  = await page.evaluate(OLC_GECERLILIK);
       const tasma  = await page.evaluate(OLC_TASMA);
       const sprite = await page.evaluate(OLC_SPRITE);
       const odakH  = await page.evaluate(OLC_ODAK_HAZIRLIK);
@@ -280,6 +328,22 @@ const OLC_ODAK_HAZIRLIK = new Function(`
       const odakGorunmez = odakZinciri.filter(o => !o.gorunur).length;
 
       const bulgular = [];
+
+      /* ---- NÖBETÇİ — diğer dört eksenden ÖNCE ---------------------------
+         Geçersiz ölçüm "kusursuz" değil ÖLÇÜLMEMİŞtir. Bu satırlar bulguya
+         yazılır ki ✗ bassın; sessizce yeşil geçmek, ölçmediğini ölçtüm
+         sanmaktır. */
+      const gecersiz = [];
+      if (ek.oturum && gecer.denied)          gecersiz.push('kabuk gv:denied attı — 403 yetki kapısı');
+      if (ek.oturum && !gecer.ready)          gecersiz.push('gv:ready hiç atılmadı — ekran kodu koşmadı');
+      if (gecer.yetkisizBaslik)               gecersiz.push(`belge başlığı "${gecer.baslik}"`);
+      if (ek.oturum && gecer.sayfaDugum < GECERLILIK_ESIK)
+        gecersiz.push(`.gv-page içinde yalnız ${gecer.sayfaDugum} element (eşik ${GECERLILIK_ESIK}) — boş kabuk`);
+      if (!ek.oturum && gecer.govdeDugum < GECERLILIK_ESIK)
+        gecersiz.push(`gövdede yalnız ${gecer.govdeDugum} element (eşik ${GECERLILIK_ESIK}) — sayfa çizilmedi`);
+      if (gecersiz.length)
+        bulgular.push('GEÇERSİZ ÖLÇÜM — sayfa yüklenmedi, diğer eksenler anlamsız: ' + gecersiz.join(' · '));
+
       if (konsol.length) bulgular.push(...konsol.map(k => 'KONSOL — ' + k));
       if (tasma.kaydi) bulgular.push(`TAŞMA — belge ${tasma.scroll}px, görüntü ${tasma.genislik}px · suçlu: ` +
         (tasma.suclular.map(s => `${s.etiket}${s.sinif ? '.' + s.sinif.split(' ')[0] : ''}${s.id ? '#' + s.id : ''}@${s.sag}px`).join(', ') || 'bulunamadı'));
@@ -297,11 +361,12 @@ const OLC_ODAK_HAZIRLIK = new Function(`
       if (odakH.sifirBoyut.length) bulgular.push('ODAK — 0×0 odaklanabilir düğüm: ' + odakH.sifirBoyut.join(', '));
 
       toplamBulgu += bulgular.length;
-      sonuclar.push({ ekran: ek.ad, dosya: ek.dosya, genislik: g, tasma, sprite, disKaynak, odak: {
+      sonuclar.push({ ekran: ek.ad, dosya: ek.dosya, genislik: g, gecer, gecersiz, tasma, sprite, disKaynak, odak: {
         odaklanabilir: odakH.odaklanabilir, dokumanda: odakH.dokumanda, gizli: odakH.gizli,
         zincir: odakZinciri.length, gorunmez: odakGorunmez }, bulgular });
 
       console.log(`  ${bulgular.length ? '✗' : '✓'} ${ek.ad.padEnd(11)} ${String(g).padStart(4)}px  ` +
+        `düğüm:${ek.oturum ? gecer.sayfaDugum : gecer.govdeDugum} ` +
         `taşma:${tasma.kaydi ? 'VAR' : 'yok'} sprite:${sprite.kullanim - sprite.gizliKapsayicida}çizili/${sprite.gizliKapsayicida}gizli ` +
         `odak:${odakZinciri.length}/${odakH.odaklanabilir}` +
         (disKaynak.length ? ` [dış:${disKaynak.length}]` : '') +
@@ -318,7 +383,18 @@ const OLC_ODAK_HAZIRLIK = new Function(`
 
   fs.writeFileSync(path.join(__dirname, 'tarayici-sonuc.json'), JSON.stringify(sonuclar, null, 2));
   const disToplam = sonuclar.reduce((a, s) => a + s.disKaynak.length, 0);
+  /* Sıfır bulgu TEK BAŞINA temiz değildir: kaç sayfanın gerçekten yüklendiği
+     ve kaç düğüm bastığı da basılır. Bir eksen neyi ölçmediğini söylemiyorsa
+     yeşil rengi bir şey ifade etmez. */
+  const gecersizOlcum = sonuclar.filter(s => s.gecersiz && s.gecersiz.length).length;
+  const gecerliOlcum  = sonuclar.length - gecersizOlcum;
+  const dugumler = sonuclar.map(s => (s.gecer ? (s.gecer.sayfaDugum || s.gecer.govdeDugum) : 0));
+  const dugumToplam = dugumler.reduce((a, b) => a + b, 0);
+  const readySayisi = sonuclar.filter(s => s.gecer && s.gecer.ready > 0).length;
   console.log(`\n${toplamBulgu ? '✗ TOPLAM BULGU: ' + toplamBulgu : '✓ TEMİZ'} · ${EKRANLAR.length} ekran × ${GENISLIK.length} genişlik = ${sonuclar.length} ölçüm` +
-    (disToplam ? ` · ayrıca ${disToplam} dış kaynak isteği başarısız (Google Fonts CDN — depo kusuru değil)` : '') + '\n');
+    (disToplam ? ` · ayrıca ${disToplam} dış kaynak isteği başarısız (Google Fonts CDN — depo kusuru değil)` : ''));
+  console.log(`  NÖBETÇİ · geçerli ölçüm ${gecerliOlcum}/${sonuclar.length} · geçersiz ${gecersizOlcum} · ` +
+    `gv:ready atan ${readySayisi}/${sonuclar.length} · ölçülen düğüm toplamı ${dugumToplam} ` +
+    `(en az ${Math.min(...dugumler)}, en çok ${Math.max(...dugumler)}, eşik ${GECERLILIK_ESIK})\n`);
   process.exit(toplamBulgu ? 1 : 0);
 })();

@@ -373,3 +373,104 @@ Bozulmuş kopyaya **dört kusur** enjekte edildi, **dördü de yakalandı**:
 | Fatura durumu tazelemede yazılmıyor | `finans-kanon.js` | elle atanan "Ödendi" hayatta kaldı |
 
 4 kusur → **19 bulgu**. Enjeksiyon kopyası silindi; depo dosyası değişmedi.
+
+---
+
+## 10. ÖLÇÜM KATMANINDA BULUNAN DÖRDÜNCÜ KUSUR — ve geçmişin denetimi
+
+**11 Ağustos, dilim 3.** Eksen oturum parametresini adresin **sonuna**
+ekliyordu:
+
+```js
+const url = base + '/' + ek.dosya +
+  (ek.oturum ? (ek.dosya.indexOf('?') === -1 ? '?role=sahip' : '&role=sahip') : '');
+```
+
+Hedefte `#` varsa sonuç `…?id=X#test&role=sahip` oluyor. İki şey birden
+bozuluyor: kabuk `role`u okuyamadığı için **403** basıyor, sekme anahtarı da
+`test&role=sahip` olduğu için hiçbir sekmeye uymuyor. Eksen o hata sayfasını
+ölçüp **YEŞİL yanıyordu** — taşma yok, ikon yok, konsol temiz, çünkü ekran hiç
+çizilmemişti. **Sahte temizlik.**
+
+### 10.1 Geçmiş denetlendi — önceki ölçümler GEÇERLİ
+
+Kusurlu kod her sürümde vardı, ama **yalnız `#` taşıyan girdide tetikleniyor.**
+`tarayici.js`'in yayındaki her sürümü tek tek çıkarılıp ölçüldü:
+
+| Commit | Ekran | `#` taşıyan girdi | URL kurulumu |
+|---|--:|--:|---|
+| `66b898e` | 3 | **0** | bozuk (tetiklenmedi) |
+| `a9e7d7c` | 9 | **0** | bozuk (tetiklenmedi) |
+| `aa3e6e5` | 4 | **0** | bozuk (tetiklenmedi) |
+| `6b28c5e` | 10 | **0** | bozuk (tetiklenmedi) |
+| `1f0dbe7` | 19 | **0** | bozuk (tetiklenmedi) |
+| `4955a84` | 26 | **0** | bozuk (tetiklenmedi) |
+| `f204a6e` | 33 | **1** ← `app-proje-detay.html?id=PRJ-2026-001#test` | **bozuk · TETİKLENDİ** |
+| `277f951` | 33 | 1 | düzeltilmiş |
+
+**Empirik kanıt.** Bozuk sürüm bozulmuş kopyada koşuldu:
+`#` TAŞIMAYAN girdi (`app-musteri.html`) → `.gv-page` içinde **989 element**,
+`gv:ready` atıldı, ölçüm gerçek. `#` taşıyan girdi → **0 element**,
+`gv:ready` hiç atılmadı.
+
+**Sonuç: dilim 1'in 114 ölçümü ve finans diliminin 156 ölçümü GEÇERLİDİR.**
+Kusurlu kod oradaydı ama hiç tetiklenmedi — o listelerde tek bir `#` yoktu.
+
+### 10.2 GEÇERSİZ işaretlenen ölçüm — bir tane
+
+| Koşum | Ölçüm | Durum |
+|---|--:|---|
+| `f204a6e` sonrası ilk koşum, `Proje Kalite` (`?id=PRJ-2026-001#test`) | **6** (altı genişlik) | **GEÇERSİZ** — 403 sayfası ölçüldü. Silinmedi, işaretlendi. |
+
+O koşumun diğer 192 ölçümü geçerlidir. Düzeltmeden sonra aynı girdi yeniden
+ölçüldü: sprite 8→**37**, odak 8→**41**, `.gv-page` düğümü 0→**dolu**.
+
+### 10.3 NÖBETÇİ — artık boş sayfa yeşil yanmıyor
+
+Eksen dört şey ölçüyordu (konsol · taşma · sprite · odak) ve dördü de
+"sayfa ne gösteriyor" sorusunu soruyordu; hiçbiri **"sayfa doğru sayfa mı"**
+sorusunu sormuyordu. 403 sayfası da bir `.gv-app` iskeleti kurar — iskeletin
+varlığı yüklenme kanıtı **değildir**.
+
+Nöbetçi üç bağımsız işaret ölçer:
+
+1. **`gv:ready` atıldı mı** — kabuğun yetki verdiğinin tek doğru kanıtı
+   (`shell.js:1020` yetkisizde `gv:denied` atar). Dinleyici sayfa kodu
+   koşmadan önce `addInitScript` ile kurulur, yoksa olay kaçırılır.
+2. **Belge başlığı** `Yetkisiz erişim` ile başlıyor mu (`shell.js:849`).
+3. **`.gv-page` içindeki element sayısı** — 403 durumu ~15 düğüm basar,
+   gerçek ekran yüzlerce. Eşik **25**: amaç boş kabuğu yakalamak, ince
+   ekranı kusurlu ilan etmek değil.
+
+Kabuğu yüklemeyen dış ödeme ekranlarında (`oturum:false`, şartname §8.3)
+`gv:ready` beklenmez; orada yalnız gövdenin dolu olması aranır.
+
+Geçersiz ölçüm **"kusursuz" değil ÖLÇÜLMEMİŞtir** ve bulguya yazılır, ✗ basar.
+
+### 10.4 Nöbetçi bozulmuş kopyada sınandı (L-39)
+
+**İki kusur enjekte edildi, ikisi de yakalandı; temiz vaka temiz kaldı.**
+
+| Vaka | Enjekte edilen | Sonuç |
+|---|---|---|
+| `SAGLAM` (olumsuz vaka) | yok | ✓ **989 düğüm**, `gv:ready` atıldı, bulgu yok |
+| `KUSUR1` (olumlu vaka) | eski bozuk URL kurulumu geri kondu | ✗ **YAKALANDI** — "0 element, `gv:ready` hiç atılmadı" |
+| `KUSUR2` (olumlu vaka) | `SCREEN_DENY.operasyon`a `sahip` eklendi → 403 | ✗ **YAKALANDI** — dört işaretin dördü birden |
+
+Bozulmuş kopya ölçümden sonra silindi; depo dosyaları hiç değişmedi.
+
+### 10.5 Düzeltilmiş eksenle tam koşum
+
+```
+✓ TEMİZ · 33 ekran × 6 genişlik = 198 ölçüm
+  NÖBETÇİ · geçerli ölçüm 198/198 · geçersiz 0
+          · gv:ready atan 180/198
+          · ölçülen düğüm toplamı 143 304 (en az 36, en çok 1355, eşik 25)
+```
+
+`gv:ready` atmayan 18 ölçüm = 3 ekran × 6 genişlik ve üçü de **kabuğu bilerek
+yüklemeyen** sayfalar: `index.html` · `app-odeme.html` · `app-odeme-sonuc.html`
+(şartname §8.3). En düşük düğüm sayısı 36, eşiğin üstünde.
+
+**Sıfır bulgu tek başına temiz değildir:** bu koşumda 198 sayfanın 198'i
+gerçekten yüklendi ve toplam 143 304 düğüm ölçüldü.
