@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Müşteriler — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="satis" data-screen="musteri">
+<div id="liste"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/notes.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   MÜŞTERİLER — şartname §5
+
+   R1'de bu ekran YALNIZ `DB.customers`'ı (12 kayıt) listeliyordu; müşteri
+   adayları `app-lead.html` adında AYRI BİR EKRAN AİLESİYDİ (3 ekran, ayrı
+   menü girdisi, ayrı kart tasarımı).
+
+   §5.1: "Aday müşteri ayrı modül ve ayrı şirket kaydı OLMAMALIDIR."
+   §5.1: "Müşteri listesinde evre bir kolon ve filtre olmalıdır. 'Aday' için
+          YALNIZ küçük, nötr bir durum etiketi kullanılmalı; ayrı renk teması,
+          ayrı kart tasarımı veya ayrı menü oluşturulmamalıdır."
+
+   Kaynak artık `DB.accounts` — `lifecycle.js` tarafından `DB.customers` +
+   `DB.leads`'ten TÜRETİLİR. Ölçüldü: 12 + 12 → 20 hesap (24 değil; dört
+   lead mevcut müşteriyle aynı firmadır ve yeni hesap doğurmaz).
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F = GV.fmt;
+  var canFinans = GV.perm.can('finans');
+
+  /* Evre etiketi — NÖTR. Şartname §5.1 aday için ayrı renk teması yasaklıyor;
+     bu yüzden ADAY ve PASIF tonsuz basılır. Ton sözlüğü `DB.lifecycleStages`
+     içinde TEK yerdedir, ekran kendi renk kararını vermez (L-40). */
+  function evreRozeti(evre){
+    var s = DB.lifecycleStages[evre];
+    if(!s) return '<span class="u-faint">—</span>';
+    return '<span class="badge' + (s.tone ? ' ' + s.tone : '') + '">' + GV.esc(s.ad) + '</span>';
+  }
+  function evreAdi(evre){
+    var s = DB.lifecycleStages[evre];
+    return s ? s.ad : '—';
+  }
+
+  /* Hesabın fırsatları — §5.3 "bir müşteri hesabının birden fazla fırsatı
+     olabilir". Fırsat kaydı `lifecycle.js` tarafından lead'den türetildi. */
+  function firsatlari(h){
+    return (DB.opportunities || []).filter(function(o){ return o.hesap === h.kod; });
+  }
+
+  GV.list({
+    mount:'#liste', id:'musteri', key:'kod',
+    source:function(){ return DB.accounts; },
+    exportName:'musteriler', exportTitle:'Müşteri Listesi', pageSize:10, views:['table','card'],
+    search:{ placeholder:'Firma, sektör, sorumlu veya kayıt no ara',
+             fields:['kod','unvan','kisa','sektor','ihtiyac','legacy_id'] },
+    defaultSort:'unvan',
+
+    kpis:[
+      { label:'Toplam hesap', icon:'i-building', calc:function(a){ return a.length; } },
+      { label:'Müşteri', icon:'i-check-circle', tone:'ok',
+        calc:function(a){ return a.filter(function(h){ return h.evre === 'MUSTERI'; }).length; } },
+      { label:'Aday ve nitelikli', icon:'i-user-plus', tone:'info',
+        calc:function(a){ return a.filter(function(h){ return h.evre === 'ADAY' || h.evre === 'NITELIKLI'; }).length; } },
+      { label:'Bekleyen tahsilat', icon:'i-wallet', tone:'warn', format:F.moneyK, perm:'finans',
+        calc:function(a){ return a.reduce(function(s,h){ return s + (h.bekleyenTahsilat || 0); }, 0); } }
+    ],
+
+    /* Evre ayrı MODÜL değil, ana kaydın FİLTRELENEBİLİR DURUMUDUR (§2).
+       Sekmeler `DB.lifecycleOrder`dan üretilir — liste elle yazılmaz. */
+    tabs:[{ key:'tumu', label:'Tüm Hesaplar', icon:'i-list', filter:null }].concat(
+      DB.lifecycleOrder.map(function(k){
+        return {
+          key:k.toLowerCase(),
+          label:DB.lifecycleStages[k].ad,
+          icon:k === 'MUSTERI' ? 'i-check-circle'
+             : k === 'ADAY' ? 'i-user-plus'
+             : k === 'NITELIKLI' ? 'i-funnel'
+             : k === 'PASIF' ? 'i-archive' : 'i-x',
+          filter:function(h){ return h.evre === k; }
+        };
+      })
+    ),
+
+    columns:[
+      { key:'unvan', label:'Firma', width:'26%', cellClass:'cell-wrap', locked:true,
+        render:function(h){
+          /* Detay ekranı R2'de HENÜZ YOK. `markWip` yayında olmayan bağlantıyı
+             otomatik data-wip'e çevirir; sahte buton bırakılmaz. */
+          return '<a class="cell-main" href="app-musteri-detay.html?id=' + h.kod + '">' + GV.esc(h.unvan) + '</a>' +
+                 '<span class="cell-code">' + GV.esc(h.kod) +
+                 (h.sektor ? ' · ' + GV.esc(h.sektor) : '') + '</span>';
+        } },
+
+      /* §5.1 — EVRE KOLONU */
+      { key:'evre', label:'Yaşam evresi',
+        render:function(h){ return evreRozeti(h.evre); },
+        sortValue:function(h){ return (DB.lifecycleStages[h.evre] || {}).sira || 99; },
+        exportValue:function(h){ return evreAdi(h.evre); } },
+
+      { key:'firsat', label:'Fırsat', cellClass:'num',
+        render:function(h){
+          var f = firsatlari(h);
+          if(!f.length) return '<span class="u-faint">—</span>';
+          var acik = f.filter(function(o){ return ['Kazanıldı','Kaybedildi'].indexOf(o.asama) === -1; });
+          return '<span class="u-num"><b>' + acik.length + '</b> açık / ' + f.length + '</span>';
+        },
+        sortValue:function(h){ return firsatlari(h).length; },
+        exportValue:function(h){ return firsatlari(h).length; } },
+
+      { key:'sorumlu', label:'Sorumlu',
+        render:function(h){ return h.sorumlu ? GV.user(h.sorumlu, { sm:true }) : '<span class="u-faint">—</span>'; },
+        sortValue:function(h){ return h.sorumlu ? DB.empName(h.sorumlu) : ''; },
+        exportValue:function(h){ return h.sorumlu ? DB.empName(h.sorumlu) : ''; } },
+
+      { key:'sektor', label:'Sektör', visible:false,
+        render:function(h){ return h.sektor ? GV.esc(h.sektor) : '<span class="u-faint">—</span>'; } },
+
+      { key:'ihtiyac', label:'Kısa ihtiyaç', visible:false, cellClass:'cell-wrap',
+        render:function(h){ return h.ihtiyac ? GV.esc(h.ihtiyac) : '<span class="u-faint">—</span>'; } },
+
+      { key:'aktifProje', label:'Proje', cellClass:'num',
+        render:function(h){
+          /* Lead kaynaklı hesapta proje sayacı YOK — sıfır yazmak yanlış
+             beyandır (L-08 · L-13). Boş olan "—" basar. */
+          if(h.aktifProje == null) return '<span class="u-faint">—</span>';
+          return '<span class="u-num"><b>' + h.aktifProje + '</b> aktif</span>';
+        },
+        exportValue:function(h){ return h.aktifProje == null ? '' : h.aktifProje; } },
+
+      { key:'toplamCiro', label:'Toplam ciro', cellClass:'num',
+        render:function(h){
+          if(!canFinans) return '<span class="cell-mask">••••••</span>';
+          if(h.toplamCiro == null) return '<span class="u-faint">—</span>';
+          return '<span class="cell-money">' + F.money(h.toplamCiro) + '</span>';
+        },
+        exportValue:function(h){ return canFinans && h.toplamCiro != null ? h.toplamCiro : ''; } },
+
+      { key:'bekleyenTahsilat', label:'Bekleyen tahsilat', cellClass:'num', visible:false,
+        render:function(h){
+          if(!canFinans) return '<span class="cell-mask">••••••</span>';
+          if(!h.bekleyenTahsilat) return '<span class="u-faint">—</span>';
+          return '<span class="cell-money u-danger">' + F.money(h.bekleyenTahsilat) + '</span>';
+        },
+        exportValue:function(h){ return canFinans && h.bekleyenTahsilat != null ? h.bekleyenTahsilat : ''; } },
+
+      { key:'sonIletisim', label:'Son iletişim',
+        render:function(h){ return h.sonIletisim ? '<span class="cell-date">' + F.date(h.sonIletisim) + '</span>'
+                                                 : '<span class="u-faint">—</span>'; } },
+
+      /* Göç izlenebilirliği — §12 "legacy_id ile izlenebilirlik korunur".
+         Varsayılan gizli; ölçüm ve doğrulama için açılabilir. */
+      { key:'legacy_id', label:'Kaynak kayıt', visible:false,
+        render:function(h){ return '<span class="cell-code">' + GV.esc(h.legacy_id) +
+                                   ' · ' + GV.esc(h.legacy_kaynak) + '</span>'; } },
+      { key:'evreKaynak', label:'Evre türetmesi', visible:false,
+        render:function(h){ return '<span class="cell-sub">' + GV.esc(h.evreKaynak) + '</span>'; } }
+    ],
+
+    filters:[
+      { key:'evre', label:'Yaşam evresi', type:'multi',
+        options:DB.lifecycleOrder.map(function(k){ return { value:k, label:DB.lifecycleStages[k].ad }; }) },
+      { key:'sektor', label:'Sektör', type:'multi', options:DB.sectors },
+      { key:'sorumlu', label:'Sorumlu', type:'select',
+        options:DB.employees.map(function(e){ return { value:e.kod, label:e.ad }; }) },
+      { key:'legacy_kaynak', label:'Kayıt kaynağı', type:'select',
+        options:[{ value:'DB.customers', label:'Müşteri kaydından' },
+                 { value:'DB.leads', label:'Aday kaydından' }] },
+      { key:'firsatVar', label:'Açık fırsatı olanlar', type:'select',
+        options:[{ value:'var', label:'Sadece açık fırsatı olanlar' }],
+        test:function(h){
+          return firsatlari(h).some(function(o){ return ['Kazanıldı','Kaybedildi'].indexOf(o.asama) === -1; });
+        } }
+    ],
+
+    /* Kayıp hesap soluk, pasif hesap gri. ADAY için AYRI TON YOK (§5.1). */
+    rowClass:function(h){
+      if(h.evre === 'KAYIP') return 'is-passive';
+      if(h.evre === 'PASIF') return 'is-passive';
+      return '';
+    },
+
+    card:function(h){
+      return '<div class="gv-rcard-top"><div>' +
+        '<a class="cell-main" href="app-musteri-detay.html?id=' + h.kod + '">' + GV.esc(h.kisa || h.unvan) + '</a>' +
+        '<div class="cell-code">' + GV.esc(h.kod) + (h.sektor ? ' · ' + GV.esc(h.sektor) : '') + '</div></div>' +
+        evreRozeti(h.evre) + '</div>' +
+        '<div class="gv-rcard-meta">' +
+          '<span>' + firsatlari(h).length + ' fırsat</span>' +
+          (h.aktifProje != null ? '<span>' + h.aktifProje + ' aktif proje</span>' : '') +
+        '</div>' +
+        '<div class="gv-rcard-foot">' +
+          (canFinans && h.toplamCiro != null ? '<span class="cell-money">' + F.money(h.toplamCiro) + '</span>'
+                                             : '<span class="u-faint">—</span>') +
+          (h.sorumlu ? GV.user(h.sorumlu, { sm:true }) : '') +
+        '</div>';
+    },
+
+    mobile:function(h){
+      return '<div class="gv-mrow-top">' +
+        '<a class="cell-main" href="app-musteri-detay.html?id=' + h.kod + '">' + GV.esc(h.unvan) + '</a>' +
+        evreRozeti(h.evre) + '</div>' +
+        '<div class="gv-mrow-code">' + GV.esc(h.kod) + (h.sektor ? ' · ' + GV.esc(h.sektor) : '') + '</div>' +
+        '<div class="gv-mrow-meta">' +
+          '<span>' + GV.ico('i-funnel','ic-sm') + firsatlari(h).length + ' fırsat</span>' +
+          (h.aktifProje != null ? '<span>' + GV.ico('i-briefcase','ic-sm') + h.aktifProje + ' proje</span>' : '') +
+        '</div>' +
+        '<div class="gv-mrow-bottom"><span class="gv-mrow-badges">' +
+          (h.sorumlu ? GV.user(h.sorumlu, { sm:true }) : '') + '</span>' +
+          (h.sonIletisim ? '<span class="cell-date">' + F.dateShort(h.sonIletisim) + '</span>' : '') +
+        '</div>';
+    },
+
+    /* Satır aksiyonları R2'de yalnız YAYINDA olanı sunar. Evre ilerletme
+       Operasyon ekranına ve müşteri detayına bağlanacak; burada sahte bir
+       "Müşteriye çevir" düğmesi BIRAKILMAZ — hedef ekran henüz yok. */
+    rowActions:[
+      { key:'ac', icon:'i-external', label:'Hesabı aç',
+        href:function(h){ return 'app-musteri-detay.html?id=' + h.kod; } }
+    ],
+
+    bulk:[
+      { key:'disa', label:'Dışa aktar', icon:'i-download', export:true }
+    ],
+
+    emptyState:{ icon:'i-building', title:'Bu görünümde hesap yok',
+      desc:'Filtreleri değiştirebilirsiniz. Aday ve müşteri aynı listede, ' +
+           'yaşam evresi kolonuyla ayrışır.' }
+  });
+
+  GV.pageHead({
+    eyebrow:'Müşteri ve Satış',
+    title:'Müşteriler',
+    sub:(DB.accounts || []).length + ' hesap · aday ve müşteri tek listede',
+    actions:[
+      { label:'Yeni Müşteri', icon:'i-plus', cls:'btn-acc', href:'app-musteri-form.html' }
+    ]
+  });
+});
+</script>
+</body>
+</html>
