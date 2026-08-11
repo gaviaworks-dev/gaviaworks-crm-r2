@@ -1097,6 +1097,42 @@
         .filter(function(a){ return a.fatura === faturaKod; });
     },
 
+    /* ---- NET OKUMA — ters kayıt defteri (K-25) ------------------------
+       Şartname §8.5: "tahsilat kaydı SİLİNMEZ, ters işlem üretilir."
+       Bu yüzden geri alınmış bir tahsis defterden çıkmaz; yanına eksi
+       tutarlı bir TERS SATIR yazılır ve ikisinin toplamı sıfır olur.
+
+       Sonuç: "bu çiftin tahsisi var mı" sorusunun cevabı artık SATIR
+       SAYISI değil NET TUTARdır. Satır sayısına bakan her kontrol, geri
+       alınmış bir tahsisi hâlâ duruyor sanır — `tahsisEt` yeni tahsisi
+       "zaten var" diye reddederdi, `tahsilGeriAl` nakit olayını hiç
+       serbest bırakmazdı. İki soru da tek yerden cevaplanır. */
+    ciftNet:function(tahsilatKod, faturaKod){
+      return (window.DB && DB.paymentAllocations || [])
+        .filter(function(a){ return a.tahsilat === tahsilatKod && a.fatura === faturaKod; })
+        .reduce(function(s, a){ return s + (a.tutar || 0); }, 0);
+    },
+
+    /* Bir tahsilatın TÜM faturalara dağıtılmış net tutarı */
+    dagitimNet:function(tahsilatKod){
+      return (window.DB && DB.paymentAllocations || [])
+        .filter(function(a){ return a.tahsilat === tahsilatKod; })
+        .reduce(function(s, a){ return s + (a.tutar || 0); }, 0);
+    },
+
+    /* Fatura tarafında NET'i sıfırlanmamış (yaşayan) tahsis çiftleri.
+       Ekran tahsis defterini çizerken hangi satırın geri alınabileceğini
+       buradan okur; ters satırlar geçmiş olarak ayrıca gösterilir. */
+    canliTahsisler:function(faturaKod){
+      var hepsi = Fin.tahsisler(faturaKod);
+      var gorulen = {};
+      return hepsi.filter(function(a){
+        if(a.ters || gorulen[a.tahsilat]) return false;
+        gorulen[a.tahsilat] = true;
+        return Fin.ciftNet(a.tahsilat, faturaKod) > 0.01;
+      });
+    },
+
     /* TEK BAKİYE YORDAMI — altı kopya formülün yerine geçer.
        Brüt eksende çalışır: fatura `toplam` alanı KDV dahildir. */
     balance:function(fatura){
@@ -1189,12 +1225,21 @@
                 'hareketinden kapanır — önce tahsilatı "tahsil edildi" olarak kaydedin.' };
 
       DB.paymentAllocations = DB.paymentAllocations || [];
-      /* İdempotency — aynı tahsilat aynı faturaya iki kez tahsis edilemez */
-      var mevcut = DB.paymentAllocations.filter(function(a){
-        return a.tahsilat === tahsilatKod && a.fatura === faturaKod; })[0];
+      /* İdempotency — aynı tahsilat aynı faturaya iki kez tahsis edilemez.
+         ⚠️ Ölçüt SATIR DEĞİL NET (K-25): geri alınmış bir tahsisin asıl
+         satırı defterde durmaya devam eder. Satıra bakan eski kontrol,
+         ters kayıttan sonra aynı çifte yeni tahsis yazmayı sonsuza dek
+         reddederdi — geri alma işlemini geri alınamaz hâle getirirdi. */
+      var cift = DB.paymentAllocations.filter(function(a){
+        return a.tahsilat === tahsilatKod && a.fatura === faturaKod; });
+      var ciftNet = cift.reduce(function(s, a){ return s + (a.tutar || 0); }, 0);
+      /* Güncellenecek satır: net hâlâ pozitifse çiftin son ASIL satırı. */
+      var mevcut = ciftNet > 0.01
+        ? cift.filter(function(a){ return !a.ters; }).slice(-1)[0] || null
+        : null;
       if(mevcut && !opts.guncelle)
         return { ok:false, why:'Bu tahsilat bu faturaya zaten tahsis edilmiş (' +
-                 mevcut.tutar.toLocaleString('tr-TR') + ' ₺)' };
+                 ciftNet.toLocaleString('tr-TR') + ' ₺)' };
 
       var b = Fin.balance(f);
       var kalanFatura = b.acik + (mevcut ? mevcut.tutar : 0);
@@ -1226,21 +1271,65 @@
       return { ok:true, tahsis:t, fatura:f, tahsilat:p, bakiye:sonuc.bakiye, durum:sonuc.yeni };
     },
 
-    /* Tahsis geri alınır — fatura durumu kendiliğinden geri düşer */
-    tahsisKaldir:function(tahsilatKod, faturaKod){
+    /* ---- TAHSİS GERİ ALMA (K-25) --------------------------------------
+       Şartname §8.5, iade kuralı birebir: "İade ayrı yetki ve gerekiyorsa
+       onay ister; TAHSİLAT KAYDI SİLİNMEZ, TERS İŞLEM ÜRETİLİR."
+
+       Önceki yazım kaydı `splice` ile defterden ÇIKARIYORDU. Bu üç şeyi
+       birden bozuyordu: (a) §8.5'i doğrudan çiğniyordu, (b) geri alınan
+       tutar hiçbir yerde okunamıyordu — denetim izi "bir şey geri alındı"
+       diyordu ama defter onu hiç görmemiş gibiydi, (c) yanlışlıkla geri
+       alınan bir tahsisin ne olduğu kayıttan değil yalnız günlükten
+       okunabiliyordu. Artık asıl satır yerinde kalır, yanına eksi tutarlı
+       ve gerekçeli bir TERS SATIR yazılır; net sıfırlanır.
+
+       YETKİ — bilerek `can('finans')`, yani tahsis KURMAKLA AYNI kapı.
+       K-25 "Finans yöneticisi" diyor; 27 rollük sözlükte o adda rol YOK
+       ve `finans` yetkisi 8 rolde açık (sahip · genelmudur · sistem ·
+       operasyon · satismudur · pm · muhasebe · satinalma). Geri almayı bu
+       kümeden dar bir role bağlamak, tahsisi kuran kullanıcının kendi
+       hatasını düzeltememesi demekti: geri alma, yapmaktan daha ağır
+       koşula bağlanamaz. Daraltma kararı Beyar'a soruldu ve kapı ŞU AN
+       eşit tutuluyor — daraltılacaksa değişecek tek yer bu satırdır.
+       Gerekçe zorunluluğu ise yetki değil kayıt koşuludur; kimseyi
+       kilitlemez, yalnız işlemi defterde adlandırır. */
+    tahsisKaldir:function(tahsilatKod, faturaKod, gerekce){
       if(!window.DB || !DB.paymentAllocations) return { ok:false, why:'veri yok' };
       if(!can('finans')) return { ok:false, why:'yetki', roller:['finans'] };
-      var i = DB.paymentAllocations.findIndex(function(a){
+      var cift = DB.paymentAllocations.filter(function(a){
         return a.tahsilat === tahsilatKod && a.fatura === faturaKod; });
-      if(i === -1) return { ok:false, why:'tahsis kaydı yok' };
-      var t = DB.paymentAllocations.splice(i, 1)[0];
-      var f = DB.invoices.filter(function(x){ return x.kod === faturaKod; })[0];
-      var p = DB.payments.filter(function(x){ return x.kod === tahsilatKod; })[0];
+      if(!cift.length) return { ok:false, why:'tahsis kaydı yok' };
+      var net = cift.reduce(function(s, a){ return s + (a.tutar || 0); }, 0);
+      if(net <= 0.01)
+        return { ok:false, why:'Bu tahsis zaten geri alınmış — defterde ' + cift.length +
+                 ' satır var ve net tutarı sıfır' };
+      if(!String(gerekce || '').trim())
+        return { ok:false, why:'gerekce',
+          mesaj:'Gerekçe zorunludur — tahsis geri alma defterde kalıcı bir ters kayıt ' +
+                'üretir ve gerekçesiz yazılmaz (şartname §8.5).' };
+
+      var f = (DB.invoices || []).filter(function(x){ return x.kod === faturaKod; })[0];
+      var p = (DB.payments || []).filter(function(x){ return x.kod === tahsilatKod; })[0];
+      var asil = cift.filter(function(a){ return !a.ters; }).slice(-1)[0] || cift[0];
+      var ters = {
+        tahsilat:tahsilatKod, fatura:faturaKod,
+        tutar:-net,                       /* eksi tutar — toplam sıfırlanır */
+        tarih:DB.today,
+        yontem:asil.yontem || null,
+        dekont:null,
+        ters:true,                        /* TERS KAYIT bayrağı */
+        gerekce:String(gerekce).trim(),
+        aktor:(GV.session && GV.session.emp) || null,
+        terslenenTarih:asil.tarih || null
+      };
+      DB.paymentAllocations.push(ters);
+
       if(f){ Fin.durumTazele(f); senkronTaksit(f); musteriOzet(f.musteri); }
       if(p) Fin.tahsilatDurumTazele(p);
-      log(tahsilatKod, 'Tahsis geri alındı (' + t.tutar.toLocaleString('tr-TR') + ' ₺)',
-          faturaKod, '', 'warn', 'i-refresh');
-      return { ok:true, kaldirilan:t };
+      log(tahsilatKod, 'Tahsis geri alındı — ters kayıt üretildi (' +
+          net.toLocaleString('tr-TR') + ' ₺) · gerekçe: ' + ters.gerekce,
+          faturaKod, 'ters kayıt', 'warn', 'i-refresh');
+      return { ok:true, ters:ters, kaldirilan:net, satirSayisi:cift.length + 1 };
     },
 
     /* NAKİT OLAYI — paranın geldiği an. Tahsis ancak bundan sonra yapılabilir.
@@ -1280,9 +1369,20 @@
       if(!can('finans')) return { ok:false, why:'yetki', roller:['muhasebe'] };
       var p = (DB.payments || []).filter(function(x){ return x.kod === kod; })[0];
       if(!p || !p.tahsilEdildi) return { ok:false, why:'Bu tahsilat zaten gerçekleşmemiş' };
-      var bagli = (DB.paymentAllocations || []).filter(function(a){ return a.tahsilat === kod; });
-      if(bagli.length) return { ok:false, why:'tahsis',
-        mesaj:'Bu tahsilat ' + bagli.length + ' faturaya dağıtılmış — önce tahsisleri kaldırın.' };
+      /* ⚠️ Ölçüt SATIR DEĞİL NET (K-25). Ters kayıttan sonra defterde asıl
+         satır da ters satır da durur; satır sayısına bakan eski kontrol,
+         tahsisleri usulünce geri almış kullanıcıyı nakit olayını geri
+         alamaz hâlde bırakırdı — kapı yanlış tarafa düşerdi. */
+      var netDagitim = Fin.dagitimNet(kod);
+      if(netDagitim > 0.01){
+        var acikCift = (DB.paymentAllocations || []).filter(function(a){
+          return a.tahsilat === kod && Fin.ciftNet(kod, a.fatura) > 0.01;
+        }).map(function(a){ return a.fatura; });
+        return { ok:false, why:'tahsis',
+          mesaj:'Bu tahsilatın ' + netDagitim.toLocaleString('tr-TR') + ' ₺ tutarı hâlâ ' +
+                'faturaya dağıtılmış (' + Array.from(new Set(acikCift)).join(', ') +
+                ') — önce tahsisleri geri alın.' };
+      }
       if(!String(gerekce || '').trim()) return { ok:false, why:'gerekce', mesaj:'Gerekçe zorunludur' };
       p.tahsilEdildi = false; p.tahsilTarihi = null;
       Fin.tahsilatDurumTazele(p);
