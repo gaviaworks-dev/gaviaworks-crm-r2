@@ -1374,8 +1374,16 @@ değiştirir (§2.5). Başka ad verirsen dinleyiciler birikir.
 destek ekranlarını görebilir; satır kapsamını `scopeField` süzer.
 
 **Yüklenecek veri dosyaları:** `org.js` · `crm.js` · `work.js` · `misc.js` ·
-`ops.js` · `lifecycle.js`. `firsat.js` ve `odeme.js` **yükleme** — bu dilimde
-kullanılmıyor.
+`ops.js` · `hr.js` · `lifecycle.js`. `firsat.js` ve `odeme.js` **yükleme** —
+bu dilimde kullanılmıyor.
+
+⚠️ **`DB.timelogs` `work.js`te DEĞİL, `hr.js`tedir** (131 kayıt). Zaman
+defterini okuyan her ekran `hr.js`yi yüklemek zorundadır — proje detayı
+(`GV.proje.sure` · `GV.proje.maliyet`) ve görev detayı bunu okur. Yüklemeyen
+ekranda `GV.proje.sure()` `kapsam:false` döner ve ekran "defter bu projeyi
+kapsamıyor" der; oysa doğru cümle "defter bu ekranda hiç yüklü değil"dir.
+İkisi ayrı şeydir (L-13) ve ilki **sessizce yanlış** beyandır. `kontrol.js`
+[3] ekseni bunu yakalar — bu turda iki ekranda yakaladı.
 
 ### 18.1 Veri gerçekleri — ölçüldü, uydurma yok
 

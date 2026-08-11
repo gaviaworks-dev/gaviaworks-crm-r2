@@ -64,7 +64,22 @@ const EKRANLAR = [
   /* Dış ekranlar kabuk YÜKLEMEZ — `oturum:false` ve `.gv-app` beklenmez. */
   { dosya: 'app-odeme.html?link=ODL-2026-102',       ad: 'Dış Ödeme',   oturum: false },
   { dosya: 'app-odeme-sonuc.html?link=ODL-2026-102&sonuc=beklemede', ad: 'Ödeme Sonucu', oturum: false },
-  { dosya: 'app-rapor.html', ad: 'Raporlar', oturum: true }
+  { dosya: 'app-rapor.html', ad: 'Raporlar', oturum: true },
+  /* ---- Dilim 3: Proje ve Operasyon -------------------------------
+     Kayıt seçimi ÖLÇÜMDEN geldi (brief §18.1 tablosu):
+     PRJ-2026-003 en kalabalık proje (4 görev · 2 sprint · 5 milestone ·
+     5 fatura · 51 timelog), PRJ-2026-001 test defteri OLAN tek proje
+     (5 senaryo · 3 hata), PRJ-2024-011 hiçbir alt kayıt taşımayan altı
+     projeden biri — boş sekme yerleşimi ancak orada ölçülür.
+     GRV-2026-113 onay zinciri olan tek görev; DST-2026-120 SLA'sı
+     ihlal edilmiş talep, DST-2026-117 projesiz tek talep. */
+  { dosya: 'app-proje-detay.html?id=PRJ-2026-003', ad: 'Proje Detayı',  oturum: true },
+  { dosya: 'app-proje-detay.html?id=PRJ-2026-001#test', ad: 'Proje Kalite', oturum: true },
+  { dosya: 'app-proje-detay.html?id=PRJ-2024-011', ad: 'Proje Boş',     oturum: true },
+  { dosya: 'app-gorev.html',                       ad: 'Görevler',      oturum: true },
+  { dosya: 'app-gorev-detay.html?id=GRV-2026-113', ad: 'Görev Detayı',  oturum: true },
+  { dosya: 'app-destek-detay.html?id=DST-2026-120',ad: 'Destek Detayı', oturum: true },
+  { dosya: 'app-destek-detay.html?id=DST-2026-117',ad: 'Destek Projesiz', oturum: true }
 ];
 
 const MIME = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8',
