@@ -128,7 +128,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 |---|---|---|---|
 | 17 | `app-pipeline.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** `app-satis-akisi.html` — 12 fırsat, pano kolonu `DB.pipelineGroups` (6 grup), 15 aşamanın hiçbiri silinmedi. Aşama atlanamıyor; kazanma `GV.sales.firsatKazan` zinciriyle. |
 | 18 | `app-teklif.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** 8 teklif; hesap bağı iki yoldan da çözülüyor (5 doğrudan, 3 fırsat üzerinden). Kazanma oranı paydası 0 iken `—` basıyor. |
-| 19 | `app-teklif-detay.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Kalem dökümü 8 teklifin **1'inde** var (TKL-2026-014, 6 satır); kalanında satır uydurulmadı. Kalem toplamı ↔ kayıt tutarı ölçülüp karşılaştırılıyor. ⚠️ Teklif sürümleme borcu (K-17) **açık kaldı** ve ekranda beyan edildi. |
+| 19 | `app-teklif-detay.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Kalem dökümü 8 teklifin **1'inde** var (TKL-2026-014, 6 satır); kalanında satır uydurulmadı. ⚠️ **Teklif sürümleme borcu K-17 ile KAPATILDI** (ADR-R2-17): revizyon yeni kayıt üretiyor, eski sürüm kilitli, iki sürüm fark ekranında karşılaştırılıyor. |
 | 20 | `app-teklif-form.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** İlk görünüm 6 alan; ara toplam kalem satırlarından TÜRETİLİR ve o hâlde salt okunur olur. Yeni teklif tablonun ilk durumunda (`Taslak`) doğar. |
 | 21 | `app-onanaliz.html` | **GÖMÜLÜYOR** ✅ | → fırsat detayı › Ön analiz bloğu — **çalışıyor**; 12 fırsatın 4'ünde analiz kaydı var, kalanında boş durum yazılı |
 | 22 | `app-onanaliz-detay.html` | **GÖMÜLÜYOR** ✅ | → aynı blokta kayıt görünümü + `GV.flow.adimlar('analysis')` ile durum ilerletme |
