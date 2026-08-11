@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Görev — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="operasyon" data-screen="gorev">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/hr.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   GÖREV DETAYI — brief §18.0 · §18.3 · §18.4
+
+   Operasyon kuyruğunun "Tam kaydı aç" hedefi: app-gorev-detay.html?id=GRV-…
+
+   DURUM MOTORU: bu ekran kendi durum listesini YAZMAZ ve `t.durum = …`
+   demez. Butonlar `GV.task.nextSteps`ten doğar, geçiş `GV.task.transition`
+   ile uygulanır (`GV.flow.adimlar('task',…)` / `GV.flow.gec('task',…)` aynı
+   motora düşer, domain.js:405 · domain.js:453).
+
+   ÜÇ AYRI EKSEN durumun YERİNE değil YANINDA durur:
+     · bekleme nedeni  → GV.task.bekleme   (görev "Devam ediyor" kalır)
+     · öncelik         → GV.task.oncelik   (düz alan)
+     · sorumlu atama   → GV.task.ata       (Havuzda ise geçiş, değilse alan)
+   Arşivden geri alma bir geçiş DEĞİLDİR: GV.task.arsivGeriAl.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var esc = GV.esc, ico = GV.ico;
+  var EYEBROW = 'Proje ve Operasyon · Görevler';
+  var kod = new URLSearchParams(location.search).get('id');
+
+  function gorev(){ return (DB.tasks || []).filter(function(x){ return x.kod === kod; })[0] || null; }
+
+  /* --- 1) Kayıt yok → pageHead + errorState, ÇIK (brief §6 adım 1) ---- */
+  if(!gorev()){
+    GV.pageHead({ eyebrow:EYEBROW, title:'Kayıt bulunamadı', sub:kod || 'Adreste görev kodu yok' });
+    mount.innerHTML = '<div class="gv-card">' + GV.errorState({
+      title:'Görev bulunamadı',
+      desc:(kod ? '“' + kod + '” kodlu ' : 'Aradığınız ') + 'görev defterde yok. ' +
+           'Adres yanlış olabilir ya da kayıt bu prototipte üretilmedi (defterde 26 görev var).',
+      action:'<a class="btn btn-acc" href="app-operasyon.html">Operasyon kuyruğuna dön</a>'
+    }) + '</div>';
+    return;
+  }
+
+  /* --- 2) Müşteri oturumu kapısı (brief §6 adım 2) -------------------
+     26 görevin 18'i bir müşteri taşır; 8 iç görevde `musteri` boştur ve
+     yordam müşteri oturumunu o kayıtlardan da doğru biçimde uzak tutar. */
+  if(!GV.guardRecord({ mount:'#rec', musteri:gorev().musteri, kod:gorev().kod,
+                       eyebrow:EYEBROW, title:'Görev',
+                       geriHref:'app-gorev.html', geriLabel:'Görev listesine dön' })) return;
+
+  /* Geçişle birlikte toplanabilen alanlar. Ortak eylem penceresinde alan
+     yuvası olmadığı için değer Açıklama kutusundan alınır (rapor: V2-01). */
+  var TOPLANIR = { teslimEdilenCikti:'Teslim edilen çıktı', engelNedeni:'Engel nedeni' };
+
+  function hesapAd(k){
+    var h = (DB.accounts || []).filter(function(x){ return x.kod === k; })[0];
+    return h ? h.unvan : null;
+  }
+  function depAd(k){
+    /* Departman adı personel defterindeki `depAd` eşinden okunur; eş yoksa
+       kod olduğu gibi basılır — uydurma ad üretilmez. */
+    var e = (DB.employees || []).filter(function(x){ return x.dep === k; })[0];
+    return e && e.depAd ? e.depAd : null;
+  }
+  function faint(s){ return '<span class="u-faint">' + esc(s) + '</span>'; }
+  function blok(baslik, deger){ return '<div class="u-mb-4">' + GV.dl([[esc(baslik), deger]]) + '</div>'; }
+  function satir(lbl, val){
+    return '<div class="gv-summary-row"><span class="gv-summary-lbl">' + esc(lbl) + '</span>' +
+           '<span class="gv-summary-val">' + val + '</span></div>';
+  }
+  function kisiler(list){
+    if(!list || !list.length) return faint('yok');
+    return list.map(function(k){ return GV.user(k, { sm:true }); }).join(' ');
+  }
+
+  ciz();
+
+  /* =================================================================== */
+  function ciz(){
+    var t       = gorev();
+    var kural   = (DB.taskTransitions || {})[t.durum] || {};
+    var adimlar = GV.task.nextSteps(t.kod) || [];
+    var onayGer = GV.task.onayGerekli(t);
+    var proje   = t.proje ? GV.proje.kayit(t.proje) : null;
+    var musAd   = t.musteri ? hesapAd(t.musteri) : null;
+    var sprint  = t.sprint ? (DB.sprints || []).filter(function(s){ return s.kod === t.sprint; })[0] : null;
+    var talep   = t.destek ? (DB.tickets || []).filter(function(x){ return x.kod === t.destek; })[0] : null;
+    var hatalar = (DB.bugs || []).filter(function(b){ return b.gorev === t.kod; });
+    var altlar  = (DB.subtasks || []).filter(function(s){ return s.ustGorev === t.kod; });
+    var bagOnce = (DB.taskDeps || []).filter(function(d){ return d.gorev === t.kod; });
+    var bagSonr = (DB.taskDeps || []).filter(function(d){ return d.bagimli === t.kod; });
+    var onayKuy = (DB.approvals || []).filter(function(a){ return a.kayit === t.kod; });
+    var onayAdm = GV.approval.adim('Görev onayı', t.kod);
+    var onayZnc = GV.approval.zincir('Görev onayı', t.kod);
+    var gecmis  = GV.audit.oku(t.kod, 30);
+    var arsivde = t.durum === 'Arşivlendi' || !!t.arsiv;
+    var arsivIz = (DB.activities || []).some(function(a){
+      return a.kayit === t.kod && a.yeni === 'Arşivlendi' && a.eski; });
+
+    GV.pageHead({
+      eyebrow:EYEBROW,
+      title:t.baslik,
+      sub:t.kod + ' · ' + t.tur + ' · ' + (proje ? proje.ad : musAd ? musAd : 'projesiz ve müşterisiz iç görev'),
+      actions:[
+        { label:'Görev listesi',    icon:'i-arrow-left', href:'app-gorev.html' },
+        { label:'Operasyon kuyruğu', icon:'i-layers',    href:'app-operasyon.html' }
+      ]
+    });
+
+    mount.innerHTML =
+      '<div class="gv-grid gv-grid-main">' +
+
+      /* ============ ANA SÜTUN ============ */
+      '<div class="u-col">' +
+
+        /* --- Durum ve geçişler --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-refresh') + 'Durum ve yapılabilir işlemler</h3>' +
+          '<span class="gc-head-acts">' + GV.badge(t.durum) +
+          (t.beklemeNedeni
+            ? '<span class="tag">' + ico('i-clock','ic-sm') + ' Bekliyor: ' + esc(t.beklemeNedeni) + '</span>'
+            : '') + '</span></div>' +
+          '<div class="gc-body u-col">' +
+            (t.beklemeNedeni
+              ? GV.notice({ tone:'warn', icon:'i-clock',
+                  title:'Bekleme nedeni: ' + t.beklemeNedeni,
+                  text:(t.beklemeNotu || 'Bekleme notu yazılmamış.') +
+                       ' — Bekleme bir DURUM değildir: görev "' + t.durum + '" olmayı sürdürür, ' +
+                       'yalnız neyi beklediğini söyler.' })
+              : '') +
+
+            (adimlar.length
+              ? '<div class="u-row u-wrap">' + adimlar.map(adimBtn).join('') + '</div>'
+              : '<p class="u-faint u-sm u-mb-0">' +
+                  (arsivde
+                    ? 'Arşivlendi son duraktır; geçiş tablosunda çıkış kenarı yoktur. ' +
+                      'Arşivden çıkarmak bir geçiş değil, ayrı bir işlemdir (aşağıdaki düğme).'
+                    : 'Bu durum için tanımlı geçiş yok.') + '</p>') +
+
+            (adimlar.length && !adimlar[0].izin
+              ? GV.notice({ tone:'warn', icon:'i-lock', title:'Bu geçişleri uygulama yetkiniz yok',
+                  text:'"' + t.durum + '" durumundan çıkışı yapabilecekler: ' +
+                       (kural.yetki || []).join(' · ') +
+                       ' — “sorumlu / kontrolEden / onaylayan / veren” bir rol değil, BU görevdeki ilişkidir.' })
+              : '') +
+
+            (kural.zorunlu && kural.zorunlu.length
+              ? '<p class="u-sm u-muted u-mb-0">' + ico('i-alert-circle','ic-sm') +
+                ' "' + esc(t.durum) + '" durumundan çıkmak için zorunlu alan: ' +
+                kural.zorunlu.map(function(a){
+                  var dolu = t[a] != null && t[a] !== '';
+                  return '<b>' + esc(TOPLANIR[a] || a) + '</b> — ' + (dolu ? 'dolu' : 'boş, geçiş penceresinde istenecek');
+                }).join(' · ') + '</p>'
+              : '') +
+
+            /* Kontrolde çıkışı: iki yol tabloda yazılı, yalnız biri geçerli.
+               Süzmeyi nextSteps yapar; ekran SEBEBİNİ söyler. */
+            (t.durum === 'Kontrolde'
+              ? GV.notice({ tone:'info', icon:'i-info',
+                  title:onayGer ? 'Ayrı bir onay adımı var' : 'Ayrı bir onay adımı yok',
+                  text:onayGer
+                    ? 'Kontrol eden (' + DB.empName(t.kontrolEden) + ') ile onaylayan (' + DB.empName(t.onaylayan) +
+                      ') farklı kişiler; görev doğrudan Tamamlandı’ya gidemez, araya "Onay bekliyor" girer. ' +
+                      'Bu yüzden "Tamamla" düğmesi burada yok.'
+                    : 'Kontrol eden ile onaylayan aynı kişi (' + DB.empName(t.kontrolEden) +
+                      '); kontrol zaten onaydır. Bu yüzden "Onaya Gönder" düğmesi burada yok — ' +
+                      'geçiş tablosunda iki yol da yazılıdır, ama bu görevde yalnız biri geçerlidir.' })
+              : '') +
+
+            (arsivde
+              ? '<div class="u-col">' +
+                  '<div class="u-row u-wrap"><button type="button" class="btn btn-line btn-sm" id="grvArsivGeri">' +
+                    ico('i-archive','ic-sm') + ' Arşivden geri al</button></div>' +
+                  '<p class="u-faint u-sm u-mb-0">' +
+                    (arsivIz
+                      ? 'Geri alma hedefi tahmin edilmez; arşivleme hareketinin yazdığı eski durumdan okunur.'
+                      : 'Bu kaydın arşivlenme hareketi denetim izinde yazılı değil. Yordam hangi duruma ' +
+                        'döneceğini tahmin etmez; işlem yapılmadan reddedebilir.') + '</p>' +
+                '</div>'
+              : '') +
+          '</div>' +
+        '</section>' +
+
+        /* --- Künye --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-tasks') + 'Künye</h3><span class="gc-meta">' + esc(t.kod) + '</span></div>' +
+          '<div class="gc-body">' +
+            GV.dl([
+              ['Başlık', esc(t.baslik)],
+              ['Tür', esc(t.tur)],
+              ['Durum', GV.badge(t.durum)],
+              ['Öncelik', GV.badge(t.oncelik)],
+              ['Etki', GV.badge(t.etki)],
+              ['Aciliyet', GV.badge(t.aciliyet)],
+              ['Proje', proje
+                ? '<a href="app-proje-detay.html?id=' + esc(t.proje) + '">' + esc(proje.ad) + '</a>'
+                : faint('—')],
+              ['Müşteri', t.musteri
+                ? '<a href="app-musteri-detay.html?id=' + esc(t.musteri) + '">' + esc(musAd || t.musteri) + '</a>'
+                : faint('—')],
+              ['Departman', t.dep ? esc(depAd(t.dep) || t.dep) : faint('—')],
+              ['Sprint', sprint ? esc(sprint.ad) : t.sprint ? esc(t.sprint) : faint('—')],
+              ['Modül', t.modul ? '<span class="cell-code">' + esc(t.modul) + '</span>' : faint('—')],
+              ['Veren', GV.user(t.veren, { sm:true })],
+              ['Sorumlu', GV.user(t.sorumlu, { sm:true })],
+              ['Kontrol eden', GV.user(t.kontrolEden, { sm:true })],
+              ['Onaylayan', GV.user(t.onaylayan, { sm:true })],
+              ['Oluşturan', GV.user(t.olusturan, { sm:true })],
+              ['Yardımcı', kisiler(t.yardimci)],
+              ['İzleyiciler', kisiler(t.izleyiciler)],
+              ['Başlangıç', t.baslangic ? GV.dateCell(t.baslangic, { done:true }) : faint('başlanmadı')],
+              ['Termin', GV.dateCell(t.termin, { done:!!t.tamamlanma })],
+              ['Tamamlanma', t.tamamlanma ? GV.dateCell(t.tamamlanma, { done:true }) : faint('—')],
+              ['Tahmini süre', t.tahminiSure != null ? GV.fmt.num(t.tahminiSure, 1) + ' saat' : faint('—')],
+              ['Gerçekleşen süre', t.gercekSure != null ? GV.fmt.num(t.gercekSure, 1) + ' saat' : faint('—')],
+              ['Faturalanabilir', t.faturalanabilir != null ? GV.fmt.num(t.faturalanabilir, 1) + ' saat' : faint('—')],
+              ['İlerleme', GV.progress(t.ilerleme)],
+              ['Revizyon', t.revizyon != null ? GV.fmt.num(t.revizyon) : faint('—')],
+              ['Yeniden açılma', t.yenidenAcilma != null ? GV.fmt.num(t.yenidenAcilma) : faint('—')],
+              ['Tekrar', t.tekrar ? esc(t.tekrar) : faint('—')],
+              ['Etiketler', (t.etiketler || []).length
+                ? (t.etiketler || []).map(function(e){
+                    return '<span class="tag">' + ico('i-tag','ic-sm') + esc(e) + '</span>'; }).join(' ')
+                : faint('—')]
+            ]) +
+            (!t.proje && !t.musteri
+              ? '<p class="u-faint u-sm">Bu görev ne bir projeye ne bir müşteriye bağlı — bu bir eksik değil, ' +
+                'iç görevdir (26 görevin 8’i böyle: filo, İK, DevOps ve satış öncesi işler).</p>'
+              : '') +
+          '</div>' +
+        '</section>' +
+
+        /* --- İş tanımı --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-clipboard') + 'İş tanımı</h3></div>' +
+          '<div class="gc-body">' +
+            blok('Açıklama',        t.aciklama ? esc(t.aciklama) : faint('kayıtta açıklama yok')) +
+            blok('Amaç',            t.amac ? esc(t.amac) : faint('kayıtta amaç yazılmamış')) +
+            blok('Kabul kriteri',   t.kabulKriteri ? esc(t.kabulKriteri) : faint('kabul kriteri yazılmamış')) +
+            blok('Beklenen çıktı',  t.beklenenCikti ? esc(t.beklenenCikti) : faint('beklenen çıktı yazılmamış')) +
+            blok('Teslim edilen çıktı', t.teslimEdilenCikti
+              ? esc(t.teslimEdilenCikti)
+              : faint('henüz teslim edilmedi — bu alan Kontrolde durumundan çıkışta zorunludur')) +
+            (t.engelNedeni  ? blok('Engel nedeni', esc(t.engelNedeni)) : '') +
+            (t.revizeNot    ? blok('Revizyon notu', esc(t.revizeNot)) : '') +
+            (t.gecikmeNedeni ? blok('Gecikme nedeni', esc(t.gecikmeNedeni)) : '') +
+          '</div>' +
+        '</section>' +
+
+        /* --- Alt görevler --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-list') + 'Alt görevler</h3>' +
+          (altlar.length
+            ? '<span class="gc-meta">' + altlar.filter(function(s){ return s.tamam; }).length +
+              ' / ' + altlar.length + ' tamam</span>' : '') + '</div>' +
+          (altlar.length
+            ? '<div class="gc-body flush"><ul class="gv-checklist">' + altlar.map(function(s){
+                return '<li><span class="cell-main">' + esc(s.baslik) +
+                  '<span class="cell-sub">' + esc(s.kod) + ' · ' + esc(DB.empName(s.sorumlu)) + '</span></span>' +
+                  GV.badge(s.tamam ? 'Tamam' : 'Bekliyor') + '</li>';
+              }).join('') + '</ul></div>'
+            : '<div class="gc-body"><p class="u-faint u-sm u-mb-0">Bu görevde alt görev kaydı yok. ' +
+              'Defterdeki 9 alt görevin tamamı üç göreve bağlı: GRV-2026-101 · GRV-2026-103 · GRV-2026-105.</p></div>') +
+        '</section>' +
+
+        /* --- Bağımlılık --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-link') + 'Bağımlılık</h3>' +
+          '<span class="gc-meta">' + (bagOnce.length + bagSonr.length) + ' kayıt</span></div>' +
+          ((bagOnce.length + bagSonr.length)
+            ? '<div class="gc-body flush"><ul class="gv-checklist">' +
+                bagOnce.map(function(d){ return bagSatir(d, 'Bu görev bekliyor'); }).join('') +
+                bagSonr.map(function(d){ return bagSatir(d, 'Bu göreve bağlı'); }).join('') +
+              '</ul></div>'
+            : '<div class="gc-body"><p class="u-faint u-sm u-mb-0">Bu görev için bağımlılık kaydı yok. ' +
+              'Defterde toplam 3 bağımlılık satırı var (GRV-2026-102 · GRV-2026-104 · GRV-2026-112).</p></div>') +
+        '</section>' +
+
+        /* --- Zaman kayıtları --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-timer') + 'Zaman kayıtları</h3></div>' +
+          '<div class="gc-body">' +
+            (window.DB && DB.timelogs
+              ? zamanBlok(t)
+              : GV.notice({ tone:'warn', icon:'i-alert', title:'Zaman defteri bu ekranda ölçülemedi',
+                  text:'Görev başına zaman kaydı `DB.timelogs` defterinde yaşar; o defter bu ekranın veri ' +
+                       'sözleşmesinde yüklü değil. Kaydın kendi `gerçekleşen süre` alanı künyede yazılıdır, ' +
+                       'ama satır dökümü burada gösterilemez. "0 saat" YAZILMAZ — sıfır ile bilinmeyen ' +
+                       'aynı şey değildir.' })) +
+          '</div>' +
+        '</section>' +
+
+        /* --- Onay zinciri --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-stamp') + 'Onay zinciri</h3>' +
+          (onayAdm ? '<span class="gc-meta">' + onayAdm.adim + ' / ' + onayAdm.toplam + ' adım</span>' : '') +
+          '</div>' +
+          '<div class="gc-body u-col">' +
+            (onayZnc.length ? GV.chain(onayZnc.map(function(z){
+                return { rol:z.rol || z.ad || 'Onay adımı', kisi:z.kisi ? DB.empName(z.kisi) : null,
+                         durum:z.durum, tarih:z.tarih, not:z.not };
+              })) : '') +
+            (!onayAdm
+              ? '<p class="u-faint u-sm u-mb-0">"Görev onayı" türü için adım zinciri tanımlı değil ' +
+                '(`DB.approvalTypes` bu türe bir zincir koleksiyonu bağlamıyor). Adım sayacı yazılmıyor — ' +
+                '0/0 yazmak, olmayan bir zinciri boş bir zincir gibi göstermek olurdu.</p>'
+              : '') +
+            (onayKuy.length
+              ? '<ul class="gv-checklist">' + onayKuy.map(function(a){
+                  return '<li><span class="cell-main">' + esc(a.baslik) +
+                    '<span class="cell-sub">' + esc(a.kod) + ' · ' + esc(a.tur) +
+                    ' · talep: ' + esc(DB.empName(a.talepEden)) +
+                    ' · onaylayacak: ' + esc(DB.empName(a.onaylayan)) + '</span></span>' +
+                    GV.badge(a.durum) + '</li>';
+                }).join('') + '</ul>' +
+                '<p class="u-faint u-sm u-mb-0">Onay kuyruğu kaydı burada yalnız okunur; karar onay ' +
+                'kuyruğundan verilir ve kaynak kaydın geçişini aynı motor uygular.</p>'
+              : '<p class="u-faint u-sm u-mb-0">Bu görev için onay kuyruğunda kayıt yok. ' +
+                'Defterde tek görev onayı var: ONY-2026-054 → GRV-2026-113.</p>') +
+          '</div>' +
+        '</section>' +
+
+        /* --- Aktivite --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-activity') + 'Aktivite</h3>' +
+          '<span class="gc-meta">' + gecmis.length + ' hareket</span></div>' +
+          '<div class="gc-body">' + GV.activity(gecmis) + '</div>' +
+        '</section>' +
+
+      '</div>' +
+
+      /* ============ YAN SÜTUN ============ */
+      '<aside class="u-col">' +
+
+        /* --- Özet --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-target') + 'Özet</h3></div>' +
+          '<div class="gc-body">' +
+            '<div class="gv-summary">' +
+              satir('Sorumlu', GV.user(t.sorumlu, { sm:true })) +
+              satir('Termin', GV.dateCell(t.termin, { done:!!t.tamamlanma })) +
+              satir('İlerleme', GV.progress(t.ilerleme)) +
+              satir('Öncelik', GV.badge(t.oncelik)) +
+              satir('Bekleme', t.beklemeNedeni ? GV.badge(t.beklemeNedeni, 'is-warn') : faint('beklemiyor')) +
+              satir('Tahmini / gerçek',
+                (t.tahminiSure != null ? GV.fmt.num(t.tahminiSure, 1) : '—') + ' / ' +
+                (t.gercekSure != null ? GV.fmt.num(t.gercekSure, 1) : '—') + ' sa') +
+            '</div>' +
+          '</div>' +
+        '</section>' +
+
+        /* --- Ayrı eksenler --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-sliders') + 'Durumdan bağımsız eksenler</h3></div>' +
+          '<div class="gc-body u-col">' +
+            '<div>' +
+              '<span class="cell-sub">ÖNCELİK</span>' +
+              '<div class="u-row u-wrap">' + (DB.priorities || []).map(function(p){
+                var simdi = p === t.oncelik;
+                return '<button type="button" class="btn btn-sm ' + (simdi ? 'btn-acc' : 'btn-line') + '" ' +
+                  'data-oncelik="' + esc(p) + '"' + (simdi ? ' disabled title="Görevin mevcut önceliği"' : '') +
+                  '>' + esc(p) + '</button>';
+              }).join('') + '</div>' +
+            '</div>' +
+            '<div>' +
+              '<span class="cell-sub">BEKLEME NEDENİ</span>' +
+              '<div class="u-row u-wrap">' +
+                '<button type="button" class="btn btn-line btn-sm" id="grvBekleme">' +
+                  ico('i-clock','ic-sm') + ' ' + (t.beklemeNedeni ? 'Beklemeyi düzenle' : 'Bekleme işaretle') +
+                '</button>' +
+              '</div>' +
+              '<p class="u-faint u-xs u-mb-0">Durumun yerine geçmez, yanında durur. 26 görevin 2’sinde dolu.</p>' +
+            '</div>' +
+            '<div>' +
+              '<span class="cell-sub">SORUMLU</span>' +
+              '<div class="u-row u-wrap">' +
+                '<button type="button" class="btn btn-line btn-sm" id="grvAta">' +
+                  ico('i-user-check','ic-sm') + ' Sorumlu ata / değiştir</button>' +
+              '</div>' +
+              '<p class="u-faint u-xs u-mb-0">' +
+                (t.durum === 'Havuzda'
+                  ? 'Görev havuzda: atama bir GEÇİŞtir (Havuzda → Atandı).'
+                  : 'Görev zaten atanmış: atama bir alan değişimidir, durum değişmez.') +
+                ' Ayrım yordamdadır, düğme tektir.</p>' +
+            '</div>' +
+          '</div>' +
+        '</section>' +
+
+        /* --- Bağlı kayıtlar --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-layers') + 'Bağlı kayıtlar</h3></div>' +
+          '<div class="gc-body"><div class="gv-summary">' +
+            satir('Proje', proje
+              ? '<a href="app-proje-detay.html?id=' + esc(t.proje) + '">' + esc(t.proje) + '</a>'
+              : faint('bağlı değil')) +
+            satir('Müşteri', t.musteri
+              ? '<a href="app-musteri-detay.html?id=' + esc(t.musteri) + '">' + esc(t.musteri) + '</a>'
+              : faint('bağlı değil')) +
+            satir('Destek talebi', talep
+              ? '<a href="app-destek-detay.html?id=' + esc(t.destek) + '">' + esc(t.destek) + '</a>'
+              : t.destek ? esc(t.destek) : faint('destekten doğmadı')) +
+            satir('Hata kaydı', hatalar.length
+              ? hatalar.map(function(b){ return esc(b.kod); }).join(' · ')
+              : faint('bağlı hata yok')) +
+            satir('Sprint', sprint ? esc(sprint.kod) : faint('sprintsiz')) +
+          '</div>' +
+          (talep
+            ? '<p class="u-faint u-sm">Kaynak talep: ' + esc(talep.baslik) + '</p>'
+            : '') +
+          '</div>' +
+        '</section>' +
+
+        /* --- Backend payı (brief §18.10 · §10.2 (b)) --- */
+        '<section class="gv-card"><div class="gc-head"><h3 class="gc-title">' +
+          ico('i-shield') + 'Backend payı</h3><span class="gc-meta">4 madde</span></div>' +
+          '<div class="gc-body flush"><ul class="gv-checklist">' +
+            [['BE-P1','Görev/proje durum geçişi sunucuda yeniden doğrulanmaz; yetki ve zorunlu alan kontrolü istemcide koşar','§9'],
+             ['BE-P2','Zaman kaydı ve onay zinciri gerçek bir timesheet servisine bağlı değil; süreler bellekte','§9'],
+             ['BE-S4','Belge yükleme gerçek depoya yazmaz; dosya adı ve boyutu bellekte tutulur','§9'],
+             ['BE-S5','Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır','§9 audit_event']
+            ].map(function(g){
+              return '<li><span class="cell-main">' + esc(g[1]) +
+                '<span class="cell-sub">' + esc(g[0]) + ' · ' + esc(g[2]) + '</span></span></li>';
+            }).join('') +
+          '</ul></div>' +
+          '<div class="gc-body u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+            '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</div>' +
+        '</section>' +
+
+      '</aside>' +
+      '</div>';
+
+    bagla(t);
+
+    /* ---- geçiş düğmesi işaretlemesi ---- */
+    function adimBtn(a){
+      var eksik  = a.eksik || [];
+      var toplan = eksik.filter(function(x){ return TOPLANIR[x]; });
+      var bilinmez = eksik.filter(function(x){ return !TOPLANIR[x]; });
+      var kapali = !a.izin || bilinmez.length > 0;
+      var ipucu  = !a.izin ? 'Bu geçiş için yetkiniz yok'
+                 : bilinmez.length ? 'Bu ekrandan doldurulamayan zorunlu alan: ' + bilinmez.join(', ')
+                 : toplan.length ? toplan.map(function(x){ return TOPLANIR[x]; }).join(', ') + ' bu geçişte istenecek'
+                 : '';
+      return '<button type="button" class="btn ' + (a.tone || 'btn-line') + ' btn-sm" ' +
+        'data-hedef="' + esc(a.hedef) + '" data-alan="' + esc(toplan[0] || '') + '"' +
+        (kapali ? ' disabled' : '') + (ipucu ? ' title="' + esc(ipucu) + '"' : '') +
+        '>' + esc(a.etiket) + '</button>';
+    }
+
+    function bagSatir(d, yon){
+      var hedef = d.gorev === t.kod ? d.bagimli : d.gorev;
+      var ad = hedef ? (DB.tasks || []).filter(function(x){ return x.kod === hedef; })[0] : null;
+      return '<li><span class="cell-main">' +
+        (hedef
+          ? '<a href="app-gorev-detay.html?id=' + esc(hedef) + '">' + esc(hedef) + '</a>' +
+            (ad ? ' — ' + esc(ad.baslik) : '')
+          : '<span class="u-faint">Bağımlılık satırı var ama bağlı görev yazılmamış</span>') +
+        '<span class="cell-sub">' + esc(yon) + ' · tür: ' + esc(d.tur || '—') + '</span></span>' +
+        (ad ? GV.badge(ad.durum) : '') + '</li>';
+    }
+
+    function zamanBlok(g){
+      var kayitlar = (DB.timelogs || []).filter(function(z){ return z.gorev === g.kod; });
+      if(!kayitlar.length)
+        return '<p class="u-faint u-sm u-mb-0">Bu göreve bağlı zaman kaydı defterde yok.</p>';
+      var toplam = kayitlar.reduce(function(a, z){ return a + (z.sure || 0); }, 0);
+      return '<ul class="gv-checklist">' + kayitlar.map(function(z){
+        return '<li><span class="cell-main">' + esc(z.aciklama || z.kod) +
+          '<span class="cell-sub">' + esc(DB.empName(z.personel)) + ' · ' + esc(z.tarih) + '</span></span>' +
+          '<span class="cell-sub">' + GV.fmt.num(z.sure, 1) + ' sa · ' + esc(z.onay || '—') + '</span></li>';
+      }).join('') + '</ul><p class="u-sm u-muted u-mb-0">Toplam ' + GV.fmt.num(toplam, 1) + ' saat · ' +
+        kayitlar.length + ' satır.</p>';
+    }
+  }
+
+  /* =================================================================== */
+  function bagla(t){
+    /* Geçiş düğmeleri — tek mutasyon noktası GV.task.transition */
+    mount.querySelectorAll('[data-hedef]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var hedef = b.dataset.hedef;
+        var alan  = b.dataset.alan || '';
+
+        /* (a) Geçişin zorunlu kıldığı alan boşsa değeri ortak eylem
+               penceresinde topla ve `ek` argümanıyla birlikte yaz. */
+        if(alan){
+          GV.action({
+            eylem:hedef === 'İptal edildi' ? 'İptal Et' : hedef === 'Revizede' ? 'Revizyon İste' : hedef,
+            kayit:{ kod:t.kod, baslik:t.baslik },
+            sonuc:'Görev "' + hedef + '" durumuna geçecek. Bu geçiş "' + TOPLANIR[alan] +
+                  '" alanını zorunlu kılıyor; değeri Açıklama kutusuna yazın ' +
+                  '(ortak eylem penceresinde bu alan için ayrı kutu yok).',
+            run:function(v){
+              var ek = {}; ek[alan] = v.not;
+              var r = GV.task.transition(t.kod, hedef, ek, TOPLANIR[alan] + ' geçişle birlikte yazıldı');
+              if(r.ok === false) return { ok:false, mesaj:GV.flowHata(r) };
+              GV.refresh();
+              return { mesaj:t.kod + ' → ' + hedef };
+            }
+          });
+          return;
+        }
+
+        /* (b) Engelleme: engel nedeni kaydın alanına yazılır — pencere
+               gerekçeyi de zorunlu kılar, ekran kendi hata cümlesini yazmaz. */
+        if(hedef === 'Engellendi'){
+          GV.action({
+            eylem:'Geri Çek', tone:'danger',
+            kayit:{ kod:t.kod, baslik:t.baslik },
+            sonuc:'Görev "Engellendi" olarak işaretlenecek. Açıklama, kaydın "engel nedeni" alanına yazılır; ' +
+                  'engel kalkmadan görev bu durumdan çıkamaz.',
+            gerekce:true, nedenTuru:'revizyon',
+            run:function(v){
+              var r = GV.task.transition(t.kod, 'Engellendi', { engelNedeni:v.not }, '[' + v.neden + '] ' + v.not);
+              if(r.ok === false) return { ok:false, mesaj:GV.flowHata(r) };
+              GV.refresh();
+              return { mesaj:t.kod + ' engellendi olarak işaretlendi' };
+            }
+          });
+          return;
+        }
+
+        /* (c) İptal: gerekçeli, geri dönüşü yok (yalnız arşive gidebilir) */
+        if(hedef === 'İptal edildi'){
+          GV.action({
+            eylem:'İptal Et', tone:'danger', geriDonusYok:true,
+            kayit:{ kod:t.kod, baslik:t.baslik },
+            sonuc:'Görev iptal edilecek. İptal edilen görev yalnız arşivlenebilir; başka geçişi yoktur.',
+            gerekce:true, nedenTuru:'iptal',
+            run:function(v){
+              var r = GV.task.transition(t.kod, 'İptal edildi', null, '[' + v.neden + '] ' + v.not);
+              if(r.ok === false) return { ok:false, mesaj:GV.flowHata(r) };
+              GV.refresh();
+              return { mesaj:t.kod + ' iptal edildi' };
+            }
+          });
+          return;
+        }
+
+        /* (d) Düz geçiş */
+        var r = GV.task.transition(t.kod, hedef);
+        if(r.ok === false){ GV.toast(GV.flowHata(r), 'danger'); return; }
+        GV.toast(t.kod + ' → ' + hedef, 'ok');
+        GV.refresh();
+      });
+    });
+
+    /* Arşivden geri alma — GEÇİŞ DEĞİL, ayrı işlem */
+    var geri = document.getElementById('grvArsivGeri');
+    if(geri) geri.addEventListener('click', function(){
+      var r = GV.task.arsivGeriAl(t.kod);
+      if(!r || r.ok === false){
+        GV.toast((r && r.aciklama) || GV.flowHata(r || {}), 'warn');
+        return;
+      }
+      GV.toast(t.kod + ' arşivden çıkarıldı → ' + r.hedef, 'ok');
+      GV.refresh();
+    });
+
+    /* Öncelik — durumdan bağımsız düz alan */
+    mount.querySelectorAll('[data-oncelik]').forEach(function(b){
+      b.addEventListener('click', function(){
+        var r = GV.task.oncelik(t.kod, b.dataset.oncelik);
+        if(!r || r.ok === false){ GV.toast(GV.flowHata(r || {}), 'danger'); return; }
+        GV.toast('Öncelik: ' + b.dataset.oncelik, 'ok');
+        GV.refresh();
+      });
+    });
+
+    /* Bekleme nedeni — ikinci eksen, çekmecede ortak form bileşeniyle */
+    var bek = document.getElementById('grvBekleme');
+    if(bek) bek.addEventListener('click', function(){
+      var form = null;
+      GV.drawer({
+        title:'Bekleme nedeni — ' + t.kod,
+        body:'<div id="grvBeklemeForm"></div>',
+        onMount:function(govde){
+          form = GV.form({
+            mount:govde.querySelector('#grvBeklemeForm'),
+            id:'grvBekleme',
+            record:{ neden:t.beklemeNedeni || '', notu:t.beklemeNotu || '' },
+            sections:[{ title:'Neyi bekliyor?', icon:'i-clock',
+              desc:'Bekleme bir durum değildir; görev "' + t.durum + '" olmayı sürdürür. ' +
+                   'Nedeni boş bırakırsanız bekleme kaldırılır.',
+              fields:[
+                { key:'neden', label:'Bekleme nedeni', type:'select', cols:12,
+                  placeholder:'Beklemiyor (kaldır)', options:DB.taskWaitReasons || [] },
+                { key:'notu', label:'Bekleme notu', type:'textarea', rows:3, cols:12,
+                  placeholder:'Ne bekleniyor, kimden, ne zaman istendi?' }
+              ] }]
+          });
+        },
+        actions:[
+          { label:'Vazgeç', cls:'btn-line' },
+          { label:'Kaydet', cls:'btn-acc', close:false, onClick:function(close){
+              if(!form) return false;
+              var v = form.submit();
+              if(!v) return false;
+              var r = GV.task.bekleme(t.kod, v.neden || null, v.notu || null);
+              if(!r || r.ok === false){ GV.toast(GV.flowHata(r || {}), 'danger'); return false; }
+              GV.toast(v.neden ? 'Bekleme nedeni: ' + v.neden : 'Bekleme kaldırıldı', 'ok');
+              close();
+              GV.refresh();
+            } }
+        ]
+      });
+    });
+
+    /* Sorumlu atama — Havuzda ise geçiş, değilse alan değişimi (ayrım yordamda) */
+    var ata = document.getElementById('grvAta');
+    if(ata) ata.addEventListener('click', function(){
+      GV.action({
+        eylem:'Devret',
+        kayit:{ kod:t.kod, baslik:t.baslik },
+        sonuc:t.durum === 'Havuzda'
+          ? 'Görev havuzda: atama Havuzda → Atandı geçişini uygular.'
+          : 'Görev zaten atanmış: bu işlem sorumluyu değiştirir, durum değişmez.',
+        onaycilar:(DB.employees || []).filter(function(e){ return e.aktif !== false; })
+                   .map(function(e){ return { deger:e.kod, ad:e.ad + ' — ' + e.pozisyon }; }),
+        run:function(v){
+          var r = GV.task.ata(t.kod, v.kisi, v.not || null);
+          if(!r || r.ok === false) return { ok:false, mesaj:GV.flowHata(r || {}) };
+          GV.refresh();
+          return { mesaj:r.gecis === false
+            ? 'Sorumlu değiştirildi: ' + DB.empName(v.kisi)
+            : t.kod + ' atandı: ' + DB.empName(v.kisi) };
+        }
+      });
+    });
+  }
+});
+</script>
+</body>
+</html>
