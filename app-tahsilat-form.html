@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Tahsilat Kaydı — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="finans" data-screen="tahsilat">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   TAHSİLAT FORMU — ekran brief §5 (GV.form deseni) · §10 (boş durum ve
+   backend payı) · §17.6–17.7 (finans zinciri)
+
+   ÜÇ KİP, TEK EKRAN:
+     ?id=THS-…      → düzenleme
+     ?fatura=FTR-…  → o faturaya tahsilat gir (müşteri ve tutar faturadan
+                      ön doldurulur, kaynağı ipuçlarında yazılı)
+     (argümansız)   → boş yeni tahsilat kaydı
+
+   ── EKRANIN MERKEZİ: İKİ ADIM, TEK FORM ─────────────────────────────
+   **TAHSİLAT KAYDI BİR ALACAK KAYDIDIR.** `DB.payments`e satır eklemek
+   paranın geldiği anlamına GELMEZ; nakit olayını tek bir bayrak söyler:
+   `tahsilEdildi`. Bu yüzden form iki adımdır:
+
+     1. ALACAK KAYDI — müşteri · fatura · tutar · vade · sorumlu.
+        Kayıt bu alanlarla doğar; `durum` alanı ELLE YAZILMAZ,
+        `GV.fin.tahsilatDurumTazele` (domain.js:1294) türetir.
+
+     2. NAKİT OLAYI — "Bu tahsilat gerçekleşti mi?" anahtarı. Açıksa
+        tarih · yöntem · banka/kasa hesabı · dekont · valör alanları
+        `showIf` ile görünür.
+        ⚠️ Form bu bayrağı DOĞRUDAN YAZMAZ. Kayıt deftere eklendikten
+        SONRA `GV.fin.tahsilEt(kod, {…})` çağrılır (domain.js:1249) —
+        nakit olayının tek kapısı odur. `p.tahsilEdildi = true` yazmak,
+        motorun reddettiği durumları (zaten gerçekleşmiş kayıt, yetkisiz
+        rol) sessizce ezmek olurdu.
+
+   ── NAKİT OLAYI ≠ FATURANIN KAPANMASI ───────────────────────────────
+   `GV.fin.tahsilEt` parayı BİR FATURAYA YAZMAZ. Faturanın açık bakiyesi
+   ancak tahsis (dağıtım) ile düşer ve tahsis bu ekranda değil, fatura
+   ekseninde yapılır. Sağ panel bunu her çizimde söyler.
+
+   ── İKİNCİ FORMÜL YOK ───────────────────────────────────────────────
+   Fatura bakiyesinin TEK kaynağı `GV.fin.balance` (domain.js:1102).
+   Bu ekran brüt/tahsil/açık hesabını yeniden kurmaz, yordamı çağırır.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var F         = GV.fmt;
+  var canFinans = GV.perm.can('finans');
+  var BUGUN     = DB.today;                 /* ölçüm günü sabittir, `new Date()` yok */
+
+  var qs        = new URLSearchParams(location.search);
+  var kodArg    = qs.get('id');
+  var faturaArg = qs.get('fatura');
+
+  var rec = kodArg ? (DB.payments || []).filter(function(x){ return x.kod === kodArg; })[0] : null;
+
+  /* Kayıt zaten tahsil edilmiş mi — nakit alanlarının salt okunurluğu ve
+     anahtarın hiç basılmaması bu tek ölçüme bağlıdır. */
+  var nakitliKayit = !!(rec && rec.tahsilEdildi === true);
+
+  function basitBaslik(baslik, alt){
+    GV.pageHead({
+      eyebrow:'Finans', title:baslik, sub:alt,
+      actions:[{ label:'Tahsilat listesine dön', icon:'i-arrow-left', href:'app-tahsilat.html' }]
+    });
+  }
+
+  /* ---- Kayıt yok durumu (brief §10) -------------------------------- */
+  if(kodArg && !rec){
+    basitBaslik('Kayıt bulunamadı', kodArg);
+    mount.innerHTML = GV.errorState({
+      title:kodArg + ' bulunamadı',
+      desc:'Bu kod hiçbir tahsilat kaydıyla eşleşmedi. Adres çubuğundaki kodu kontrol edin ' +
+           'ya da tahsilat listesinden kaydı seçin.' });
+    return;
+  }
+
+  /* ---- Koleksiyon hiç yüklü değil (brief §10.1 üçüncü satır) -------- */
+  if(!DB.payments){
+    basitBaslik('Tahsilat defteri yüklenemedi', 'Kayıt açılmadı');
+    mount.innerHTML = GV.errorState({
+      title:'DB.payments yüklenmedi',
+      desc:'Yeni tahsilat kodu defterin kendisinden türetilir ve kayıt o deftere yazılır. ' +
+           'Defter yüklenmediği için kod türetilemedi; uydurulmuş bir kodla kayıt AÇILMADI.' });
+    return;
+  }
+
+  /* ---- Yetki kapısı ------------------------------------------------ */
+  var izinli = rec ? GV.perm.can('duzenle') : GV.perm.can('ekle');
+  if(!izinli){
+    basitBaslik(rec ? 'Tahsilat ' + rec.kod : 'Yeni Tahsilat', 'Bu ekran için yetkiniz yok');
+    mount.innerHTML = GV.empty({
+      icon:'i-lock',
+      title:rec ? 'Tahsilat kaydını düzenleme yetkiniz yok' : 'Yeni tahsilat kaydı açma yetkiniz yok',
+      desc:'Rolünüz (' + GV.perm.role() + ') bu işlem için yetkili değil. ' +
+           'Tahsilat listesini görüntülemeye devam edebilirsiniz.',
+      action:'<a class="btn btn-line" href="app-tahsilat.html">Tahsilat listesine dön</a>' });
+    return;
+  }
+
+  /* =================================================================
+     SÖZLÜK VE BAĞ ÖLÇÜMÜ — uydurma seçenek yok
+     ================================================================= */
+  function bosNull(x){
+    var s = (x == null) ? '' : String(x).trim();
+    return s === '' ? null : s;
+  }
+  function sayi(v){
+    var n = parseFloat(String(v == null ? '' : v).replace(',', '.'));
+    return isFinite(n) ? n : 0;
+  }
+
+  /* Hesap defteri. ⚠️ Buradan yalnız UNVAN ve KOD alınır; hesabın durumu
+     bu ekranda OKUNMAZ (K-21 bayat alan tuzağı). */
+  function hesapKaydi(k){ return k ? GV.lifecycle.hesap(k) : null; }
+  function hesapAdi(k){
+    var kayit = hesapKaydi(k);
+    return kayit ? kayit.unvan : (k || '');
+  }
+
+  /* Tahsilat defteri MUS-* kodu taşır (17 kaydın 17'si). Aday kaynaklı
+     hesapların MUS kodu YOKTUR — onları seçeneğe koymak, kaydedilemeyecek
+     bir bağ öneren ölü seçenek üretirdi. */
+  var HESAP_SECENEK = (DB.accounts || [])
+    .filter(function(x){ return /^MUS-/.test(x.kod || ''); })
+    .map(function(x){ return { value:x.kod, label:x.unvan + ' · ' + x.kod }; });
+
+  var FATURALAR = DB.invoices || [];
+  function faturaById(k){
+    return k ? (FATURALAR.filter(function(x){ return x.kod === k; })[0] || null) : null;
+  }
+
+  /* Yöntem sözlüğü. ÖLÇÜLDÜ: ödeme yöntemlerini tutan bir koleksiyon YOK ve
+     17 tahsilat kaydının 17'sinde de `yontem` alanı yok. Elde olan tek
+     kaynak tahsis defteridir; defterin kendi notu (misc.js:610-614) oradaki
+     değerin "veride yoktu, Havale yazıldı" varsayımı olduğunu söylüyor
+     (`turetilmis:true`). Bu yüzden alan SERBEST METİNDİR; datalist yalnız
+     kolaylık sağlar ve kaynağı ipucunda yazılıdır. */
+  var YONTEMLER = (DB.paymentAllocations || []).reduce(function(acc, a){
+    if(a.yontem && acc.indexOf(a.yontem) === -1) acc.push(a.yontem);
+    return acc;
+  }, []);
+
+  /* Bu kaydın tahsis satırlarındaki yöntem — düzenleme kipinde salt okunur
+     nakit özetini doldurmak için. Tutar toplamı BURADAN okunmaz. */
+  function kayitYontemi(){
+    if(!rec) return null;
+    if(rec.yontem) return { ad:rec.yontem, kesin:true };
+    var t = (DB.paymentAllocations || [])
+      .filter(function(a){ return a.tahsilat === rec.kod && a.yontem; })[0];
+    return t ? { ad:t.yontem, kesin:!t.turetilmis } : null;
+  }
+
+  /* Nakit olayının tarihi. ÖLÇÜLDÜ: tahsil edilmiş 10 kaydın HİÇBİRİNDE
+     `tahsilTarihi` yok; elde olan `sonAksiyonTarihi`dir. İki farklı
+     güvenilirlikteki tarih aynı biçimde basılmaz — fark SÖYLENİR. */
+  function kayitNakitTarihi(){
+    if(!rec) return null;
+    if(rec.tahsilTarihi) return { tarih:rec.tahsilTarihi, kesin:true };
+    if(rec.sonAksiyonTarihi) return { tarih:rec.sonAksiyonTarihi, kesin:false };
+    return null;
+  }
+
+  /* ---- Kip çözümü --------------------------------------------------- */
+  var onFatura = null, argNotu = '';
+  if(!rec && faturaArg){
+    onFatura = faturaById(faturaArg);
+    if(!onFatura)
+      argNotu = 'Adres çubuğundaki fatura kodu (' + faturaArg + ') hiçbir fatura kaydıyla ' +
+                'eşleşmedi; form bağsız yeni tahsilat kaydı olarak açıldı.';
+  }
+
+  /* `?fatura=` kipinde tutarın kaynağı AÇIK BAKİYEDİR — brütü ön doldurmak,
+     kısmen tahsil edilmiş bir faturada fazla tahsilat önerirdi. Açık bakiye
+     `GV.fin.balance`ten okunur; ikinci formül kurulmaz. */
+  var onBakiye = onFatura ? GV.fin.balance(onFatura.kod) : null;
+  var onTutar = '', onTutarKaynak = '';
+  if(onBakiye){
+    if(onBakiye.acik > 0){
+      onTutar = onBakiye.acik;
+      onTutarKaynak = onFatura.kod + ' faturasının AÇIK BAKİYESİ';
+    }else{
+      onTutar = onBakiye.brut;
+      onTutarKaynak = onFatura.kod + ' faturasının BRÜT tutarı (açık bakiye kalmamış)';
+    }
+  }
+
+  /* =================================================================
+     SAYFA BAŞLIĞI — form bileşeninden ÖNCE (brief §2.4)
+     ================================================================= */
+  var kilitli = false;                       /* mükerrer kayıt kalkanı */
+
+  GV.pageHead({
+    eyebrow:'Finans',
+    title:rec ? 'Tahsilat ' + rec.kod : 'Yeni Tahsilat',
+    sub:rec
+      ? hesapAdi(rec.musteri) + ' · ' + (nakitliKayit
+          ? 'nakit olayı gerçekleşmiş — nakit alanları salt okunur'
+          : 'alacak kaydı — para henüz gelmedi')
+      : (onFatura
+          ? onFatura.kod + ' faturasına tahsilat · müşteri ve tutar faturadan ön dolduruldu'
+          : 'Yeni alacak kaydı · nakit olayı ayrı bir adımdır'),
+    actions:[
+      { label:'Vazgeç', icon:'i-arrow-left', href:'app-tahsilat.html' },
+      { label:'Kaydet', icon:'i-check', cls:'btn-acc', run:function(){ kaydet(); } }
+    ]
+  });
+
+  mount.innerHTML =
+    '<div id="thsNot"></div>' +
+    '<div id="thsForm"></div>' +
+    '<div id="thsSonuc" class="u-mt-8"></div>' +
+    '<div id="thsBackend" class="u-mt-8"></div>';
+
+  var notEl   = document.getElementById('thsNot');
+  var sonucEl = document.getElementById('thsSonuc');
+
+  /* =================================================================
+     AÇILIŞ NOTLARI
+     ================================================================= */
+  var acilis = '';
+
+  acilis += GV.notice({ tone:'info', icon:'i-wallet',
+    title:'Tahsilat kaydı ≠ para geldi',
+    text:'Bu form önce bir ALACAK kaydı üretir. Paranın geldiğini yalnız "Nakit olayı" ' +
+         'adımındaki anahtar söyler ve o anahtar açıldığında kayıt eklendikten sonra ' +
+         'GV.fin.tahsilEt çağrılır. Nakit olayı faturayı KAPATMAZ: tutarın faturaya ' +
+         'yazılması (tahsis) ayrı bir adımdır ve fatura ekseninde yapılır.' });
+
+  if(argNotu){
+    acilis += GV.notice({ tone:'warn', icon:'i-alert',
+      title:'Adres çubuğundaki fatura bağı çözülemedi', text:argNotu });
+  }
+
+  if(onFatura){
+    acilis += GV.notice({ tone:'info', icon:'i-receipt',
+      title:onFatura.kod + ' faturasından ön dolduruldu',
+      text:'Müşteri (' + hesapAdi(onFatura.musteri) + '), vade ve tutar bu faturadan alındı. ' +
+           'Tutarın kaynağı: ' + onTutarKaynak + '. Üçü de düzenlenebilir; kaydetmeden önce ' +
+           'kontrol edin.' });
+  }
+
+  if(nakitliKayit){
+    acilis += GV.notice({ tone:'ok', icon:'i-check-circle',
+      title:'Bu tahsilatın nakit olayı zaten gerçekleşmiş',
+      text:'Tarih, yöntem, hesap, dekont ve valör alanları SALT OKUNURDUR. Nakit olayını ' +
+           'geri almak gerekçe ister ve bu ekranda yapılmaz — geri alma ayrı bir işlemdir, ' +
+           'üstelik kayıt bir faturaya dağıtılmışsa önce tahsislerin kaldırılması gerekir. ' +
+           'Alacak alanları (müşteri, fatura, tutar, vade, sorumlu) düzenlenebilir.' });
+  }
+
+  if(!canFinans){
+    acilis += GV.notice({ tone:'warn', icon:'i-lock',
+      title:'Nakit olayı rolünüzde kapalı, tutar özetleri maskeli',
+      text:'Rolünüz (' + GV.perm.role() + ') finans yetkisi taşımıyor. Alacak kaydını ' +
+           'açabilirsiniz ama nakit olayı adımı basılmadı: GV.fin.tahsilEt yetkisiz rolde ' +
+           'reddediyor ve tıklanamayacak bir anahtar basmak sahte buton olurdu. Sağ ' +
+           'paneldeki tutarlar "••••••" görünür.' });
+  }
+
+  notEl.innerHTML = acilis;
+
+  /* =================================================================
+     SAĞ PANEL — seçili faturanın bakiyesi (TEK kaynak: GV.fin.balance)
+     -----------------------------------------------------------------
+     `perm:'finans'` maskesi: değer YOKSA `—`, değer VAR ama rol göremiyorsa
+     `••••••` basılır. İkisi aynı şey değildir (brief §10.1).
+     ================================================================= */
+  function paraHtml(v){
+    if(v == null) return GV.cell.faint('—');
+    return canFinans
+      ? '<span class="cell-money">' + F.money(v) + '</span>'
+      : '<span class="cell-mask">••••••</span>';
+  }
+
+  function yanPanel(v){
+    var f = faturaById(v.fatura);
+    var b = f ? GV.fin.balance(f.kod) : null;
+    var tutar = String(v.tutar == null ? '' : v.tutar).trim() === '' ? null : sayi(v.tutar);
+
+    var out = '<div class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-wallet') + 'Tahsilat kaydı</h3></div>' +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Tahsilat no', rec
+            ? '<span class="cell-code">' + GV.esc(rec.kod) + '</span>'
+            : '<span class="u-faint">kaydederken defterden türetilir</span>'],
+          ['Durum', rec
+            ? GV.badge(rec.durum) + GV.cell.sub('türetilmiş alan — bu ekran durum yazmaz')
+            : '<span class="u-faint">türetilecek</span>' +
+              GV.cell.sub('kayıt eklendikten sonra GV.fin.tahsilatDurumTazele belirler')],
+          ['Nakit olayı', nakitliKayit
+            ? GV.badge('Gerçekleşti') + GV.cell.sub('salt okunur')
+            : (v.gerceklesti
+                ? GV.badge('Kaydederken işaretlenecek', 'is-warn') +
+                  GV.cell.sub('GV.fin.tahsilEt çağrılacak')
+                : GV.badge('Yok — alacak kaydı', 'is-neutral') +
+                  GV.cell.sub('para geldiğinde ayrıca işaretlenir'))],
+          ['Müşteri', v.musteri
+            ? GV.esc(hesapAdi(v.musteri)) +
+              GV.cell.sub('<span class="cell-code">' + GV.esc(v.musteri) + '</span>')
+            : '<span class="u-faint">seçilmedi</span>'],
+          ['Tutar', tutar == null
+            ? GV.cell.faint('—') + GV.cell.sub('girilmedi')
+            : paraHtml(tutar) + GV.cell.sub('KDV dahil')]
+        ]) +
+      '</div></div>';
+
+    /* ---- Seçili faturanın bakiyesi -------------------------------- */
+    if(!v.fatura){
+      out += GV.notice({ tone:'neutral', icon:'i-link',
+        title:'Fatura seçilmedi',
+        text:'Bakiye özeti bir faturaya bağlıdır. Faturasız tahsilat kaydı da açılabilir: ' +
+             'defterde fatura bağı olmayan kayıtlar vardır ve tahsis sonradan yapılabilir.' });
+    }else if(!b){
+      out += GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Fatura bakiyesi ölçülemedi',
+        text:GV.esc(v.fatura) + ' kodu fatura defterinde bulunamadı; brüt, tahsil edilen ve ' +
+             'açık bakiye türetilemedi. Sıfır yazmak ölçülmemişi ölçülmüş göstermek olurdu.' });
+    }else{
+      out += '<div class="gv-card">' +
+        '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-receipt') + 'Fatura bakiyesi</h3>' +
+          '<span class="gc-meta">' + GV.esc(b.fatura) + '</span></div>' +
+        '<div class="gc-body">' +
+          GV.dl([
+            ['Brüt (KDV dahil)', paraHtml(b.brut)],
+            ['Tahsil edilen', paraHtml(b.tahsil) +
+              GV.cell.sub('tahsis defterinden · %' + GV.esc(String(b.oran)))],
+            ['Açık bakiye', paraHtml(b.acik) + GV.cell.sub(b.tamOdendi
+              ? 'fatura kapandı'
+              : b.kismi ? 'kısmen tahsil edilmiş' : 'hiç tahsis yapılmamış')]
+          ]) +
+          '<p class="u-faint u-sm">Üç sayı da GV.fin.balance yordamından okundu; bu ekran ' +
+            'ikinci bir bakiye hesabı kurmaz. Açık bakiye ancak TAHSİS ile düşer — bu formdaki ' +
+            'nakit olayı tek başına faturayı kapatmaz.</p>' +
+        '</div></div>';
+
+      /* ---- Fazla tahsilat — BİLGİ notu, engel DEĞİL (§8.5) ---------
+         Motor zaten tahsis aşamasında fazla dağıtımı reddediyor; burada
+         ikinci bir kapı kurmak, henüz yapılmamış bir işlemi peşinen
+         yasaklamak olurdu. Kayıt açılır, uyarı yazılır. */
+      if(tutar != null && tutar > b.acik){
+        out += GV.notice({ tone:'warn', icon:'i-alert',
+          title:'Girilen tutar faturanın açık bakiyesini aşıyor',
+          text:(canFinans
+                 ? 'Tutar ' + F.money(tutar) + ', açık bakiye ' + F.money(b.acik) +
+                   ' (fark ' + F.money(tutar - b.acik) + '). '
+                 : 'Tutar, faturanın açık bakiyesinden büyük (iki sayı da rolünüzde maskeli). ') +
+               'Fazla tahsilat ayrı bir yetki işidir; bu form KAYDI ENGELLEMEZ. Kaydı ' +
+               'açabilirsiniz, ancak tahsis aşamasında motor açık bakiyeyi aşan dağıtımı ' +
+               'reddeder — fazlalık tahsilatın dağıtılmamış bakiyesi olarak kalır.' });
+      }
+    }
+
+    /* ---- Nakit olayı adımının ne yaptığı --------------------------- */
+    if(nakitliKayit){
+      var nt = kayitNakitTarihi();
+      out += GV.notice({ tone:'ok', icon:'i-check-circle',
+        title:'Nakit olayı kayıtlı',
+        text:(nt
+               ? (nt.kesin
+                   ? 'Tahsil tarihi ' + F.date(nt.tarih) + '.'
+                   : 'Kayıtta ayrı bir tahsil tarihi YOK; gösterilen ' + F.date(nt.tarih) +
+                     ' son aksiyon tarihidir.')
+               : 'Kayıtta tarih bilgisi yok.') +
+             ' Geri alma gerekçe ister ve bu ekranda yüzeye çıkarılmadı.' });
+    }else if(v.gerceklesti){
+      out += GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Kaydederken nakit olayı da işlenecek',
+        text:'Önce kayıt deftere yazılır, sonra GV.fin.tahsilEt çağrılır. Motor reddederse ' +
+             '(yetki, zaten gerçekleşmiş kayıt) alacak kaydı yerinde kalır ve ne olduğu ' +
+             'ekranda tek tek yazılır.' });
+    }else{
+      out += GV.notice({ tone:'neutral', icon:'i-hourglass',
+        title:'Nakit olayı olmadan kaydedilecek',
+        text:'Kayıt bir alacak olarak doğar. Para geldiğinde tahsilat listesindeki ' +
+             '"Tahsil edildi işaretle" satır aksiyonuyla ya da bu formu yeniden açarak ' +
+             'nakit olayı işlenebilir.' });
+    }
+
+    return out;
+  }
+
+  /* =================================================================
+     FORM
+     ================================================================= */
+  var nakitAlanlari;
+
+  if(nakitliKayit){
+    /* Düzenleme kipi + kayıt zaten tahsil edilmiş → SALT OKUNUR özet.
+       Bu alanlar kaydetmede OKUNMAZ; `g_` öneki onları alacak alanlarından
+       ayırır ve kaza ile deftere yazılmalarını imkânsız kılar. */
+    var ntar = kayitNakitTarihi();
+    var nyon = kayitYontemi();
+    nakitAlanlari = [
+      { key:'g_tarih', label:'Tahsil tarihi', type:'text', cols:4, readonly:true,
+        value:ntar ? F.date(ntar.tarih) : '—',
+        hint:ntar
+          ? (ntar.kesin
+              ? 'Kayıttaki tahsilTarihi alanından okundu.'
+              : 'ÖLÇÜLDÜ: bu kayıtta ayrı bir tahsilTarihi YOK. Gösterilen tarih ' +
+                'sonAksiyonTarihi alanıdır — nakit olayının tarihi değil, son aksiyonun ' +
+                'tarihidir. İki alan aynı şey değildir ve bu ekran ikisini aynı biçimde basmaz.')
+          : 'Kayıtta ne tahsilTarihi ne de sonAksiyonTarihi var; tarih türetilemedi.' },
+
+      { key:'g_yontem', label:'Yöntem', type:'text', cols:4, readonly:true,
+        value:nyon ? nyon.ad : '—',
+        hint:nyon
+          ? (nyon.kesin
+              ? 'Kayıttaki yontem alanından okundu.'
+              : 'Değer tahsis defterinden geldi ve orada turetilmis:true ile işaretli — ' +
+                'yani ölçülmüş bir gerçek değil, veri göçünde yazılmış bir varsayım.')
+          : 'Ne kayıtta ne tahsis defterinde yöntem var; türetilemedi.' },
+
+      { key:'g_hesap', label:'Banka / kasa hesabı', type:'text', cols:4, readonly:true,
+        value:rec.hesap || '—',
+        hint:rec.hesap ? 'Kayıttaki hesap alanından okundu.'
+                       : 'Kayıtta hesap bilgisi yok. Banka/kasa hesap sözlüğü veri katmanında ' +
+                         'zaten tanımlı değil (bkz. aşağıdaki nakit alanı ipuçları).' },
+
+      { key:'g_dekont', label:'Dekont / referans no', type:'text', cols:6, readonly:true,
+        value:rec.dekont || '—',
+        hint:rec.dekont ? 'Kayıttaki dekont alanından okundu — hiçbir banka hareketiyle ' +
+                          'eşleştirilmedi (BE-F2).'
+                        : 'Kayıtta dekont numarası yok.' },
+
+      { key:'g_valor', label:'Valör', type:'text', cols:6, readonly:true,
+        value:rec.valor ? F.date(rec.valor) : '—',
+        hint:rec.valor ? 'Kayıttaki valor alanından okundu.'
+                       : 'Kayıtta valör yok; tahsil tarihinden ayrı bir valör tutulmamış.' }
+    ];
+  }else if(!canFinans){
+    nakitAlanlari = [];                      /* yetkisiz rolde anahtar hiç basılmaz */
+  }else{
+    nakitAlanlari = [
+      { key:'gerceklesti', label:'Bu tahsilat gerçekleşti mi?', type:'switch', cols:12,
+        onLabel:'Evet — para banka/kasa hesabına geçti',
+        hint:'Kapalıysa kayıt yalnız bir ALACAK olarak doğar. Açarsanız aşağıdaki alanlar ' +
+             'görünür ve kayıt eklendikten SONRA GV.fin.tahsilEt çağrılır; bu form ' +
+             'tahsilEdildi bayrağını doğrudan yazmaz.' },
+
+      { key:'tahsilTarihi', label:'Tahsil tarihi', type:'date', cols:4, required:true,
+        showIf:function(v){ return !!v.gerceklesti; },
+        hint:'Paranın hesaba geçtiği gün. Ölçüm günü ' + F.date(BUGUN) + '.' },
+
+      { key:'yontem', label:'Yöntem', type:'text', cols:4, required:true,
+        showIf:function(v){ return !!v.gerceklesti; },
+        placeholder:YONTEMLER[0] || 'Havale',
+        hint:'SERBEST METİN. Yöntem sözlüğü veri katmanında yok (ödeme yöntemlerini tutan bir ' +
+             'koleksiyon hiç tanımlı değil) ve 17 tahsilat kaydının 17\'sinde de yontem alanı yok. ' +
+             'Aşağı açılır öneriler tahsis defterindeki (DB.paymentAllocations) mevcut ' +
+             'değerlerden türetildi: ' + (YONTEMLER.join(', ') || 'defterde değer yok') + '.' },
+
+      { key:'hesap', label:'Banka / kasa hesabı', type:'text', cols:4,
+        showIf:function(v){ return !!v.gerceklesti; },
+        placeholder:'Örn. İş Bankası TL vadesiz',
+        hint:'SERBEST METİN, zorunlu değil. Banka/kasa hesap sözlüğü veri katmanında yok; ' +
+             'seçenek listesi uydurulmadı.' },
+
+      { key:'dekont', label:'Dekont / referans no', type:'text', cols:6,
+        showIf:function(v){ return !!v.gerceklesti; },
+        placeholder:'Banka dekont numarası',
+        hint:'Zorunlu değil. Girilen numara doğrulanmaz — banka hareketiyle eşleştirme ' +
+             'prototipte yoktur (BE-F2).' },
+
+      { key:'valor', label:'Valör', type:'date', cols:6,
+        showIf:function(v){ return !!v.gerceklesti; },
+        hint:'Boş bırakılırsa tahsil tarihi valör olarak kullanılır — kural motorda ' +
+             '(GV.fin.tahsilEt), bu ekranda kopyalanmadı.' }
+    ];
+  }
+
+  var baslangic = {
+    musteri:rec ? (rec.musteri || '') : (onFatura ? (onFatura.musteri || '') : ''),
+    fatura:rec ? (rec.fatura || '') : (onFatura ? onFatura.kod : ''),
+    tutar:rec ? (rec.tutar != null ? rec.tutar : '') : onTutar,
+    vade:rec ? (rec.vade || '') : (onFatura ? (onFatura.vade || '') : ''),
+    sorumlu:rec ? (rec.sorumlu || '') : ((GV.session && GV.session.emp) || ''),
+    gerceklesti:false,
+    tahsilTarihi:BUGUN,
+    yontem:'',
+    hesap:'',
+    dekont:'',
+    valor:''
+  };
+
+  var form = GV.form({
+    mount:'#thsForm',
+    id:'tahsilatForm',
+    record:baslangic,
+    tabs:[
+      { key:'alacak', label:'Alacak kaydı', icon:'i-wallet' },
+      { key:'nakit',  label:'Nakit olayı',  icon:'i-check-circle' }
+    ],
+    aside:function(v){ return yanPanel(v); },
+    sections:[
+      { title:'Alacak kaydı', icon:'i-wallet', tab:'alacak',
+        desc:'Birinci adım. Bu alanlar bir ALACAĞI tarif eder: kimden, hangi faturaya karşılık, ' +
+             'ne kadar ve ne zaman. Kaydın durumu burada yazılmaz — vade ile nakit bayrağından ' +
+             'türetilir.',
+        fields:[
+          { key:'musteri', label:'Müşteri', type:'select', cols:6, required:true,
+            options:HESAP_SECENEK,
+            hint:HESAP_SECENEK.length
+              ? 'Listede yalnız MUS kodlu hesaplar var: tahsilat defteri bu kodu taşır, aday ' +
+                'kaynaklı hesaplarda MUS kodu yoktur ve bağ kurulamaz.'
+              : 'Hesap defteri yüklenemedi; seçenek türetilemedi.' },
+
+          { key:'fatura', label:'Bağlı fatura', type:'select', cols:6,
+            placeholder:'Faturaya bağlama — bağsız alacak kaydı',
+            options:FATURALAR.map(function(f){
+              return { value:f.kod, label:f.kod + ' · ' + f.musteriAd + ' · vade ' + f.vade }; }),
+            hint:'İsteğe bağlı. Seçilirse sağ panelde o faturanın brüt / tahsil edilen / açık ' +
+                 'bakiyesi GV.fin.balance ile canlı gösterilir. Fatura seçmek parayı o faturaya ' +
+                 'YAZMAZ; dağıtım (tahsis) ayrı bir adımdır.',
+            validate:function(deger, v){
+              if(!deger || !v.musteri) return '';
+              var f = faturaById(deger);
+              if(!f) return 'Bu fatura kodu fatura defterinde bulunamadı.';
+              if(f.musteri && f.musteri !== v.musteri)
+                return f.kod + ' faturası ' + hesapAdi(f.musteri) + ' müşterisine ait; ' +
+                       'seçtiğiniz müşteri ' + hesapAdi(v.musteri) + '. İkisi eşleşmeli.';
+              return '';
+            } },
+
+          { key:'tutar', label:'Tutar (KDV dahil)', type:'money', cols:6, required:true,
+            hint:onFatura
+              ? 'Kaynak: ' + onTutarKaynak + '. Değiştirebilirsiniz.'
+              : 'Fatura brütüyle aynı eksende, yani KDV dahil girilir — defterdeki 17 kaydın ' +
+                'tutarı fatura brütüyle aynı eksendedir.',
+            validate:function(deger){
+              if(String(deger || '').trim() === '') return '';
+              return sayi(deger) > 0 ? '' : 'Tutar sıfırdan büyük olmalıdır.';
+            } },
+
+          { key:'vade', label:'Vade', type:'date', cols:6, required:true,
+            hint:(rec ? 'Kaydın durumu (Bekliyor / Gecikti / Ödendi) vade ile nakit bayrağından ' +
+                        'TÜRETİLİR; bu ekran durum alanına yazmaz. '
+                      : 'Vadesi geçmiş ve parası gelmemiş kayıtlar listede "Gecikti" görünür. ') +
+                 'Ölçüm günü ' + F.date(BUGUN) + '.' },
+
+          { key:'sorumlu', label:'Sorumlu', type:'select', cols:6,
+            placeholder:'Sorumlu atama',
+            options:(DB.employees || []).map(function(e){
+              return { value:e.kod, label:e.ad }; }),
+            hint:rec ? '' : 'Varsayılan olarak oturum sahibi atandı; değiştirebilirsiniz.' }
+        ] },
+
+      { title:nakitliKayit ? 'Nakit olayı — gerçekleşmiş, salt okunur' : 'Nakit olayı — para geldi mi?',
+        icon:'i-check-circle', tab:'nakit',
+        desc:nakitliKayit
+          ? 'Bu kaydın nakit olayı zaten işlenmiş. Alanlar salt okunurdur; geri almak gerekçe ' +
+            'ister ve bu ekranda yapılmaz. Kayıt bir faturaya dağıtılmışsa geri alma ayrıca ' +
+            'önce tahsislerin kaldırılmasını gerektirir.'
+          : (canFinans
+              ? 'İkinci adım ve AYRI bir olay. Anahtar kapalıyken kayıt bir alacaktır; açıldığında ' +
+                'kayıt eklendikten sonra GV.fin.tahsilEt çağrılır. Nakit olayı faturayı kapatmaz — ' +
+                'tutarın faturaya yazılması (tahsis) fatura ekseninde yapılır.'
+              : 'Nakit olayı finans yetkisi ister. Rolünüzde bu adım basılmadı: motor işlemi ' +
+                'reddedeceği için tıklanabilir bir anahtar basmak sahte buton olurdu.'),
+        fields:nakitAlanlari }
+    ]
+  });
+
+  if(!form){
+    mount.innerHTML = GV.errorState({ title:'Form çizilemedi',
+      desc:'Form bileşeni bağlanamadı. Sayfayı yeniden açmayı deneyin.' });
+    return;
+  }
+
+  /* ---- Yetkisiz rolde nakit sekmesi boş kalmasın -------------------- */
+  if(!nakitliKayit && !canFinans){
+    var bosPanel = form.el.querySelector('#fpanel_nakit .gv-fields');
+    if(bosPanel){
+      bosPanel.innerHTML = GV.empty({
+        icon:'i-lock',
+        title:'Nakit olayı adımı rolünüzde kapalı',
+        desc:'GV.fin.tahsilEt finans yetkisi olmayan rolde işlemi reddeder. Alacak kaydını ' +
+             'oluşturabilirsiniz; para geldiğinde finans yetkili bir kullanıcı kaydı tahsilat ' +
+             'listesinden "Tahsil edildi" olarak işaretler.' });
+    }
+  }
+
+  /* ⚠️ ÖLÇÜLEN BİLEŞEN BOŞLUĞU (raporlandı, ortak katman DEĞİŞTİRİLMEDİ):
+     `GV.form` alan sözleşmesinde bir `datalist` yuvası YOK (ui.js:2109-2116
+     metin dalı yalnız placeholder/min/max basıyor). Yöntem alanı sözlüksüz
+     ve serbest metin olmak ZORUNDA — ama defterde ölçülmüş değerleri
+     kullanıcıdan gizlemek de bilgi yutmak olurdu. Bu yüzden datalist forma
+     çizimden SONRA iliştiriliyor; alan yine serbest metindir, doğrulama
+     değişmez. `GV.form`a `list:[]` yuvası eklemek ana oturumun işidir. */
+  if(!nakitliKayit && canFinans && YONTEMLER.length){
+    var yonEl = form.el.querySelector('[name="yontem"]');
+    if(yonEl){
+      var dl = document.createElement('datalist');
+      dl.id = 'thsYontemList';
+      dl.innerHTML = YONTEMLER.map(function(y){
+        return '<option value="' + GV.esc(y) + '"></option>'; }).join('');
+      yonEl.setAttribute('list', 'thsYontemList');
+      yonEl.parentNode.appendChild(dl);
+    }
+  }
+
+  /* =================================================================
+     KAYDETME
+     ================================================================= */
+  function kodUret(){
+    /* Kod defterden türetilir, sabit yazılmaz (brief §13.2). Sıra numarası
+       defterde YILDAN BAĞIMSIZ ilerliyor (THS-2025-032 → THS-2026-033), o
+       yüzden en büyük sıra TÜM kayıtlardan ölçülür; yıl ölçüm gününden gelir. */
+    var yil = String(BUGUN).slice(0, 4), max = 0;
+    (DB.payments || []).forEach(function(x){
+      var m = /^THS-\d{4}-(\d+)$/.exec(x.kod || '');
+      if(m) max = Math.max(max, +m[1]);
+    });
+    return 'THS-' + yil + '-' + String(max + 1).padStart(3, '0');
+  }
+
+  function sonucYaz(html){ sonucEl.innerHTML = html; sonucEl.scrollIntoView({ block:'nearest' }); }
+
+  function kaydet(){
+    if(kilitli){
+      GV.toast('Bu kayıt zaten yazıldı — mükerrer kayıt üretmemek için form kilitli.', 'warn');
+      return false;
+    }
+
+    var v = form.submit();
+    if(!v) return false;                     /* doğrulama düştü, bileşen zaten söyledi */
+
+    var hesap = hesapKaydi(v.musteri);
+    if(!hesap){
+      GV.toast(v.musteri + ' hesabı hesap defterinde bulunamadı; bağsız tahsilat kaydı ' +
+               'açılmadı.', 'danger');
+      return false;
+    }
+
+    var tutar   = sayi(v.tutar);
+    var fatura  = bosNull(v.fatura);
+    var sorumlu = bosNull(v.sorumlu);
+    /* Anahtar yalnız yeni nakit olayı için okunur: zaten tahsil edilmiş
+       kayıtta anahtar hiç basılmadı ve `read()` boş döner. */
+    var nakitIstendi = !nakitliKayit && !!v.gerceklesti;
+
+    var hedefKod, nakitSonuc = null;
+
+    if(!rec){
+      /* ---- YENİ KAYIT ---------------------------------------------
+         ⚠️ NESNEDE `durum` YOK ve `tahsilEdildi` YOK. İkisi de bu ekranın
+         yazmadığı alanlardır: `durum`u `GV.fin.tahsilatDurumTazele`,
+         `tahsilEdildi`yi `GV.fin.tahsilEt` yazar.
+         `gecikmeGun` de yazılmıyor: vadesi geçmiş bir kayda 0 yazmak
+         ölçülmemiş bir sayıyı ölçülmüş göstermek olurdu (L-13) ve alanın
+         türetimi motorda yaşıyor. */
+      hedefKod = kodUret();
+      var yeni = {
+        kod:hedefKod,
+        fatura:fatura,
+        musteri:v.musteri,
+        musteriAd:hesap.unvan,
+        tutar:tutar,
+        vade:v.vade,
+        sorumlu:sorumlu,
+        sonAksiyon:'Tahsilat kaydı oluşturuldu',
+        sonAksiyonTarihi:BUGUN,
+        aktif:true
+      };
+      DB.payments.unshift(yeni);
+
+      /* Durum ELLE YAZILMAZ — defterden türetilir. */
+      GV.fin.tahsilatDurumTazele(yeni);
+
+      if(nakitIstendi){
+        nakitSonuc = GV.fin.tahsilEt(hedefKod, {
+          tarih:v.tahsilTarihi,
+          yontem:String(v.yontem || '').trim(),
+          hesap:bosNull(v.hesap),
+          dekont:bosNull(v.dekont),
+          valor:bosNull(v.valor) || v.tahsilTarihi
+        });
+      }
+
+      GV.audit.yaz({
+        kayit:hedefKod, modul:'Finans',
+        islem:'Tahsilat kaydı oluşturuldu · ' + hesap.unvan +
+              (fatura ? ' · fatura ' + fatura : ' · fatura bağı yok') +
+              ' · vade ' + v.vade +
+              (nakitIstendi
+                ? (nakitSonuc && nakitSonuc.ok
+                    ? ' · nakit olayı işlendi (' + String(v.yontem || '').trim() + ')'
+                    : ' · nakit olayı REDDEDİLDİ, kayıt alacak olarak kaldı')
+                : ' · nakit olayı yok, alacak kaydı'),
+        yeni:yeni.durum, tone:'ok', icon:'i-plus' });
+    }else{
+      /* ---- DÜZENLEME ----------------------------------------------
+         `durum`, `tahsilEdildi`, `dagitilan` ve `dagitilmamis` bilerek
+         LİSTEDE YOK: dördü de türetilmiş alandır ve bu ekran onlara
+         dokunmaz. Vade değişirse durum, tahsilat motorunun bir sonraki
+         tazelemesinde (yükleme anındaki GV.fin.tazeleHepsi) yeniden
+         türetilir — burada ikinci bir türetim kurulmaz. */
+      hedefKod = rec.kod;
+      var alanlar = {
+        fatura:fatura,
+        musteri:v.musteri,
+        musteriAd:hesap.unvan,
+        tutar:tutar,
+        vade:v.vade,
+        sorumlu:sorumlu
+      };
+      var degisen = [];
+      Object.keys(alanlar).forEach(function(k){
+        var eskiD = rec[k] == null ? '' : String(rec[k]);
+        var yeniD = alanlar[k] == null ? '' : String(alanlar[k]);
+        if(eskiD !== yeniD) degisen.push(k);
+        rec[k] = alanlar[k];
+      });
+
+      if(nakitIstendi){
+        nakitSonuc = GV.fin.tahsilEt(hedefKod, {
+          tarih:v.tahsilTarihi,
+          yontem:String(v.yontem || '').trim(),
+          hesap:bosNull(v.hesap),
+          dekont:bosNull(v.dekont),
+          valor:bosNull(v.valor) || v.tahsilTarihi
+        });
+      }
+
+      GV.audit.yaz({
+        kayit:hedefKod, modul:'Finans',
+        islem:(degisen.length
+                ? 'Tahsilat güncellendi — değişen alan: ' + degisen.join(', ')
+                : 'Tahsilat kaydedildi — alacak alanı değişmedi') +
+              (nakitIstendi
+                ? (nakitSonuc && nakitSonuc.ok
+                    ? ' · nakit olayı işlendi (' + String(v.yontem || '').trim() + ')'
+                    : ' · nakit olayı REDDEDİLDİ')
+                : (nakitliKayit
+                    ? ' · nakit olayı zaten kayıtlıydı, dokunulmadı'
+                    : ' · nakit olayı yok')),
+        tone:'info', icon:'i-edit' });
+    }
+
+    kilitli = true;
+    form.setDirty(false);
+
+    /* ---- NAKİT OLAYI REDDEDİLDİYSE: NE YAPTIĞIMIZI YAZ -------------
+       SEÇİM: kaydı GERİ ALMIYORUZ. Alacak kaydı tek başına geçerli ve
+       doğru bir kayıttır; onu silmek, kullanıcının doğru girdiği veriyi
+       motorun ikinci adımı yüzünden çöpe atmak olurdu. Kayıt DURUYOR,
+       nakit olayı İŞLENMEDİ ve ikisi de burada tek tek yazılıyor.
+       Yönlendirme de yapılmıyor: 700 ms'lik bir şeritte okunamayacak bir
+       cümleyi hedef sayfaya atmak, "ne oldu" sorusunu cevapsız bırakırdı. */
+    if(nakitIstendi && (!nakitSonuc || nakitSonuc.ok === false)){
+      var neden = (nakitSonuc && (nakitSonuc.mesaj || nakitSonuc.why)) || 'motor cevap vermedi';
+      GV.toast('Nakit olayı işlenemedi: ' + neden, 'danger');
+      sonucYaz(
+        GV.notice({ tone:'warn', icon:'i-alert',
+          title:'Kayıt yazıldı, nakit olayı İŞLENMEDİ',
+          text:hedefKod + ' ' + (rec ? 'güncellendi' : 'oluşturuldu') + ' ve defterde DURUYOR — ' +
+               'geri alınmadı. Ancak GV.fin.tahsilEt işlemi reddetti: “' + neden + '”. ' +
+               'Yani kayıt bir ALACAK olarak yaşıyor, tahsilEdildi bayrağı YAZILMADI ve ' +
+               'girdiğiniz tarih · yöntem · hesap · dekont · valör hiçbir yere kaydedilmedi. ' +
+               'Para gerçekten geldiyse kaydı tahsilat listesindeki "Tahsil edildi işaretle" ' +
+               'aksiyonuyla finans yetkili bir kullanıcı işaretlemelidir.' }) +
+        '<div class="gv-card"><div class="gc-body">' +
+          '<a class="btn btn-acc" href="app-tahsilat.html">Tahsilat listesine dön</a>' +
+        '</div></div>');
+      return false;
+    }
+
+    /* ---- Normal akış ------------------------------------------------
+       Tahsilat DETAY ekranı yayında YOK; `detay` bilerek boştur ve
+       `GV.afterSave` listeye döner. */
+    var mesaj;
+    if(!rec){
+      mesaj = nakitIstendi
+        ? hedefKod + ' oluşturuldu ve nakit olayı işlendi: para geldi olarak kayıtlı. ' +
+          'Faturaya dağıtım (tahsis) YAPILMADI — o ayrı bir adımdır ve fatura ekseninde yürür.'
+        : hedefKod + ' bir ALACAK kaydı olarak oluşturuldu. Para henüz gelmedi; nakit olayı ' +
+          'ayrıca işaretlenir.';
+    }else{
+      mesaj = nakitIstendi
+        ? hedefKod + ' güncellendi ve nakit olayı işlendi. Faturaya dağıtım yapılmadı.'
+        : hedefKod + ' güncellendi. Durum, tahsil bayrağı ve dağıtım alanlarına dokunulmadı — ' +
+          'üçü de türetilmiş alandır.';
+    }
+
+    GV.toast(mesaj, 'ok');
+    GV.afterSave({
+      kod:hedefKod,
+      liste:'app-tahsilat.html',
+      detay:'',
+      yeni:!rec,
+      mesaj:mesaj,
+      alt:[
+        { label:'Müşteriyi aç', href:'app-musteri-detay.html?id=' + encodeURIComponent(v.musteri) },
+        fatura ? { label:'Faturayı aç', href:'app-fatura-detay.html?id=' + encodeURIComponent(fatura) } : null
+      ].filter(Boolean)
+    });
+    return true;
+  }
+
+  /* =================================================================
+     BACKEND PAYI — brief §10.2 (b): tek tek, gizlenmeden, taklit edilmeden
+     ================================================================= */
+  document.getElementById('thsBackend').innerHTML =
+    '<section class="gv-card">' +
+      '<div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+        '<span class="gc-meta">2 madde</span>' +
+      '</div>' +
+      '<div class="gc-body">' +
+        '<ul class="odl-gap">' +
+          '<li><span class="odl-gap-kod">BE-F2</span>' +
+            '<span>Banka mutabakatı yok; nakit olayı elle işaretlenir, hesap hareketi doğrulanmaz</span>' +
+            '<span class="odl-gap-bolum">§10.4 tahsilat</span></li>' +
+          '<li><span class="odl-gap-kod">BE-S5</span>' +
+            '<span>Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır</span>' +
+            '<span class="odl-gap-bolum">§9 audit_event</span></li>' +
+        '</ul>' +
+        '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+          '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+        '<p class="u-faint u-sm">BE-F2 bu formda pratikte şu demek: "Bu tahsilat gerçekleşti mi?" ' +
+          'anahtarını açıp girdiğiniz tarih, yöntem, banka/kasa hesabı ve dekont numarası ' +
+          '<b>hiçbir banka hareketiyle eşleştirilmez</b>. Prototip paranın geldiğini yalnız ' +
+          'kullanıcının beyanından bilir; bu beyan tahsis kapısını açar ve fatura durumunu ' +
+          'dolaylı olarak etkiler. Gerçek sistemde nakit olayının kaynağı hesap ekstresi olmalıdır. ' +
+          'Banka/kasa hesabı ve yöntem alanlarının serbest metin olmasının sebebi de budur: ' +
+          'veri katmanında ne hesap planı ne de yöntem sözlüğü var, ikisi de <b>uydurulmadı</b>.</p>' +
+      '</div>' +
+    '</section>';
+});
+</script>
+</body>
+</html>
