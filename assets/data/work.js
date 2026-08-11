@@ -1119,10 +1119,15 @@ DB.approvals = [
     aciliyet:'Kritik', link:'app-proje-detay.html?id=PRJ-2026-006#degisiklik' },
   { kod:'ONY-2026-056', tur:'Ön analiz onayı', kayit:'ANL-2026-001', baslik:'Poyraz İnşaat ön analizi',
     talepEden:'EMP-003', onaylayan:'EMP-001', tutar:null, tarih:'2026-07-21', durum:'Bekliyor',
-    aciliyet:'Orta', link:'app-onanaliz-detay.html?id=ANL-2026-001' },
+    aciliyet:'Orta', /* Ön analiz ayrı ekran değildir (rota 21-22): fırsat detayının Ön analiz
+       bloğudur. `ANL-2026-001` → `LEAD-2026-003` → `FRS-2026-003`
+       (`DB.opportunityOfLead` ile çözüldü, tahmin edilmedi). */
+    link:'app-firsat-detay.html?id=FRS-2026-003' },
   { kod:'ONY-2026-057', tur:'Komisyon kazancı', kayit:'KOM-2026-003', baslik:'Murat Sezer — Marmara Enerji komisyonu',
     talepEden:'EMP-012', onaylayan:'EMP-001', tutar:47600, tarih:'2026-07-09', durum:'Bekliyor',
-    aciliyet:'Orta', link:'app-komisyon-detay.html?id=KOM-2026-003' },
+    aciliyet:'Orta', /* Komisyon ayrı ekran değildir (ADR-R2-04 · rota 28): Nakit ve Tahsilat
+       raporunun drill-down satırıdır. */
+    link:'app-rapor.html?r=nakit-tahsilat' },
   { kod:'ONY-2026-058', tur:'Timesheet onayı', kayit:'TSH-2026-030', baslik:'30. hafta zaman kayıtları — 6 personel',
     talepEden:'EMP-011', onaylayan:'EMP-003', tutar:null, tarih:'2026-08-01', durum:'Bekliyor',
     aciliyet:'Orta', link:'app-zaman-onay.html' },

@@ -258,6 +258,14 @@ document.addEventListener('gv:ready', function(){
     }else if(r.tam){
       out.push({ key:'ac', label:'Tam kayıt yayında değil', icon:'i-external',
                  cls:'btn-line', pasif:true, ipucu:'Hedef ekran (' + r.tam.split('?')[0] + ') henüz yazılmadı' });
+    }else{
+      /* Hedefi OLMAYAN satırda düğme GİZLENMEZ. Gizleme kapsamı küçük
+         gösterir ve yetki davranışıyla karışır: kullanıcı düğmeyi
+         görmediğinde "yetkim yok" sanır. Devre dışı basılır ve sebebi
+         dürüstçe yazılır. */
+      out.push({ key:'ac', label:'Bu sürümde ayrı tam kayıt yok', icon:'i-external',
+                 cls:'btn-line', pasif:true,
+                 ipucu:r.tamNot || 'Bu kuyruk tipinin ayrı bir tam kayıt ekranı yok.' });
     }
 
     return out;

@@ -61,6 +61,10 @@
       flowTur: TIPLER[o.tip].flowTur,
       kaynak:  TIPLER[o.tip].kaynak,
       tam:     o.tam || null,           /* tam kaydın adresi — yoksa null */
+      /* Hedefi OLMAYAN satır için sebep. Ekran düğmeyi gizlemez: devre dışı
+         basar ve bu metni ipucu olarak gösterir. Gizlemek kapsamı küçük
+         gösterir ve yetki davranışıyla karışır. */
+      tamNot:  o.tamNot || null,
       tone:    o.tone || null,
       gecikti: !!o.gecikti
     };
@@ -155,7 +159,13 @@
         iliski:d.hedefDep || d.dep || null,
         durum:d.durum, sorumlu:d.sorumlu || d.atanan || null,
         sonTarih:d.termin || null,
-        tam:'app-istalebi-detay.html?id=' + d.kod,
+        /* Rota 51-52: departman talebi GÖMÜLÜYOR — tam kaydı bu panelin
+           KENDİSİDİR, ayrı ekran açılmayacak. `app-istalebi-detay.html`
+           hedefi hiç doğmadı ve doğmayacak; onu göstermeye devam etmek
+           "yakında gelecek" diye yanlış bir söz vermekti. */
+        tam:null,
+        tamNot:'Departman talebinin tam kaydı bu panelin kendisidir — ' +
+               'ayrı ekran açılmıyor (rota 51-52, GÖMÜLÜYOR).',
         tone:gec ? 'danger' : null, gecikti:!!gec
       });
     });
