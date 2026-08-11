@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Yeni Teklif — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="satis" data-screen="teklif">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/data/firsat.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   TEKLİF FORMU — şartname §7.3 · ekran brief §5 (GV.form deseni)
+
+   DÖRT KİP, TEK EKRAN:
+     ?id=TKL-…      → düzenleme
+     ?firsat=FRS-…  → o fırsata bağlı YENİ teklif (hesap · firma · hizmet ·
+                      bütçe fırsattan ön doldurulur, kaynağı ipuçlarında yazılı)
+     ?hesap=MUS-…   → o hesaba bağlı yeni teklif
+     (argümansız)   → boş yeni teklif
+
+   ⚠️ DURUM ALANI YOKTUR. Yeni teklif `DB.transitions.quote` tablosunun
+   BAŞLANGICINDA doğar; o değer burada ÖLÇÜLÜR (`Object.keys(TQ)[0]`),
+   elle yazılmaz. Durum değişimi bu ekranda değil, teklif detayında
+   `GV.flow.gec` ile yürür (brief §7 · §7.4 yasakları). Düzenleme kipinde
+   durum yalnız OKUNUR: sağ panelde rozet olarak basılır ve kaydetme ona
+   hiç dokunmaz.
+
+   ARA TOPLAMIN İKİ YOLU VARDIR ve ekran hangisinin geçerli olduğunu
+   SÖYLER: kalem satırı varsa ara toplam satırlardan TÜRETİLİR ve alan
+   salt okunur olur; kalem satırı yoksa kullanıcı elle girer. İkisi de
+   desteklenir, ikisi de ekranda yazılıdır.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var F         = GV.fmt;
+  var canFinans = GV.perm.can('finans');
+
+  /* Teklif durum makinesinin TEK kaynağı (org.js:504). */
+  var TQ        = (DB.transitions || {}).quote || {};
+  var ILK_DURUM = Object.keys(TQ)[0] || null;
+
+  var qs        = new URLSearchParams(location.search);
+  var kodArg    = qs.get('id');
+  var firsatArg = qs.get('firsat');
+  var hesapArg  = qs.get('hesap');
+
+  var rec = kodArg ? (DB.quotes || []).filter(function(x){ return x.kod === kodArg; })[0] : null;
+
+  function basitBaslik(baslik, alt){
+    GV.pageHead({
+      eyebrow:'Müşteri ve Satış', title:baslik, sub:alt,
+      actions:[{ label:'Teklif listesine dön', icon:'i-arrow-left', href:'app-teklif.html' }]
+    });
+  }
+
+  /* ---- Kayıt yok durumu (brief §10) -------------------------------- */
+  if(kodArg && !rec){
+    basitBaslik('Kayıt bulunamadı', kodArg);
+    mount.innerHTML = GV.errorState({
+      title:kodArg + ' bulunamadı',
+      desc:'Bu kod hiçbir teklif kaydıyla eşleşmedi. Adres çubuğundaki kodu kontrol edin ' +
+           'ya da teklif listesinden kaydı seçin.' });
+    return;
+  }
+
+  /* ---- Yetki kapısı ------------------------------------------------ */
+  var izinli = rec ? GV.perm.can('duzenle') : GV.perm.can('ekle');
+  if(!izinli){
+    basitBaslik(rec ? 'Teklif ' + rec.kod : 'Yeni Teklif', 'Bu ekran için yetkiniz yok');
+    mount.innerHTML = GV.empty({
+      icon:'i-lock',
+      title:rec ? 'Teklif kaydını düzenleme yetkiniz yok' : 'Yeni teklif açma yetkiniz yok',
+      desc:'Rolünüz (' + GV.perm.role() + ') bu işlem için yetkili değil. ' +
+           'Teklifleri görüntülemeye devam edebilirsiniz.',
+      action:'<a class="btn btn-line" href="app-teklif.html">Teklif listesine dön</a>' });
+    return;
+  }
+
+  /* ---- Doğum durumu ölçülemiyorsa yeni kayıt AÇILMAZ ---------------
+     "Taslak" dizesini elle yazmak, tablo değiştiğinde sessizce yanlış
+     durumda kayıt doğurmak demektir (brief §7.4). Ölçülemiyorsa söylenir. */
+  if(!rec && !ILK_DURUM){
+    basitBaslik('Yeni Teklif', 'Doğum durumu türetilemedi');
+    mount.innerHTML = GV.errorState({
+      title:'Teklif geçiş tablosu yüklenemedi',
+      desc:'Yeni teklifin doğacağı durum DB.transitions.quote tablosunun ilk kaydından ' +
+           'ölçülür. Tablo yüklenmediği için bu değer türetilemedi ve uydurulmadı; ' +
+           'kayıt açılmadı.' });
+    return;
+  }
+
+  /* =================================================================
+     SÖZLÜK ÖLÇÜMÜ — uydurma seçenek yok
+     ================================================================= */
+  function benzersiz(list){
+    return (list || []).filter(function(v, i, s){
+      return v != null && v !== '' && s.indexOf(v) === i; });
+  }
+
+  var TUR_DEGERLERI    = benzersiz((DB.quoteItems || []).map(function(i){ return i.tur; }));
+  var BIRIM_DEGERLERI  = benzersiz((DB.quoteItems || []).map(function(i){ return i.birim; }));
+  var BIRIM_VARSAYILAN = BIRIM_DEGERLERI[0] || '';
+  var KALEMLI_TEKLIF   = benzersiz((DB.quoteItems || []).map(function(i){ return i.teklif; }));
+
+  /* Vergi oranı: şartname varsayılanı 20. Defterde tek bir oran varsa
+     varsayılan ORADAN alınır — iki kaynak tutmamak için (L-40). */
+  var ORAN_DEGERLERI    = benzersiz((DB.quotes || []).map(function(x){ return x.vergiOran; }));
+  var VERGI_VARSAYILAN  = ORAN_DEGERLERI.length === 1 ? ORAN_DEGERLERI[0] : 20;
+
+  /* Döviz: `DB.company.paraBirimi` ÖLÇÜLDÜ — org.js:21'deki şirket kaydında
+     böyle bir alan YOK (odeme.js:131 de aynı düşüşü `|| 'TRY'` ile karşılıyor).
+     İkinci kaynak defterin kendisidir: 8 teklifin 8'i `TRY`. Alan bu yüzden
+     salt okunurdur; şirket ayarı ortak katmana eklendiğinde buradan okunur. */
+  var DOVIZ_DEGERLERI = benzersiz((DB.quotes || []).map(function(x){ return x.doviz; }));
+  var DOVIZ_KAYNAK, DOVIZ;
+  if(DB.company && DB.company.paraBirimi){
+    DOVIZ = DB.company.paraBirimi; DOVIZ_KAYNAK = 'şirket ayarı (DB.company.paraBirimi)';
+  }else if(DOVIZ_DEGERLERI.length === 1){
+    DOVIZ = DOVIZ_DEGERLERI[0];
+    DOVIZ_KAYNAK = 'şirket ayarı yok; teklif defterindeki tek para birimi ölçüldü';
+  }else{
+    DOVIZ = 'TRY'; DOVIZ_KAYNAK = 'şirket ayarı yok, defterde tek değer de yok — varsayılan';
+  }
+  var PARA_SIMGE = DOVIZ === 'TRY' ? '₺' : DOVIZ;
+
+  /* =================================================================
+     BAĞLAR — `firsat.js` tek kaynaktır, ekran kendi eşlemesini kurmaz
+     ================================================================= */
+  var FIRSATLAR = DB.opportunities || [];
+  function firsatById(k){
+    return k ? (FIRSATLAR.filter(function(o){ return o.kod === k; })[0] || null) : null;
+  }
+  function hesapKaydi(k){ return k ? GV.lifecycle.hesap(k) : null; }
+  function hesapAdi(k){ var h = hesapKaydi(k); return h ? h.unvan : (k || ''); }
+
+  /* ---- Kip çözümü --------------------------------------------------- */
+  var onFirsat = null, onHesap = null, argNotu = '';
+  if(!rec && firsatArg){
+    onFirsat = firsatById(firsatArg);
+    if(!onFirsat)
+      argNotu += 'Adres çubuğundaki fırsat kodu (' + firsatArg + ') hiçbir fırsat kaydıyla ' +
+                 'eşleşmedi; form bağsız yeni teklif olarak açıldı. ';
+  }
+  if(!rec && hesapArg){
+    onHesap = hesapKaydi(hesapArg);
+    if(!onHesap)
+      argNotu += 'Adres çubuğundaki hesap kodu (' + hesapArg + ') hiçbir hesap kaydıyla ' +
+                 'eşleşmedi; hesap alanı boş açıldı. ';
+  }
+
+  var baslangicFirsat = rec ? ((DB.quoteOpportunity(rec) || {}).kod || '')
+                            : (onFirsat ? onFirsat.kod : '');
+  var baslangicHesap  = rec ? (DB.quoteAccount(rec) || '')
+                            : (onFirsat ? (onFirsat.hesap || '') : (onHesap ? onHesap.kod : ''));
+
+  /* =================================================================
+     KALEM SATIRLARI — formun alanı DEĞİL, ekranın kendi tablosu
+     -----------------------------------------------------------------
+     `DB.quoteItems` yalnız ölçülen tekliflerde satır taşır; diğerlerinde
+     `kalemSayisi` doludur ama satır YOKTUR (brief §13). Bu ekran satır
+     UYDURMAZ — sayıyı gösterir, dökümün olmadığını söyler ve kullanıcı
+     satır eklemediyse `kalemSayisi` alanına DOKUNMAZ.
+     ================================================================= */
+  var kalemDefteri = rec ? (DB.quoteItems || []).filter(function(i){ return i.teklif === rec.kod; }) : [];
+  var kalemler = kalemDefteri.slice()
+    .sort(function(a, b){ return (a.sira || 0) - (b.sira || 0); })
+    .map(function(i){
+      return { kalem:i.kalem, tur:i.tur, birim:i.birim,
+               miktar:i.miktar, birimFiyat:i.birimFiyat, kaynak:'DB.quoteItems' };
+    });
+
+  /* `?firsat=` kipinde HİZMET ve BÜTÇE fırsattan gelir. Teklif şemasında
+     bu iki alanın karşılığı yoktur (crm.js:391) — tek yerleri bir kalem
+     satırıdır. Satır TASLAKTIR: kaydedilmeden önce düzenlenebilir ya da
+     silinebilir, kaynağı da tabloda yazılıdır. */
+  var tohumFirsat = (!rec && onFirsat) ? onFirsat : null;
+  if(tohumFirsat){
+    kalemler.push({ kalem:tohumFirsat.baslik, tur:tohumFirsat.hizmet,
+                    birim:BIRIM_VARSAYILAN, miktar:1, birimFiyat:tohumFirsat.butce || 0,
+                    kaynak:tohumFirsat.kod });
+  }
+
+  function sayi(v){
+    var n = parseFloat(String(v == null ? '' : v).replace(',', '.'));
+    return isFinite(n) ? n : 0;
+  }
+  function bosNull(x){
+    var s = (x == null) ? '' : String(x).trim();
+    return s === '' ? null : s;
+  }
+  function satirTutar(k){ return sayi(k.miktar) * sayi(k.birimFiyat); }
+  function kalemToplam(){
+    return kalemler.reduce(function(s, k){ return s + satirTutar(k); }, 0);
+  }
+  function kalemliMi(){ return kalemler.length > 0; }
+
+  /* İki ayrı cümle, iki ayrı biçim (brief §10.1):
+     · değer YOK / henüz ölçülemedi        → `—`  (maskeleme değil, YOKLUK)
+     · değer var ama rol göremez (UID-11)  → `••••••`, asla `0` */
+  function paraHtml(v){
+    if(v == null) return GV.cell.faint('—');
+    return canFinans
+      ? '<span class="cell-money">' + F.money(v, PARA_SIMGE) + '</span>'
+      : '<span class="cell-mask">••••••</span>';
+  }
+
+  function toplamlar(v){
+    var oran = sayi(v.vergiOran);
+    var ind  = sayi(v.indirim);
+    var ara;
+    if(kalemliMi()) ara = kalemToplam();
+    else ara = String(v.araToplam == null ? '' : v.araToplam).trim() === '' ? null : sayi(v.araToplam);
+    /* Ara toplam girilmediyse net, vergi ve genel toplam TÜRETİLEMEZ.
+       Sıfır yazmak "ölçtüm, sıfır çıktı" beyanı olurdu (L-13). */
+    if(ara == null) return { ara:null, indirim:ind, net:null, oran:oran, vergi:null, toplam:null };
+    var net   = ara - ind;
+    var vergi = Math.round(net * oran / 100);
+    return { ara:ara, indirim:ind, net:net, oran:oran, vergi:vergi, toplam:net + vergi };
+  }
+
+  /* =================================================================
+     SAYFA BAŞLIĞI — form bileşeninden ÖNCE (brief §2.4)
+     ================================================================= */
+  GV.pageHead({
+    eyebrow:'Müşteri ve Satış',
+    title:rec ? 'Teklif ' + rec.kod : 'Yeni Teklif',
+    sub:rec
+      ? rec.firma + ' · ' + rec.durum + ' · sürüm ' + rec.versiyon +
+        ' · durum bu ekrandan değiştirilmez'
+      : (onFirsat ? onFirsat.kod + ' fırsatına bağlı yeni teklif · '
+        : onHesap ? onHesap.unvan + ' hesabına bağlı yeni teklif · '
+        : 'Yeni teklif · ') + ILK_DURUM + ' durumunda doğar',
+    actions:[
+      { label:'Vazgeç', icon:'i-arrow-left', href:'app-teklif.html' },
+      { label:'Kaydet', icon:'i-check', cls:'btn-acc', run:function(){ kaydet(); } }
+    ]
+  });
+
+  mount.innerHTML =
+    '<div id="tkfNot"></div>' +
+    '<div id="tkfForm"></div>' +
+    '<div id="tkfKalem" class="u-mt-8"></div>' +
+    '<div id="tkfBackend" class="u-mt-8"></div>';
+
+  var notEl   = document.getElementById('tkfNot');
+  var formEl  = document.getElementById('tkfForm');
+  var kalemEl = document.getElementById('tkfKalem');
+
+  /* ---- Açılış notları ---------------------------------------------- */
+  var acilisNotu = '';
+  if(argNotu){
+    acilisNotu += GV.notice({ tone:'warn', icon:'i-alert',
+      title:'Adres çubuğundaki bağ çözülemedi', text:argNotu.trim() });
+  }
+  if(tohumFirsat){
+    acilisNotu += GV.notice({ tone:'info', icon:'i-funnel',
+      title:tohumFirsat.kod + ' fırsatından ön dolduruldu',
+      text:'Hesap (' + hesapAdi(tohumFirsat.hesap) + '), firma adı, hizmet (' +
+           tohumFirsat.hizmet + ') ve bütçe bu fırsattan alındı. Hizmet ile bütçenin ' +
+           'teklif şemasında karşılığı yok; ikisi aşağıdaki kalem tablosuna TASLAK bir ' +
+           'satır olarak yazıldı. Satırı düzenleyebilir ya da silebilirsiniz.' });
+  }
+  if(!canFinans){
+    acilisNotu += GV.notice({ tone:'warn', icon:'i-wallet',
+      title:'Tutar özetleri rolünüzde maskeli',
+      text:'Rolünüz (' + GV.perm.role() + ') finans yetkisi taşımıyor; girdiğiniz değerler ' +
+           'kaydedilir ama TÜRETİLEN tutarlar (satır tutarı, net, vergi, genel toplam) ' +
+           '"••••••" basılır. Bu bir ölçüm bulgusudur: yetki matrisinde teklif ekleyebilen ' +
+           'roller ile finans yetkisi ayrı eksenlerdir; ekran ikisini birleştirmez.' });
+  }
+  notEl.innerHTML = acilisNotu;
+
+  /* =================================================================
+     SAĞ PANEL — canlı tutar özeti ve bütçe karşılaştırması
+     ================================================================= */
+  function yanPanel(v){
+    var t  = toplamlar(v);
+    var o  = firsatById(v.firsat);
+    var hk = o ? (o.hesap || '') : (v.hesap || '');
+
+    var out = '<div class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-quote') + 'Teklif özeti</h3></div>' +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Teklif no', rec
+            ? '<span class="cell-code">' + GV.esc(rec.kod) + '</span>'
+            : '<span class="u-faint">kaydederken üretilir</span>'],
+          ['Durum', rec
+            ? GV.badge(rec.durum) + GV.cell.sub('salt okunur — geçişler teklif detayında')
+            : GV.badge(ILK_DURUM) + GV.cell.sub('yeni teklif bu durumda doğar')],
+          ['Hesap', hk
+            ? GV.esc(hesapAdi(hk)) + GV.cell.sub('<span class="cell-code">' + GV.esc(hk) + '</span>')
+            : '<span class="u-faint">seçilmedi</span>'],
+          ['Bağlı fırsat', o
+            ? '<span class="cell-code">' + GV.esc(o.kod) + '</span>' + GV.cell.sub(GV.esc(o.asama))
+            : '<span class="u-faint">yok</span>'],
+          ['Sürüm', rec
+            ? GV.esc(String(rec.versiyon)) + GV.cell.sub('önceki sürüm kaydı tutulmuyor — K-17')
+            : '1' + GV.cell.sub('yeni teklif birinci sürümdür')]
+        ]) +
+      '</div></div>';
+
+    out += '<div class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-wallet') + 'Tutar özeti</h3>' +
+        '<span class="gc-meta">' + (kalemliMi()
+          ? kalemler.length + ' kalemden türetiliyor'
+          : 'ara toplam elle giriliyor') + '</span></div>' +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Ara toplam', paraHtml(t.ara)],
+          ['İndirim (−)', paraHtml(t.indirim)],
+          ['Net', paraHtml(t.net)],
+          ['Vergi (%' + GV.esc(String(t.oran)) + ')', paraHtml(t.vergi)],
+          ['Genel toplam', paraHtml(t.toplam) + GV.cell.sub(t.toplam == null
+            ? 'ara toplam girilmeden türetilemez'
+            : GV.esc(DOVIZ) + ' · vergi dahil')]
+        ]) +
+      '</div></div>';
+
+    /* ---- Fırsat bütçesiyle karşılaştırma — BİLGİ, engel değil -------
+       Eşik %20; aşım hesabı genel toplam (vergi dahil) ile fırsatın
+       `butce` alanı arasındadır. ⚠️ Bütçenin vergi dahil mi hariç mi
+       olduğu veride YAZILI DEĞİL — karşılaştırmanın tabanı bu yüzden
+       notun içinde açıkça söylenir, sessizce varsayılmaz. */
+    if(o && o.butce && t.toplam == null){
+      out += GV.notice({ tone:'neutral', icon:'i-info',
+        title:'Bütçe karşılaştırması bekliyor',
+        text:'Ara toplam girilince ' + o.kod + ' fırsatının bütçesiyle karşılaştırılacak. ' +
+             'Şu an genel toplam türetilemediği için karşılaştırma da yapılamıyor.' });
+    }else if(o && o.butce){
+      var asim  = t.toplam - o.butce;
+      var yuzde = Math.round(asim / o.butce * 100);
+      if(asim > o.butce * 0.2){
+        out += GV.notice({ tone:'warn', icon:'i-alert',
+          title:'Teklif toplamı fırsat bütçesini %' + yuzde + ' aşıyor',
+          text:'Karşılaştırma: genel toplam (vergi dahil) ile ' + o.kod + ' fırsatının bütçesi' +
+               (canFinans ? ' (' + F.money(o.butce, PARA_SIMGE) + ')' : ' (maskeli)') +
+               '. Bütçenin vergi tabanı veride yazılı değil. Bu bir BİLGİ notudur: ' +
+               'kaydetme bu yüzden reddedilmez, hiçbir kapı kapanmaz — kararı siz verirsiniz.' });
+      }else{
+        out += GV.notice({ tone:'ok', icon:'i-check-circle',
+          title:'Teklif toplamı fırsat bütçesiyle uyumlu',
+          text:'Genel toplam, ' + o.kod + ' fırsatının bütçesini %20 eşiğinin üzerinde aşmıyor' +
+               (asim > 0 ? ' (aşım %' + yuzde + ').' : (asim < 0 ? ' (bütçenin altında).' : '.')) });
+      }
+    }else if(o){
+      out += GV.notice({ tone:'neutral', icon:'i-info',
+        title:'Bütçe karşılaştırması yapılamadı',
+        text:o.kod + ' fırsatında bütçe değeri yok; karşılaştırma türetilemedi. ' +
+             'Sıfır yazmak, ölçülmemişi ölçülmüş göstermek olurdu.' });
+    }
+
+    /* ---- Ön analiz kapısı — teklif detayında işler, burada bilgidir --- */
+    var anl = (DB.analyses || []).filter(function(a){ return a.kod === v.analiz; })[0] || null;
+    var kapiNotu = 'Taslak → İç Onay geçişinde `teklifOnAnaliz` kapısı ONAYLI bir ön analiz ister ' +
+                   '(istisna rolleri: sahip, genel müdür). Kapı bu formda değil, teklif detayındaki ' +
+                   'geçiş anında işler; kaydetmeyi engellemez.';
+    if(anl){
+      out += GV.notice({
+        tone:anl.durum === 'Onaylandı' ? 'ok' : 'neutral',
+        icon:anl.durum === 'Onaylandı' ? 'i-check-circle' : 'i-info',
+        title:'Bağlı ön analiz: ' + anl.kod + ' · ' + anl.durum,
+        text:kapiNotu });
+    }else{
+      out += GV.notice({ tone:'neutral', icon:'i-info',
+        title:'Ön analiz bağlanmadı', text:kapiNotu });
+    }
+    return out;
+  }
+
+  /* =================================================================
+     FORM — ilk görünüm ALTI alan, gerisi "Daha fazla bilgi" altında
+     -----------------------------------------------------------------
+     `hesap` ve `araToplam` alanlarının SALT OKUNURLUĞU forma girildiği
+     anda sabitlenir (motor `readonly`u çizim anında okur, ui.js:2034).
+     Bu yüzden durum değiştiğinde — fırsat seçilince, kalem eklenince —
+     form YENİDEN KURULUR; ekran motorun kuralını kopyalamaz, motoru
+     doğru girdiyle tekrar çağırır.
+     ================================================================= */
+  var form = null;
+
+  function varsayilanTaslak(){
+    return {
+      hesap:baslangicHesap,
+      firsat:baslangicFirsat,
+      tarih:(rec && rec.tarih) || DB.today,
+      gecerlilik:(rec && rec.gecerlilik) || '',
+      hazirlayan:(rec && rec.hazirlayan) || (GV.session && GV.session.emp) || '',
+      araToplam:(rec && rec.araToplam != null) ? rec.araToplam : '',
+      indirim:(rec && rec.indirim != null) ? rec.indirim : '',
+      vergiOran:(rec && rec.vergiOran != null) ? rec.vergiOran : VERGI_VARSAYILAN,
+      doviz:(rec && rec.doviz) || DOVIZ,
+      odemePlani:(rec && rec.odemePlani) || '',
+      teslimSuresi:(rec && rec.teslimSuresi) || '',
+      garanti:(rec && rec.garanti) || '',
+      destek:(rec && rec.destek) || '',
+      analiz:(rec && rec.analiz) || ''
+    };
+  }
+
+  function formKur(taslak, kirli){
+    var t          = taslak || varsayilanTaslak();
+    var o          = firsatById(t.firsat);
+    var hesapKilit = !!o;
+    var hesapDeger = o ? (o.hesap || '') : (t.hesap || '');
+    var araKilit   = kalemliMi();
+
+    var kayit = Object.assign({}, t, {
+      hesap:hesapDeger,
+      araToplam:araKilit ? kalemToplam() : t.araToplam,
+      doviz:DOVIZ
+    });
+
+    form = GV.form({
+      mount:'#tkfForm',
+      id:'teklifForm',
+      record:kayit,
+      tabs:[
+        { key:'temel', label:'Temel bilgiler',   icon:'i-quote' },
+        { key:'ek',    label:'Daha fazla bilgi', icon:'i-list' }
+      ],
+      aside:function(veri){ return yanPanel(veri); },
+      sections:[
+        { title:'Teklifin muhatabı ve tarihleri', icon:'i-building', tab:'temel',
+          desc:'İlk görünümde yalnız bu alanlar istenir. İndirim, vergi oranı, ödeme planı, ' +
+               'teslim · garanti · destek ve bağlı ön analiz "Daha fazla bilgi" sekmesindedir ' +
+               've zorunlu değildir.',
+          fields:[
+            { key:'hesap', label:'Hesap / firma', type:'select', cols:6, required:true,
+              readonly:hesapKilit,
+              options:(DB.accounts || []).map(function(h){
+                return { value:h.kod, label:h.unvan + ' · ' + h.kod }; }),
+              hint:hesapKilit
+                ? 'Hesap ' + o.kod + ' fırsatından türetildi ve salt okunur. Değiştirmek için ' +
+                  'aşağıdaki fırsat seçimini kaldırın.'
+                : 'Aday kaynaklı hesaplar da listededir; teklifin hesap bağı kaydedilirken ' +
+                  'fırsat üzerinden kurulur.' },
+
+            { key:'firsat', label:'Bağlı fırsat', type:'select', cols:6,
+              placeholder:'Fırsata bağlama — hesabı doğrudan seçeceğim',
+              options:FIRSATLAR.map(function(x){
+                return { value:x.kod, label:x.kod + ' · ' + x.baslik + ' · ' + hesapAdi(x.hesap) }; }),
+              hint:'Seçilirse hesap fırsattan türer ve üstteki alan salt okunur olur. ' +
+                   'İsteğe bağlıdır: fırsatsız teklif de kaydedilebilir.' },
+
+            { key:'tarih', label:'Teklif tarihi', type:'date', cols:6, required:true,
+              hint:'Varsayılan, sistemin ölçüm günü: ' + F.date(DB.today) + '.' },
+
+            { key:'gecerlilik', label:'Geçerlilik tarihi', type:'date', cols:6, required:true,
+              hint:'Teklif tarihinden önce olamaz.',
+              validate:function(deger, veri){
+                if(!deger || !veri.tarih) return '';
+                return deger < veri.tarih
+                  ? 'Geçerlilik tarihi teklif tarihinden (' + F.date(veri.tarih) + ') önce olamaz.'
+                  : '';
+              } },
+
+            { key:'hazirlayan', label:'Hazırlayan', type:'select', cols:6, required:true,
+              options:(DB.employees || []).map(function(e){
+                return { value:e.kod, label:e.ad }; }),
+              hint:rec ? '' : 'Varsayılan olarak oturum sahibi atandı; değiştirebilirsiniz.' },
+
+            { key:'araToplam', label:'Ara toplam', type:'money', cols:6, required:true,
+              currency:PARA_SIMGE, readonly:araKilit,
+              hint:araKilit
+                ? kalemler.length + ' kalem satırından türetiliyor; değiştirmek için aşağıdaki ' +
+                  'kalem tablosunu düzenleyin.'
+                : 'Kalem satırı yok — bu alan elle doldurulur. Kalem eklerseniz salt okunura ' +
+                  'döner ve toplam satırlardan türetilir.' }
+          ] },
+
+        { title:'Fiyatlandırma', icon:'i-wallet', tab:'ek',
+          desc:'Net = ara toplam − indirim. Vergi net üzerinden hesaplanır; genel toplam ' +
+               'net + vergidir. Üçü de türetilmiştir ve sağ panelde canlı gösterilir.',
+          fields:[
+            { key:'indirim', label:'İndirim', type:'money', cols:4, currency:PARA_SIMGE,
+              hint:'Boş bırakılırsa indirim yok sayılır.' },
+            { key:'vergiOran', label:'Vergi oranı', type:'percent', cols:4,
+              hint:'Varsayılan %' + VERGI_VARSAYILAN + (ORAN_DEGERLERI.length === 1
+                ? ' — teklif defterindeki tek oran ölçüldü.'
+                : ' — şartname varsayılanı.') },
+            { key:'doviz', label:'Para birimi', type:'text', cols:4, readonly:true,
+              hint:'Kaynak: ' + DOVIZ_KAYNAK + '. Prototipte tek para birimi vardır; ' +
+                   'çoklu kur ve çeviri kapsam dışıdır.' }
+          ] },
+
+        { title:'Ticari koşullar', icon:'i-file', tab:'ek',
+          desc:'Bu alanların hepsi serbest metindir; teklif defterinde de metin olarak durur ' +
+               '(sözlük yok, uydurulmadı).',
+          fields:[
+            { key:'odemePlani', label:'Ödeme planı', type:'textarea', cols:12, rows:2,
+              placeholder:'Örn. %40 peşin · %30 ara teslim · %30 teslimde' },
+            { key:'teslimSuresi', label:'Teslim süresi', type:'text', cols:4,
+              placeholder:'Örn. 11 hafta' },
+            { key:'garanti', label:'Garanti', type:'text', cols:4,
+              placeholder:'Örn. 6 ay hata garantisi' },
+            { key:'destek', label:'Destek', type:'text', cols:4,
+              placeholder:'Örn. 12 ay bakım paketi opsiyonel' }
+          ] },
+
+        { title:'Bağlı ön analiz', icon:'i-clipboard-check', tab:'ek',
+          desc:'Ön analiz teklifin dayanağıdır: Taslak → İç Onay geçişinde onaylı bir analiz ' +
+               'aranır. Bağ burada kurulur, kapı geçiş anında teklif detayında işler.',
+          fields:[
+            { key:'analiz', label:'Ön analiz', type:'select', cols:6,
+              placeholder:'Analize bağlama',
+              options:(DB.analyses || []).map(function(a){
+                return { value:a.kod, label:a.kod + ' · ' + a.firma + ' · ' + a.durum }; }),
+              hint:(DB.analyses || []).length
+                ? (DB.analyses || []).length + ' ön analiz kaydı var; listede durumları da yazılı.'
+                : 'Ön analiz kaydı yok — seçenek türetilemedi.' }
+          ] }
+      ]
+    });
+
+    if(!form){
+      mount.innerHTML = GV.errorState({ title:'Form çizilemedi',
+        desc:'Form bileşeni bağlanamadı. Sayfayı yeniden açmayı deneyin.' });
+      return;
+    }
+
+    /* ⚠️ ÖLÇÜLEN BİLEŞEN BOŞLUĞU (rapor edildi, ortak katman DEĞİŞTİRİLMEDİ):
+       `GV.form` `readonly` sözleşmesini `text`/`textarea`/`select` dallarında
+       uyguluyor ama `money` ve `percent` dallarında OKUMUYOR (ui.js:2081-2085).
+       Alan yapılandırması yine `readonly:araKilit` bildiriyor — motor
+       düzeltildiğinde bu satır gereksizleşir ve davranış değişmez. O güne
+       kadar türetilmiş alan yazılabilir kalmasın diye kilit burada uygulanır. */
+    var araEl = form.el.querySelector('[name="araToplam"]');
+    if(araEl){
+      araEl.readOnly = araKilit;
+      araEl.classList.toggle('is-readonly', araKilit);
+      if(araKilit) araEl.setAttribute('aria-readonly', 'true');
+      else araEl.removeAttribute('aria-readonly');
+    }
+
+    if(kirli) form.setDirty(true);
+  }
+
+  /* Fırsat seçimi değişince hesap bağı ve salt okunurluk değişir → yeniden kur.
+     Dinleyici `#tkfForm` düğümüne bağlıdır: `GV.form` o düğümün İÇİNİ değiştirir,
+     düğümün kendisi ayakta kalır. `#tkfForm` `#rec` içindedir ve `GV.refresh()`
+     `#rec`i taze kopyayla değiştirir — `GV.on` gerekmez (brief §2.6). */
+  formEl.addEventListener('change', function(e){
+    if(!e.target || e.target.name !== 'firsat') return;
+    formKur(form.read(), true);
+  });
+
+  /* =================================================================
+     KALEM TABLOSU — ortak sınıflarla, ekranın kendi işaretlemesi
+     ================================================================= */
+  function kalemSatiri(k, i){
+    var no = i + 1;
+    return '<tr>' +
+      '<td class="num">' + no + '</td>' +
+      '<td class="cell-wrap"><input type="text" class="inp" data-k="kalem" data-i="' + i + '" ' +
+        'value="' + GV.esc(k.kalem == null ? '' : k.kalem) + '" ' +
+        'placeholder="Kalem açıklaması" aria-label="' + no + '. kalemin açıklaması"></td>' +
+      '<td><input type="text" class="inp" list="tkfTurList" data-k="tur" data-i="' + i + '" ' +
+        'value="' + GV.esc(k.tur == null ? '' : k.tur) + '" aria-label="' + no + '. kalemin türü"></td>' +
+      '<td><input type="text" class="inp" list="tkfBirimList" data-k="birim" data-i="' + i + '" ' +
+        'value="' + GV.esc(k.birim == null ? '' : k.birim) + '" aria-label="' + no + '. kalemin birimi"></td>' +
+      '<td class="num"><input type="number" class="inp" min="0" step="1" data-k="miktar" data-i="' + i + '" ' +
+        'value="' + GV.esc(String(k.miktar == null ? '' : k.miktar)) + '" aria-label="' + no + '. kalemin miktarı"></td>' +
+      '<td class="num"><input type="number" class="inp" min="0" step="1" data-k="birimFiyat" data-i="' + i + '" ' +
+        'value="' + GV.esc(String(k.birimFiyat == null ? '' : k.birimFiyat)) + '" aria-label="' + no + '. kalemin birim fiyatı"></td>' +
+      '<td class="num" data-tutar="' + i + '">' + paraHtml(satirTutar(k)) + '</td>' +
+      '<td class="col-acts">' +
+        '<button type="button" class="ia is-danger" data-kal-sil="' + i + '" ' +
+          'aria-label="' + no + '. kalemi sil">' + GV.ico('i-trash', 'ic-sm') + '</button>' +
+      '</td>' +
+    '</tr>';
+  }
+
+  function kalemGovde(){
+    if(!kalemliMi()){
+      return GV.empty({
+        icon:'i-quote',
+        title:'Kalem satırı yok',
+        desc:'Bu teklifin tutarı kalem dökümü olmadan, ara toplam alanına elle yazılarak ' +
+             'belirlenir. Kalem eklerseniz ara toplam satırlardan türetilir ve alan salt ' +
+             'okunura döner.',
+        action:'<button type="button" class="btn btn-acc" data-kal-ekle>' +
+               GV.ico('i-plus') + ' Kalem ekle</button>' });
+    }
+    return '<div class="gv-tablewrap"><table class="gtable">' +
+      '<thead><tr>' +
+        '<th class="num">#</th><th>Kalem</th><th>Tür</th><th>Birim</th>' +
+        '<th class="num">Miktar</th><th class="num">Birim fiyat</th>' +
+        '<th class="num">Tutar</th><th class="col-acts"><span class="gv-sr">İşlemler</span></th>' +
+      '</tr></thead>' +
+      '<tbody>' + kalemler.map(kalemSatiri).join('') + '</tbody>' +
+      '<tfoot><tr>' +
+        '<td colspan="6">Kalem toplamı — ara toplama yazılan değer</td>' +
+        '<td class="num" data-kalemtoplam>' + paraHtml(kalemToplam()) + '</td>' +
+        '<td></td>' +
+      '</tr></tfoot>' +
+    '</table></div>' +
+    '<datalist id="tkfTurList">' +
+      TUR_DEGERLERI.map(function(x){ return '<option value="' + GV.esc(x) + '"></option>'; }).join('') +
+    '</datalist>' +
+    '<datalist id="tkfBirimList">' +
+      BIRIM_DEGERLERI.map(function(x){ return '<option value="' + GV.esc(x) + '"></option>'; }).join('') +
+    '</datalist>';
+  }
+
+  function kalemNotlari(){
+    var out = kalemliMi()
+      ? GV.notice({ tone:'ok', icon:'i-check-circle',
+          title:'Ara toplam kalemlerden türetiliyor',
+          text:kalemler.length + ' kalem satırı var. Her satırın tutarı miktar × birim fiyattır ' +
+               've elle girilmez; "Ara toplam" alanı salt okunurdur. Elle yazmak isterseniz ' +
+               'kalem satırlarını silin.' })
+      : GV.notice({ tone:'info', icon:'i-info',
+          title:'Ara toplamı elle giriyorsunuz',
+          text:'Kalem satırı yok; geçerli olan, "Ara toplam" alanına yazdığınız değerdir. ' +
+               'Kalem eklerseniz o alan salt okunura döner ve toplam satırlardan türetilir.' });
+
+    if(rec && !kalemDefteri.length && rec.kalemSayisi > 0){
+      out += GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Kayıt ' + rec.kalemSayisi + ' kalem bildiriyor ama satır dökümü yok',
+        text:'Kaynak veride kalem satırı yalnız şu teklif(ler) için var: ' +
+             (KALEMLI_TEKLIF.join(', ') || 'hiçbiri') + '. Bu ekran satır UYDURMAZ. ' +
+             'Satır eklemezseniz kaydın `kalemSayisi` alanına dokunulmaz ve ' +
+             rec.kalemSayisi + ' olarak kalır; satır eklerseniz alan girdiğiniz satır ' +
+             'sayısından yeniden türetilir.' });
+    }
+    if(tohumFirsat){
+      out += GV.notice({ tone:'neutral', icon:'i-funnel',
+        title:'İlk satır ' + tohumFirsat.kod + ' fırsatından türetildi',
+        text:'Kalem adı fırsatın başlığından, tür hizmet alanından, birim fiyat bütçesinden ' +
+             'alındı. Birim değeri kalem defterindeki değerlerden seçildi (' +
+             (BIRIM_VARSAYILAN || 'değer yok') + '); miktar 1 kabul edildi. Kaydetmeden önce ' +
+             'düzeltin ya da satırı silin.' });
+    }
+    return out;
+  }
+
+  function kalemleriCiz(){
+    kalemEl.innerHTML =
+      '<section class="gv-card">' +
+        '<div class="gc-head">' +
+          '<h3 class="gc-title">' + GV.ico('i-list') + 'Kalem satırları</h3>' +
+          '<span class="gc-meta">' + kalemler.length + ' satır</span>' +
+          '<div class="gc-head-acts">' +
+            '<button type="button" class="btn btn-line btn-sm" data-kal-ekle>' +
+              GV.ico('i-plus', 'ic-sm') + ' Kalem ekle</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="gc-body">' + kalemNotlari() + kalemGovde() + '</div>' +
+      '</section>';
+  }
+
+  /* Türetilen hücreler yeniden ÇİZİLMEZ, güncellenir: satır yeniden
+     çizilseydi kullanıcının yazdığı girdi odağı her tuşta kaybolurdu. */
+  function turetilmisGuncelle(){
+    Array.prototype.forEach.call(kalemEl.querySelectorAll('[data-tutar]'), function(td){
+      var i = +td.getAttribute('data-tutar');
+      if(kalemler[i]) td.innerHTML = paraHtml(satirTutar(kalemler[i]));
+    });
+    var toplamEl = kalemEl.querySelector('[data-kalemtoplam]');
+    if(toplamEl) toplamEl.innerHTML = paraHtml(kalemToplam());
+    if(form){
+      var araEl = form.el.querySelector('[name="araToplam"]');
+      if(araEl && kalemliMi()) araEl.value = kalemToplam();
+      form.aside();
+      form.setDirty(true);
+    }
+  }
+
+  /* Satır sayısı değişince ara toplamın SALT OKUNURLUĞU değişir → form
+     yeniden kurulur (motor `readonly`u yalnız çizim anında okur). */
+  function kalemSayisiDegisti(){
+    kalemleriCiz();
+    formKur(form ? form.read() : null, true);
+  }
+
+  /* Dinleyiciler `#tkfKalem` düğümüne bağlıdır; içerik değişse de düğüm
+     ayakta kalır, `GV.refresh()` ise `#rec` ile birlikte hepsini söker. */
+  kalemEl.addEventListener('click', function(e){
+    var ekle = e.target.closest('[data-kal-ekle]');
+    if(ekle){
+      kalemler.push({ kalem:'', tur:'', birim:BIRIM_VARSAYILAN,
+                      miktar:1, birimFiyat:0, kaynak:'form' });
+      kalemSayisiDegisti();
+      return;
+    }
+    var sil = e.target.closest('[data-kal-sil]');
+    if(sil){
+      kalemler.splice(+sil.getAttribute('data-kal-sil'), 1);
+      kalemSayisiDegisti();
+    }
+  });
+
+  kalemEl.addEventListener('input', function(e){
+    var el = e.target.closest('[data-k]');
+    if(!el) return;
+    var i = +el.getAttribute('data-i');
+    if(!kalemler[i]) return;
+    kalemler[i][el.getAttribute('data-k')] = el.value;
+    turetilmisGuncelle();
+  });
+
+  /* ---- İlk çizim ---------------------------------------------------- */
+  kalemleriCiz();
+  formKur(null, false);
+
+  /* =================================================================
+     KAYDETME
+     ================================================================= */
+  function kodUret(){
+    /* Kod defterden türetilir, sabit yazılmaz (brief §13.2). */
+    var yil = String(DB.today).slice(0, 4), max = 0;
+    (DB.quotes || []).forEach(function(x){
+      var m = new RegExp('^TKL-' + yil + '-(\\d+)$').exec(x.kod || '');
+      if(m) max = Math.max(max, +m[1]);
+    });
+    return 'TKL-' + yil + '-' + String(max + 1).padStart(3, '0');
+  }
+
+  function kalemleriYaz(teklifKod){
+    var defter = DB.quoteItems || (DB.quoteItems = []);
+    for(var i = defter.length - 1; i >= 0; i--){
+      if(defter[i].teklif === teklifKod) defter.splice(i, 1);
+    }
+    kalemler.forEach(function(k, ix){
+      defter.push({
+        teklif:teklifKod, sira:ix + 1,
+        kalem:String(k.kalem || '').trim(),
+        tur:bosNull(k.tur), birim:bosNull(k.birim),
+        miktar:sayi(k.miktar), birimFiyat:sayi(k.birimFiyat), tutar:satirTutar(k)
+      });
+    });
+  }
+
+  function kaydet(){
+    var v = form && form.submit();
+    if(!v) return false;
+
+    /* ---- Kalem satırlarının doğrulaması formun dışındadır ----------- */
+    var adsiz = kalemler.filter(function(k){ return !String(k.kalem || '').trim(); }).length;
+    if(adsiz){
+      GV.toast(adsiz + ' kalem satırının açıklaması boş — doldurun ya da satırı silin.', 'danger');
+      return false;
+    }
+
+    /* ---- Hesap bağı ------------------------------------------------
+       Teklif şeması hesabı iki alanda taşır: doğrudan `musteri` (MUS-*)
+       ya da `lead` üzerinden fırsat bağıyla (firsat.js:148). Aday kaynaklı
+       hesapta MUS kodu YOKTUR; bağ lead koduyla kurulur. İkisi de
+       kurulamıyorsa kayıt açılmaz — bağsız teklif üretmek, listede
+       "hesap bağı kurulamadı" satırı doğurmak olurdu. */
+    var o        = firsatById(v.firsat);
+    var hesapKod = o ? (o.hesap || '') : (v.hesap || '');
+    var h        = hesapKaydi(hesapKod);
+    if(!hesapKod || !h){
+      GV.toast('Hesap çözülemedi; hesap ya da bağlı fırsat seçin.', 'danger');
+      return false;
+    }
+    var musteriKod = /^MUS-/.test(hesapKod) ? hesapKod : null;
+    var leadKod    = o ? (o.legacy_id || null)
+                       : (musteriKod ? null : ((h.leadKodlari || [])[0] || null));
+    if(!musteriKod && !leadKod){
+      GV.toast(hesapKod + ' hesabının teklif bağı kurulamadı: hesapta MUS kodu da, aday kodu ' +
+               'da yok. Teklifi bir fırsata bağlayın.', 'danger');
+      return false;
+    }
+
+    var t = toplamlar(v);
+    var kalemYonetiliyor = kalemliMi() || kalemDefteri.length > 0;
+    var hedefKod;
+
+    if(!rec){
+      /* ---- YENİ KAYIT ---------------------------------------------
+         Doğum durumu geçiş tablosunun İLK kaydıdır ve nesne literalinde
+         verilir; kayda sonradan durum yazan bir satır yoktur. */
+      hedefKod = kodUret();
+      var yeni = {
+        kod:hedefKod,
+        musteri:musteriKod,
+        firma:h.unvan,
+        lead:leadKod,
+        analiz:bosNull(v.analiz),
+        tarih:v.tarih,
+        gecerlilik:v.gecerlilik,
+        versiyon:1,
+        hazirlayan:v.hazirlayan,
+        araToplam:t.ara,
+        indirim:t.indirim,
+        vergiOran:t.oran,
+        vergi:t.vergi,
+        toplam:t.toplam,
+        doviz:DOVIZ,
+        durum:ILK_DURUM,
+        icOnay:'Bekliyor',
+        musteriOnay:'—',
+        kalemSayisi:kalemler.length,
+        odemePlani:bosNull(v.odemePlani),
+        teslimSuresi:bosNull(v.teslimSuresi),
+        garanti:bosNull(v.garanti),
+        destek:bosNull(v.destek),
+        aktif:true
+      };
+      (DB.quotes || (DB.quotes = [])).unshift(yeni);
+      kalemleriYaz(hedefKod);
+
+      GV.audit.yaz({
+        kayit:hedefKod, modul:'Satış',
+        islem:'Teklif oluşturuldu · ' + h.unvan + (o ? ' · fırsat ' + o.kod : ' · fırsat bağı yok') +
+              ' · ' + kalemler.length + ' kalem' +
+              (kalemliMi() ? ' (ara toplam kalemlerden türetildi)' : ' (ara toplam elle girildi)'),
+        yeni:ILK_DURUM, tone:'ok', icon:'i-plus' });
+    }else{
+      /* ---- DÜZENLEME ----------------------------------------------
+         `durum`, `icOnay`, `musteriOnay` ve `versiyon` bilerek listede
+         YOK: durum bu ekrandan değişmez, sürümleme bu turda kapsam dışı
+         (K-17). `kalemSayisi` yalnız satırlar gerçekten yönetiliyorsa
+         yeniden türetilir; aksi hâlde kaydın kendi sayısı korunur. */
+      hedefKod = rec.kod;
+      var alanlar = {
+        musteri:musteriKod,
+        firma:h.unvan,
+        lead:leadKod,
+        analiz:bosNull(v.analiz),
+        tarih:v.tarih,
+        gecerlilik:v.gecerlilik,
+        hazirlayan:v.hazirlayan,
+        araToplam:t.ara,
+        indirim:t.indirim,
+        vergiOran:t.oran,
+        vergi:t.vergi,
+        toplam:t.toplam,
+        doviz:DOVIZ,
+        odemePlani:bosNull(v.odemePlani),
+        teslimSuresi:bosNull(v.teslimSuresi),
+        garanti:bosNull(v.garanti),
+        destek:bosNull(v.destek)
+      };
+      if(kalemYonetiliyor) alanlar.kalemSayisi = kalemler.length;
+
+      var degisen = [];
+      Object.keys(alanlar).forEach(function(k){
+        var eskiD = rec[k] == null ? '' : String(rec[k]);
+        var yeniD = alanlar[k] == null ? '' : String(alanlar[k]);
+        if(eskiD !== yeniD) degisen.push(k);
+        rec[k] = alanlar[k];
+      });
+      if(kalemYonetiliyor) kalemleriYaz(hedefKod);
+
+      GV.audit.yaz({
+        kayit:hedefKod, modul:'Satış',
+        islem:(degisen.length
+                ? 'Teklif güncellendi — değişen alan: ' + degisen.join(', ')
+                : 'Teklif kaydedildi — alan değişmedi') +
+              (kalemYonetiliyor
+                ? ' · kalem satırı: ' + kalemler.length
+                : ' · kalem dökümü kaynak veride yok, kalemSayisi korundu'),
+        tone:'info', icon:'i-edit' });
+    }
+
+    GV.afterSave({
+      kod:hedefKod,
+      liste:'app-teklif.html',
+      detay:'app-teklif-detay.html',
+      yeni:!rec,
+      mesaj:rec
+        ? 'Teklif güncellendi; durum (' + rec.durum + ') değiştirilmedi — geçişler teklif ' +
+          'detayında yürür.'
+        : 'Teklif ' + ILK_DURUM + ' durumunda oluşturuldu. İç onaya göndermek teklif ' +
+          'detayındaki geçiş düğmesiyle yapılır.',
+      alt:[
+        { label:'Hesabı aç', href:'app-musteri-detay.html?id=' + encodeURIComponent(hesapKod) },
+        o ? { label:'Bağlı fırsatı aç', href:'app-firsat-detay.html?id=' + encodeURIComponent(o.kod) } : null
+      ].filter(Boolean)
+    });
+    return true;
+  }
+
+  /* =================================================================
+     BACKEND PAYI — brief §10.2 (b): tek tek, gizlenmeden, taklit edilmeden
+     ================================================================= */
+  document.getElementById('tkfBackend').innerHTML =
+    '<section class="gv-card">' +
+      '<div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+        '<span class="gc-meta">2 madde</span>' +
+      '</div>' +
+      '<div class="gc-body">' +
+        '<ul class="odl-gap">' +
+          '<li><span class="odl-gap-kod">BE-S3</span>' +
+            '<span>Teklif sürümleme (revizyon = yeni kayıt) bu turda kapsam dışı — K-17</span>' +
+            '<span class="odl-gap-bolum">riskler K-17</span></li>' +
+          '<li><span class="odl-gap-kod">BE-S5</span>' +
+            '<span>Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır</span>' +
+            '<span class="odl-gap-bolum">§9 audit_event</span></li>' +
+        '</ul>' +
+        '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+          '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+        '<p class="u-faint u-sm">K-17 (tasks/riskler-ve-kapsam.md): teklif sürümleme ' +
+          '<b>yapılmadı</b> — bu form bir revizyonu yeni kayıt olarak açmaz, eski sürümü ' +
+          'kilitlemez ve düzenleme kipinde <b>sürüm numarasını artırmaz</b>. Düzenleme, ' +
+          'kaydın üzerine yazar; ne değiştiği yalnızca denetim izinde görünür. Karar ' +
+          'ADR-R2-11 ile sonraki dilime bırakıldı.</p>' +
+      '</div>' +
+    '</section>';
+});
+</script>
+</body>
+</html>
