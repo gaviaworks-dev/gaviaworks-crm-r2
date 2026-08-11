@@ -669,7 +669,10 @@ GV.progress(72)
 GV.dateCell('2026-08-25')                // gecikme/yaklaşma renklendirmesi
 GV.notice({ tone:'warn', icon:'i-alert', title:'…', text:'…', actions:[{label,href,cls}] })
 GV.empty({ icon:'i-inbox', title:'…', desc:'…', action:'<a class="btn btn-acc" …>' })
-GV.errorState({ title:'…', desc:'…' })
+GV.errorState({ title:'…', desc:'…',
+                action:'<a class="btn btn-acc" href="…">Listeye dön</a>',  // BASILIR (eskiden yutuluyordu)
+                retry:function(){ … } })   // işlev verilirse düğme ona bağlanır
+// action da retry de yoksa düğme HİÇ basılmaz — ölü buton bırakılmaz
 GV.skeleton('row', 6)                    // 'row' | 'card'
 GV.doc({ baslik:…, altBilgi:…, bolumler:[…] })   // kayıttan yazdırılabilir belge
 ```
@@ -1302,6 +1305,29 @@ GV.fin.durumTazele(fatura)  // durum türetilir; ekran `f.durum = …` YAZMAZ
 
 Fatura belge ekseni ayrıdır: `GV.flow.gec('invoice', kod, hedef)` —
 alan `belgeDurum`, ödeme durumu (`durum`) **türetilir**.
+
+### 17.8 Değişen davranışlar — eski ekranlar bunu bilmeli
+
+Aşağıdakiler **mevcut sözleşmeyi değiştirdi**; önceki dilimlerde yazılmış
+ekranlar bu davranışlara güvenebilir, yeni ekranlar bunları varsaymalıdır.
+
+| İmza | Yeni davranış |
+|---|---|
+| `GV.flow.adimlar` | `gerekce` artık **hedefin** `girisGerekce` bayrağını bildirir. Kuralı `DB.transitions`ten kendin okuma. Kilitli kayıtta `[]` döner |
+| `GV.flow.gec` | Kilitli kayıtta `why:'kilit'`; kapı hedefe de bağlanabilir (`girisKapi`) |
+| `GV.afterSave` | Hedef **aynı dosya** ise sayfa yeniden yüklenmez (`'detay-yumusak'`) |
+| `GV.errorState` | `action` basılır, `retry` işlev alabilir, ikisi de yoksa düğme yok |
+| `GV.form` `type:'url'` | Şemasız adres (`firma.com`) geçerli |
+| `GV.form` `readonly` | `money` ve `percent` alanlarında da uygulanır |
+| `GV.modal` · `GV.drawer` | İçlerindeki yayında olmayan bağlantıları kendileri kilitler |
+| `GV.list` filtresi | `type:'money'` ve `type:'percent'` **çalışır** (ölü koddu); `currency` ile birim eki |
+| `GV.cols.money` | `deger(x)` kapısı — türetilmiş tutar fabrikadan geçer |
+| `GV.cell.num` | `signed:true` → `+/−` ve renk |
+| `GV.action` | İkon haritası sprite ile hizalı; bilinmeyen eylemde `i-info` |
+
+⚠️ **Hâlâ eksik olanlar** (`tasks/v2-borc.md`): `GV.action` alan yuvası (V2-01) ·
+`GV.form` `option disabled` (V2-17) ve `datalist` (V2-18) · detay ekranı
+tablo+mobil ikizi (V2-19). Bunlara ihtiyaç duyarsan **yazma, rapor et**.
 
 ## 16. Bu brief'in kendi ölçümü
 
