@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Görevler — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="operasyon" data-screen="gorev">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   GÖREVLER — şartname §3.3 · ekran brief §4 · §7 · §8 · §18.3 · §18.4
+
+   TEK LİSTE, KAYITLI GÖRÜNÜM (brief §18.8). R1'de dokuz menü girdisi
+   `?t=` ile bu ekrana gidiyordu; R2'de tek girdi var ve varyasyonlar
+   SEKME. Sekme varyasyonu için ayrı ekran AÇILMAZ. Eski `app-gorev.html?t=…`
+   bağlantı biçimi `GV.list`in kendi URL senkronu üzerinden çalışır — bu
+   yüzden bu ekranda `urlSync` AÇIK kalır (varsayılan, kapatılmaz).
+
+   Tablo, sayfalama, arama, gelişmiş filtre, kolon yönetimi, çıktı, arşiv
+   toggle, tablo/kart/kanban anahtarı ve URL senkronu `GV.list`in işidir;
+   bu ekran YALNIZ yapılandırma + dört çekmece/eylem penceresi yazar.
+
+   ÜÇ MUTASYON KURALI — istisnası yok:
+     · durum   → `GV.flow.gec('task', …)` (motoru `GV.task.transition`,
+                 brief §18.3) · `t.durum = …` YASAK
+     · sorumlu → `GV.task.ata`      (Havuzda ise GEÇİŞ, değilse alan
+                 değişimi — ayrım YORDAMDA, ekranda değil)
+     · öncelik → `GV.task.oncelik`  · bekleme → `GV.task.bekleme`
+     · arşivden çıkış bir GEÇİŞ DEĞİL: `GV.task.arsivGeriAl`
+
+   Sekmeler ve durum kümeleri ELLE YAZILMAZ; `DB.taskStatuses` (10) ve
+   `DB.taskTransitions` üzerinden ÖLÇÜLÜR. Tablo değişirse ekran
+   kendiliğinden doğru kalır (L-40).
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F = GV.fmt;
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var me         = (GV.session && GV.session.emp) || null;
+  var canDuzenle = GV.perm.can('duzenle');
+
+  /* =================================================================
+     0. SÖZLÜK VE KURAL KÜMELERİ — hepsi veriden TÜRETİLİR
+     ----------------------------------------------------------------
+     Sekmeler bir DURUM LİSTESİ DEĞİL, birer kuraldır. Aşağıdaki altı
+     küme `DB.taskTransitions`in kendi alanlarından ölçülür; hiçbiri
+     ekranda elle sayılmaz.
+     ================================================================= */
+  var DURUMLAR = DB.taskStatuses || [];
+  var TT       = DB.taskTransitions || {};
+
+  function kural(d){ return TT[d] || {}; }
+  function nexts(d){ return kural(d).next || []; }
+  function yetkiler(d){ return kural(d).yetki || []; }
+  function zorunlular(d){ return kural(d).zorunlu || []; }
+
+  /* SON DURAK — çıkışı olmayan durum. `Arşivlendi` bilerek böyledir:
+     arşive iki durumdan gelinir, tabloya çıkış kenarı eklemek iptal
+     edilmiş bir görevi tamamlanmış diye diriltirdi (domain.js). */
+  var SON = DURUMLAR.filter(function(d){ return TT[d] && !nexts(d).length; });
+
+  /* KAPANAN — son durağın kendisi + son durağa doğrudan geçebilen durumlar. */
+  var KAPANAN = DURUMLAR.filter(function(d){
+    if(!TT[d]) return false;
+    if(SON.indexOf(d) !== -1) return true;
+    return nexts(d).some(function(h){ return SON.indexOf(h) !== -1; });
+  });
+  var ACIK = DURUMLAR.filter(function(d){ return TT[d] && KAPANAN.indexOf(d) === -1; });
+
+  /* HAVUZ — geçiş kuralı `sorumlu` alanını ZORUNLU tutan durum:
+     tanımı gereği henüz kimseye bağlanmamış iş. */
+  var HAVUZ = DURUMLAR.filter(function(d){ return zorunlular(d).indexOf('sorumlu') !== -1; });
+
+  /* KONTROL/ONAY — geçişin yetkisi `kontrolEden` ya da `onaylayan`
+     İLİŞKİSİNE bağlı olan durumlar (rol değil, ilişki — domain.js ayrımı). */
+  var KONTROL = DURUMLAR.filter(function(d){
+    return yetkiler(d).some(function(y){ return y === 'kontrolEden' || y === 'onaylayan'; });
+  });
+
+  /* ENGEL — çıkışında `engelNedeni` zorunlu olan durum. */
+  var ENGEL = DURUMLAR.filter(function(d){ return zorunlular(d).indexOf('engelNedeni') !== -1; });
+
+  /* İPTAL — kapanan ama son durak olmayan, YALNIZ son durağa gidebilen durum.
+     `Tamamlandı` buraya düşmez: onun `next`i `Revizede`yi de taşır. */
+  var IPTAL = KAPANAN.filter(function(d){
+    return SON.indexOf(d) === -1 && nexts(d).every(function(h){ return SON.indexOf(h) !== -1; });
+  });
+  var BITTI = KAPANAN.filter(function(d){
+    return SON.indexOf(d) === -1 && IPTAL.indexOf(d) === -1;
+  });
+
+  /* GERİ — kontrol/onay/bitti durumlarından geri dönülen açık durum
+     (revizyon ekseni). Ölçüldü: tek değer. */
+  var GERI = ACIK.filter(function(d){
+    if(KONTROL.indexOf(d) !== -1) return false;
+    return KONTROL.concat(BITTI).some(function(s){ return nexts(s).indexOf(d) !== -1; });
+  });
+
+  /* ÇALIŞMA — açık olup havuz/kontrol/engel olmayan durumlar. */
+  var CALISMA = ACIK.filter(function(d){
+    return HAVUZ.indexOf(d) === -1 && KONTROL.indexOf(d) === -1 && ENGEL.indexOf(d) === -1;
+  });
+
+  /* Sessiz boşluk bırakılmaz: sözlükte olup tabloda karşılığı olmayan ya da
+     kayıtta olup sözlükte olmayan durum, "Tümü" ile sekme toplamı arasında
+     açıklanamayan fark üretirdi. İkisi de ölçülür ve ekranda söylenir. */
+  var TABLOSUZ = DURUMLAR.filter(function(d){ return !TT[d]; });
+  var SOZLUKSUZ = (DB.tasks || []).reduce(function(acc, t){
+    if(t.durum && DURUMLAR.indexOf(t.durum) === -1 && acc.indexOf(t.durum) === -1) acc.push(t.durum);
+    return acc;
+  }, []);
+
+  function icinde(kume, d){ return kume.indexOf(d) !== -1; }
+  function acikMi(t){ return icinde(ACIK, t.durum); }
+  function gecikenMi(t){ return !!t.termin && t.termin < DB.today && acikMi(t); }
+  /* Bekleme DURUM DEĞİLDİR (brief §18.4): görev "Devam ediyor" kalır, yalnız
+     neyi beklediğini söyler. Engel ise bir durumdur. İkisi ayrı sayılır,
+     sekmede birleştirilir çünkü ikisi de "iş duruyor" anlamına gelir. */
+  function bekleyenMi(t){ return !!t.beklemeNedeni || icinde(ENGEL, t.durum); }
+  function gecikmeGun(t){
+    if(!gecikenMi(t)) return null;
+    return Math.round((new Date(DB.today) - new Date(t.termin)) / 86400000);
+  }
+
+  /* ---- Bağ okuma yüzeyleri — tarih yakınlığı bağ değildir ------------- */
+  function projeKaydi(kod){
+    return (DB.projects || []).filter(function(x){ return x.kod === kod; })[0] || null;
+  }
+  function hesapKaydi(kod){
+    return (DB.accounts || []).filter(function(x){ return x.kod === kod; })[0] || null;
+  }
+  function depAd(kod){
+    var d = (DB.departments || []).filter(function(x){ return x.kod === kod; })[0];
+    return d ? d.ad : null;
+  }
+  function projeAd(kod){ var p = projeKaydi(kod); return p ? p.ad : (kod || null); }
+  function hesapAd(kod){ var h = hesapKaydi(kod); return h ? (h.kisa || h.unvan) : (kod || null); }
+  function kayit(kod){
+    return (DB.tasks || []).filter(function(x){ return x.kod === kod; })[0] || null;
+  }
+
+  var tumu = DB.tasks || [];
+
+  /* Kayıtta geçen değerlerden seçenek üretir: 16 kişilik kadroyu ya da 18
+     değerlik tür sözlüğünü listelemek, hiçbir kaydı süzmeyen ölü seçenekler
+     üretirdi (app-satinalma.html ile aynı gerekçe). */
+  function mevcut(alan, etiketle){
+    return tumu.reduce(function(acc, t){
+      var v = t[alan];
+      if(v == null || v === '') return acc;
+      if(acc.some(function(o){ return o.value === v; })) return acc;
+      acc.push({ value:v, label:etiketle ? (etiketle(v) || v) : v });
+      return acc;
+    }, []).sort(function(a, b){ return String(a.label).localeCompare(String(b.label), 'tr'); });
+  }
+
+  /* ⚠️ SIRA — `GV.pageHead` `GV.list`ten ÖNCE (brief §2.4): liste satır
+     sayısını `[data-listcount]` düğümüne yazar, o düğümü pageHead doğurur. */
+  GV.pageHead({
+    eyebrow:'Proje ve Operasyon',
+    title:'Görevler',
+    sub:tumu.length + ' görev · havuz, çalışma, kontrol ve arşiv tek listede',
+    actions:[
+      { label:'Yeni Görev', icon:'i-plus', cls:'btn-acc', href:'app-gorev-form.html' }
+    ]
+  });
+
+  mount.innerHTML =
+    '<div id="grvUyari" class="u-mb-8"></div>' +
+    '<div id="grvListe"></div>' +
+    '<div id="grvBackend"></div>';
+
+  /* =================================================================
+     1. ÖLÇÜM ŞERİDİ — GÖRÜNEN kümeden sayılır
+     ----------------------------------------------------------------
+     Kapsam, sekme, arama ve filtre süzgeçlerini `GV.list` uyguluyor;
+     şerit onun `onRender` kancasından beslenir, ikinci bir süzgeç
+     yazılmaz (L-40). Sayı üretilemiyorsa "0" değil, ölçümün kendisi
+     söylenir (L-13).
+     ================================================================= */
+  function uyariCiz(gorunen){
+    var el = document.getElementById('grvUyari');
+    if(!el) return;
+
+    if(!DURUMLAR.length || !Object.keys(TT).length){
+      el.innerHTML = GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Görev geçiş tablosu yüklenemedi',
+        text:'Sekmelerdeki "açık", "havuzda", "kontrol ve onay" ve "kapanan" kümeleri ' +
+             'DB.taskStatuses ve DB.taskTransitions üzerinden ölçülür; tablo olmadan ' +
+             'bu kümeler türetilemedi ve sekme sayaçları anlamsız olurdu.' });
+      return;
+    }
+
+    var bagsiz   = gorunen.filter(function(t){ return !t.proje && !t.musteri; });
+    var geciken  = gorunen.filter(gecikenMi);
+    var bekleyen = gorunen.filter(function(t){ return !!t.beklemeNedeni; });
+    var engelli  = gorunen.filter(function(t){ return icinde(ENGEL, t.durum); });
+
+    var parcalar = [];
+    parcalar.push('Görünen ' + gorunen.length + ' görevin ' +
+      gorunen.filter(function(t){ return !!t.proje; }).length + '’i bir projeye, ' +
+      gorunen.filter(function(t){ return !!t.musteri; }).length + '’i bir müşteriye bağlı.');
+    parcalar.push(bagsiz.length
+      ? bagsiz.length + ' görev ikisine de bağlı değil; bunlar İÇ GÖREVDİR (bakım, İK, filo, ' +
+        'yedekleme gibi) ve bağ kolonunda "—" basılır — eksik kayıt değil, ölçüm.'
+      : 'Bu görünümdeki her görevin en az bir bağı var.');
+    parcalar.push(bekleyen.length || engelli.length
+      ? 'Bekleme nedeni işaretli ' + bekleyen.length + ' görev, engel durumunda ' + engelli.length +
+        ' görev var. Bekleme bir DURUM DEĞİLDİR: görev kendi durumunda kalır, ayrı kolonda ' +
+        'neyi beklediği yazılır.'
+      : 'Bu görünümde bekleme nedeni işaretli ya da engel durumunda görev yok.');
+    if(geciken.length)
+      parcalar.push(geciken.length + ' görevin termini ' + F.date(DB.today) +
+        ' tarihini geçmiş (' + geciken.map(function(t){ return t.kod; }).join(', ') + ').');
+
+    if(TABLOSUZ.length)
+      parcalar.push('Sözlükte olup geçiş tablosunda karşılığı olmayan durum: ' + TABLOSUZ.join(', ') + '.');
+    if(SOZLUKSUZ.length)
+      parcalar.push('Kayıtta olup DB.taskStatuses sözlüğünde olmayan durum: ' + SOZLUKSUZ.join(', ') + '.');
+
+    el.innerHTML = GV.notice({
+      tone:geciken.length ? 'warn' : 'info',
+      icon:geciken.length ? 'i-alert' : 'i-tasks',
+      title:geciken.length
+        ? geciken.length + ' görev termini geçmiş'
+        : 'Bu görünümde termini geçen görev yok',
+      text:parcalar.join(' ') });
+  }
+
+  /* =================================================================
+     2. ORTAK ALAN ÇEKMECESİ — sorumlu · öncelik · bekleme
+     ----------------------------------------------------------------
+     Üçü de DURUM EKSENİNDEN BAĞIMSIZ alan işlemidir ve üçünün de tek
+     mutasyon noktası `GV.task.*`tır. Pencere `GV.drawer` + `GV.form`
+     ile kurulur (brief §8.1); ekran kendi overlay'ini kurmaz, kendi
+     `<select>` markup'ını yazmaz.
+     ================================================================= */
+  function alanCekmecesi(o){
+    var form = null;
+    GV.drawer({
+      title:o.title,
+      body:'',
+      onMount:function(govde){
+        govde.innerHTML = (o.notice || '') + '<div data-grvform></div>';
+        form = GV.form({
+          mount:govde.querySelector('[data-grvform]'),
+          id:o.id, record:o.record || {}, sections:o.sections
+        });
+      },
+      actions:[
+        { label:'Vazgeç', cls:'btn-line' },
+        { label:o.okLabel || 'Uygula', cls:'btn-acc', close:false,
+          onClick:function(close){
+            if(!form) return false;
+            var v = form.submit();
+            if(!v) return false;                       /* bileşen zaten söyledi */
+            var r = o.run(v) || {};
+            /* Hata metni TEK YERDEN: `GV.flowHata` (brief §7.2). Ekran
+               kendi cümlesini yazmaz — `GV.task.*` yordamlarının `why`
+               değerleri de aynı çeviriden geçer. */
+            if(r.ok === false){ GV.toast(GV.flowHata(r), 'danger'); return false; }
+            form.setDirty(false);
+            close();
+            if(r.mesaj) GV.toast(r.mesaj, 'ok');
+            GV.refresh();
+          } }
+      ]
+    });
+  }
+
+  /* ---- SORUMLU ATA / DEĞİŞTİR ---------------------------------------
+     `GV.task.ata` Havuzda'da GEÇİŞ, diğerlerinde alan değişimi yapar;
+     ayrım YORDAMDA. Ekran sadece hangisinin olacağını KULLANICIYA SÖYLER,
+     kararı kendisi vermez. */
+  function ataAc(t){
+    var havuzda = icinde(HAVUZ, t.durum);
+    alanCekmecesi({
+      title:(havuzda ? 'Sorumlu ata' : 'Sorumluyu değiştir') + ' — ' + t.kod,
+      id:'grvAta', okLabel:havuzda ? 'Ata' : 'Değiştir',
+      record:{ sorumlu:t.sorumlu || '' },
+      notice:GV.notice({
+        tone:havuzda ? 'info' : 'neutral',
+        icon:havuzda ? 'i-user-plus' : 'i-user-check',
+        title:havuzda
+          ? 'Bu bir DURUM GEÇİŞİDİR: "' + t.durum + '" → "' + (nexts(t.durum)[0] || '—') + '"'
+          : 'Bu bir ALAN DEĞİŞİMİDİR; görevin durumu değişmez',
+        text:havuzda
+          ? 'Görev havuzdadır ve geçiş kuralı sorumlu alanını zorunlu tutar. Kişi seçilince ' +
+            'geçiş motoru yetki ve zorunlu alan denetimini olduğu gibi uygular. Kayıtta zaten ' +
+            'yazılı olan kişiyi yeniden seçmek bir değişiklik sayılmaz; aynı kişiyle havuzdan ' +
+            'çıkarmak için satırdaki "Durumu ilerlet" adımını kullanın.'
+          : 'Görev "' + t.durum + '" durumundadır. Sorumlu değişimi geçiş tablosuna sokulmaz — ' +
+            'sokulsaydı çalışılan bir görev "Atandı" durumuna geri çekilirdi.' }),
+      sections:[{
+        title:'Sorumlu', icon:'i-user-check',
+        desc:'Kişi listesi personel defterinden gelir; isim uydurulmaz.',
+        fields:[
+          { key:'sorumlu', label:'Sorumlu', type:'select', cols:12, required:true,
+            placeholder:'Kişi seçiniz',
+            options:(DB.employees || []).filter(function(e){ return e.aktif !== false; })
+                      .map(function(e){ return { value:e.kod, label:e.ad + ' · ' + (e.depAd || e.dep) }; }) },
+          { key:'not', label:'Not', type:'textarea', cols:12, rows:2,
+            hint:'Denetim izine yazılır. İsteğe bağlı.' }
+        ]
+      }],
+      run:function(v){
+        var r = GV.task.ata(t.kod, v.sorumlu, v.not || null);
+        if(!r || r.ok === false) return r || { ok:false, why:'kayıt yok' };
+        return { mesaj:t.kod + ' · sorumlu ' + DB.empName(v.sorumlu) +
+                       (r.gecis === false ? ' olarak değiştirildi' : ' olarak atandı, görev havuzdan çıktı') };
+      }
+    });
+  }
+
+  /* ---- ÖNCELİK -------------------------------------------------------- */
+  function oncelikAc(t){
+    alanCekmecesi({
+      title:'Öncelik — ' + t.kod,
+      id:'grvOncelik', okLabel:'Değiştir',
+      record:{ oncelik:t.oncelik || '' },
+      notice:GV.notice({ tone:'neutral', icon:'i-flag',
+        title:'Öncelik durum ekseninden bağımsızdır',
+        text:'Geçiş tablosuna hiç dokunmaz; görevin durumu ve ilerlemesi değişmez. ' +
+             'Sözlük DB.priorities: ' + (DB.priorities || []).join(' · ') + '.' }),
+      sections:[{
+        title:'Öncelik', icon:'i-flag',
+        fields:[
+          { key:'oncelik', label:'Öncelik', type:'select', cols:12, required:true,
+            placeholder:'Öncelik seçiniz',
+            options:(DB.priorities || []).map(function(p){ return { value:p, label:p }; }) }
+        ]
+      }],
+      run:function(v){
+        var r = GV.task.oncelik(t.kod, v.oncelik);
+        if(!r || r.ok === false) return r || { ok:false, why:'kayıt yok' };
+        return { mesaj:t.kod + ' · öncelik ' + r.eski + ' → ' + v.oncelik };
+      }
+    });
+  }
+
+  /* ---- BEKLEME NEDENİ — ikinci eksen ----------------------------------
+     Boş seçenek "beklemeyi kaldır" demektir; yordam `neden:null` ile
+     bekleme alanlarını siler. Ayrı bir "kaldır" düğmesi yazmak ikinci bir
+     mutasyon yolu açardı. */
+  function beklemeAc(t){
+    alanCekmecesi({
+      title:'Bekleme nedeni — ' + t.kod,
+      id:'grvBekleme', okLabel:'Kaydet',
+      record:{ beklemeNedeni:t.beklemeNedeni || '', beklemeNotu:t.beklemeNotu || '' },
+      notice:GV.notice({ tone:'warn', icon:'i-hourglass',
+        title:'Bekleme bir DURUM DEĞİLDİR',
+        text:'Görev "' + t.durum + '" durumunda kalır; yalnız neyi beklediği yazılır. ' +
+             'Eskiden bunun için üç ayrı durum vardı ve görev ilerlemeyi bırakmış görünüyordu. ' +
+             'Nedeni boş bırakıp kaydederseniz bekleme kaldırılır.' }),
+      sections:[{
+        title:'Bekleme', icon:'i-hourglass',
+        desc:'Sözlük DB.taskWaitReasons — ' + (DB.taskWaitReasons || []).length + ' değer.',
+        fields:[
+          { key:'beklemeNedeni', label:'Bekleme nedeni', type:'select', cols:12,
+            placeholder:'Beklemiyor (kaldır)',
+            options:(DB.taskWaitReasons || []).map(function(x){ return { value:x, label:x }; }) },
+          { key:'beklemeNotu', label:'Bekleme notu', type:'textarea', cols:12, rows:2,
+            hint:'Neyin, kimden ve ne zamandan beri beklendiği. Neden seçilmezse yazılmaz.' }
+        ]
+      }],
+      run:function(v){
+        var r = GV.task.bekleme(t.kod, v.beklemeNedeni || null, v.beklemeNotu || null);
+        if(!r || r.ok === false) return r || { ok:false, why:'kayıt yok' };
+        return { mesaj:t.kod + ' · ' + (v.beklemeNedeni
+                  ? 'bekleme nedeni: ' + v.beklemeNedeni : 'bekleme kaldırıldı') };
+      }
+    });
+  }
+
+  /* =================================================================
+     3. DURUM İLERLETME — ekran KENDİ durum listesini yazmaz
+     ----------------------------------------------------------------
+     Adımlar `GV.task.nextSteps(kod)`ten gelir; uzun bir statü <select>i
+     basılmaz, yapılabilir işlem BUTONDUR (brief §7.4). Yetki ve eksik
+     zorunlu alan bilgisi de adımın kendisinden okunur.
+     ================================================================= */
+  function adimHtml(t){
+    var adimlar = GV.task.nextSteps(t.kod) || [];
+    if(!adimlar.length){
+      return GV.notice({ tone:'neutral', icon:'i-info',
+        title:'İlerletilebilecek adım yok',
+        text:icinde(SON, t.durum)
+          ? '"' + t.durum + '" geçiş tablosunda son duraktır (next listesi boş). Arşivden çıkış ' +
+            'bir geçiş değil ayrı bir işlemdir; satırdaki "Arşivden geri al" aksiyonunu kullanın.'
+          : '"' + t.durum + '" durumundan bu oturuma açık bir hedef bulunmuyor.' });
+    }
+    return '<div class="lh-acts">' + adimlar.map(function(a){
+      var engel = !a.izin
+        ? 'Bu geçiş için yetkiniz yok — gereken: ' + yetkiler(t.durum).join(', ')
+        : (a.eksik && a.eksik.length ? 'Eksik alan: ' + a.eksik.join(', ') : '');
+      return '<button type="button" class="btn ' + (a.tone || 'btn-line') + ' btn-sm"' +
+        ' data-hedef="' + GV.esc(a.hedef) + '" data-kod="' + GV.esc(t.kod) + '"' +
+        (engel ? ' disabled aria-disabled="true" title="' + GV.esc(engel) + '"' : '') + '>' +
+        GV.esc(a.etiket || a.hedef) + '</button>';
+    }).join('') + '</div>';
+  }
+
+  function ilerletAc(t){
+    var eksikNot = '';
+    var eksik = (GV.task.nextSteps(t.kod) || []).reduce(function(acc, a){
+      (a.eksik || []).forEach(function(x){ if(acc.indexOf(x) === -1) acc.push(x); });
+      return acc;
+    }, []);
+    if(eksik.length){
+      /* Eksik alanı bu ekrandan doldurma yolu YOK: `GV.action` henüz serbest
+         alan yuvası taşımıyor (brief §17.8 · V2-01) ve görev formu bu turda
+         yayında değil. Sahte bir alan uydurmak yerine engel yazılır. */
+      eksikNot = GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Bazı adımlar zorunlu alan nedeniyle kapalı',
+        text:'"' + t.durum + '" durumundan çıkmak için şu alan(lar) dolu olmalı: ' +
+             eksik.join(', ') + '. Bu alanlar görev kaydına aittir ve bu listeden ' +
+             'doldurulamaz; görev detayından girilir.' });
+    }
+
+    GV.drawer({
+      title:'Durumu ilerlet — ' + t.kod,
+      body:'',
+      onMount:function(govde){
+        govde.innerHTML =
+          '<section class="gv-card"><div class="gc-head">' +
+            '<h3 class="gc-title">' + GV.ico('i-tasks') + GV.esc(t.kod) + '</h3>' +
+            '<span class="gc-meta">' + GV.esc(t.baslik) + '</span></div>' +
+            '<div class="gc-body">' + GV.dl([
+              ['Durum', GV.badge(t.durum)],
+              ['Sorumlu', t.sorumlu ? GV.user(t.sorumlu, { sm:true }) : null],
+              ['Kontrol eden', t.kontrolEden ? GV.esc(DB.empName(t.kontrolEden)) : null],
+              ['Onaylayan', t.onaylayan ? GV.esc(DB.empName(t.onaylayan)) : null],
+              ['Ayrı onay adımı', GV.task.onayGerekli(t)
+                ? 'Var' + GV.cell.sub('kontrol eden ile onaylayan farklı kişi')
+                : 'Yok' + GV.cell.sub('kontrol eden onaylayan ile aynı kişi; kontrol zaten onaydır')],
+              ['Bekleme', t.beklemeNedeni
+                ? GV.badge(t.beklemeNedeni, 'is-warn') +
+                  (t.beklemeNotu ? GV.cell.sub(GV.esc(t.beklemeNotu)) : '')
+                : null]
+            ], { skipEmpty:true }) + '</div></section>' +
+
+          '<section class="gv-card u-mt-8"><div class="gc-head">' +
+            '<h3 class="gc-title">' + GV.ico('i-refresh') + 'Yapılabilir geçişler</h3>' +
+            '<span class="u-faint u-sm">' + GV.esc(t.durum) + '</span></div>' +
+            '<div class="gc-body">' + eksikNot + adimHtml(t) + '</div></section>';
+
+        govde.addEventListener('click', function(ev){
+          var b = ev.target.closest('[data-hedef]');
+          if(!b || b.disabled) return;
+          var rec = kayit(b.dataset.kod);
+          if(rec) ilerlet(rec, b.dataset.hedef);
+        });
+      }
+    });
+  }
+
+  /* Sekiz adlık ortak eylem sözlüğüne oturan iki hedef eşlenir; diğerlerinde
+     geçiş tablosunun KENDİ etiketi (`DB.taskActionLabels`) kullanılır ve ikon
+     bilinmeyen eylemde `i-info`ya düşer (brief §17.8). Uydurma ad yazılmaz. */
+  var EYLEM_AD = {};
+  IPTAL.forEach(function(d){ EYLEM_AD[d] = 'İptal Et'; });
+  GERI.forEach(function(d){ EYLEM_AD[d] = 'Revizyon İste'; });
+
+  function ilerlet(t, hedef){
+    var a = (GV.task.nextSteps(t.kod) || []).filter(function(x){ return x.hedef === hedef; })[0];
+    if(!a) return;
+
+    /* Gerekçe hangi hedefte zorunlu? Görev geçiş tablosunda `gerekce` /
+       `girisGerekce` bayrağı YOKTUR (teklif tablosunda var, burada ölçüldü:
+       yok). Bu yüzden kural tablodan değil, tablodan TÜRETİLEN üç kümeden
+       okunur: işi durduran (engel), geri alan (revizyon) ve iptal eden
+       hedeflerde açıklama istenir; ilerleten hedeflerde istenmez. */
+    var gerekceli = icinde(ENGEL, hedef) || icinde(IPTAL, hedef) || icinde(GERI, hedef);
+
+    /* Hedefin KENDİ zorunlu alanı tek ise açıklama o alana da yazılır —
+       `ek` kanalı bunun içindir (brief §7.2). `Engellendi` hedefinde bu alan
+       `engelNedeni`dir ve dolmazsa görev engelden ÇIKAMAZ. */
+    var ekAlan = zorunlular(hedef).length === 1 ? zorunlular(hedef)[0] : null;
+    var ekYazilir = icinde(ENGEL, hedef) && ekAlan === 'engelNedeni';
+
+    var sonuc = 'Bu görev "' + hedef + '" durumuna geçecek.';
+    if(ekYazilir) sonuc += ' Açıklama, kaydın "' + ekAlan + '" alanına yazılır; engelden çıkış ' +
+                           'geçişi bu alanı zorunlu tutuyor.';
+    if(icinde(BITTI, hedef)) sonuc += ' İlerleme %100 ve tamamlanma tarihi ' + F.date(DB.today) +
+                                      ' olarak motor tarafından yazılır.';
+    if(icinde(GERI, hedef)) sonuc += ' Revizyon sayacı bir artırılır.';
+
+    GV.action({
+      eylem:EYLEM_AD[hedef] || a.etiket || hedef,
+      tone:a.tone === 'btn-ok' ? 'ok' : a.tone === 'btn-danger-line' ? 'danger'
+         : a.tone === 'btn-line' ? 'warn' : 'accent',
+      kayit:{ kod:t.kod, baslik:t.baslik },
+      sonuc:sonuc,
+      gerekce:gerekceli,
+      nedenTuru:icinde(IPTAL, hedef) ? 'iptal' : icinde(GERI, hedef) ? 'revizyon' : null,
+      geriDonusYok:icinde(IPTAL, hedef),
+      run:function(v){
+        var ek = (ekYazilir && v.not) ? {} : null;
+        if(ek) ek[ekAlan] = v.not;
+        /* TEK MUTASYON NOKTASI. `GV.flow.gec('task', …)` motoru
+           `GV.task.transition`a düşürür (brief §18.3) — ikisi aynı yere gider. */
+        var r = GV.flow.gec('task', t.kod, hedef, ek, { not:v.not || null });
+        if(!r || r.ok === false) return { ok:false, mesaj:GV.flowHata(r) };
+        GV.refresh();
+        return { mesaj:t.kod + ' · ' + r.eski + ' → ' + hedef +
+                 (r.bildirim && r.bildirim.length ? ' · bildirim: ' + r.bildirim.join(', ') : '') };
+      }
+    });
+  }
+
+  /* ---- ARŞİVDEN GERİ AL — geçiş değil, ayrı işlem --------------------
+     Yordam gideceği yeri TAHMİN ETMEZ, aktivite kaydından okur. Kayıt yoksa
+     işlem yapılmaz ve sebebi söylenir; ekran başarı varsaymaz. */
+  function arsivGeriAc(t){
+    GV.confirm({
+      title:'Arşivden geri al — ' + t.kod,
+      tone:'warn',
+      okLabel:'Geri al',
+      text:'Bu bir geçiş değildir: görev, arşivlenme hareketinde yazılı olan ESKİ durumuna ' +
+           'döner. O hareket denetim izinde yoksa işlem yapılmaz ve sebebi söylenir — ' +
+           'hangi duruma döneceği tahmin edilmez.'
+    }).then(function(ok){
+      if(!ok) return;
+      var r = GV.task.arsivGeriAl(t.kod);
+      if(!r || r.ok === false){
+        GV.toast(GV.flowHata(r) + ((r && r.aciklama) ? ' — ' + r.aciklama : ''), 'danger');
+        return;
+      }
+      GV.toast(t.kod + ' arşivden çıkarıldı · ' + r.eski + ' → ' + r.hedef, 'ok');
+      GV.refresh();
+    });
+  }
+
+  /* =================================================================
+     4. TOPLU İŞLEM YARDIMCISI
+     ----------------------------------------------------------------
+     Her kayıt için ortak yordam ayrı ayrı çağrılır; sonuç TEK TEK
+     raporlanır. "12 kayıt güncellendi" deyip yarısının reddedildiğini
+     yutmak UID-27'nin ürettiği yanlış güvenin ta kendisidir.
+     ================================================================= */
+  function topluUygula(kodlar, baslik, fn){
+    var ok = [], hata = [];
+    kodlar.forEach(function(kod){
+      var r = fn(kod) || { ok:false, why:'kayıt yok' };
+      if(r.ok === false) hata.push([GV.esc(kod), GV.esc(GV.flowHata(r))]);
+      else ok.push(kod);
+    });
+    GV.refresh();
+    GV.result({
+      title:baslik,
+      tone:hata.length ? (ok.length ? 'warn' : 'danger') : 'ok',
+      text:ok.length + ' kayıt işlendi' + (hata.length ? ' · ' + hata.length + ' kayıt işlenemedi' : '') + '.',
+      body:hata.length
+        ? '<p class="u-sm u-muted">İşlenemeyen kayıtlar ve nedenleri:</p>' + GV.dl(hata)
+        : ''
+    });
+  }
+
+  function topluAta(kodlar){
+    var form = null;
+    GV.drawer({
+      title:'Sorumlu ata — ' + kodlar.length + ' görev',
+      body:'',
+      onMount:function(govde){
+        govde.innerHTML = GV.notice({ tone:'info', icon:'i-user-check',
+          title:'Her kayıt tek tek ortak yordamdan geçer',
+          text:'Havuzdaki görevlerde bu bir DURUM GEÇİŞİDİR, diğerlerinde sorumlu alanının ' +
+               'değişimidir; ayrımı yordam yapar. Yetkisi olmayan ya da zaten bu kişide olan ' +
+               'kayıtlar reddedilir ve nedeni tek tek raporlanır.' }) +
+          '<div data-grvform></div>';
+        form = GV.form({ mount:govde.querySelector('[data-grvform]'), id:'grvTopluAta',
+          record:{}, sections:[{ title:'Sorumlu', icon:'i-user-check', fields:[
+            { key:'sorumlu', label:'Sorumlu', type:'select', cols:12, required:true,
+              placeholder:'Kişi seçiniz',
+              options:(DB.employees || []).filter(function(e){ return e.aktif !== false; })
+                        .map(function(e){ return { value:e.kod, label:e.ad + ' · ' + (e.depAd || e.dep) }; }) },
+            { key:'not', label:'Not', type:'textarea', cols:12, rows:2,
+              hint:'Denetim izine yazılır. İsteğe bağlı.' }
+          ] }] });
+      },
+      actions:[
+        { label:'Vazgeç', cls:'btn-line' },
+        { label:'Ata', cls:'btn-acc', close:false, onClick:function(close){
+            if(!form) return false;
+            var v = form.submit(); if(!v) return false;
+            form.setDirty(false); close();
+            topluUygula(kodlar, 'Sorumlu atama — ' + DB.empName(v.sorumlu), function(kod){
+              return GV.task.ata(kod, v.sorumlu, v.not || null);
+            });
+          } }
+      ]
+    });
+  }
+
+  function topluOncelik(kodlar){
+    var form = null;
+    GV.drawer({
+      title:'Öncelik değiştir — ' + kodlar.length + ' görev',
+      body:'',
+      onMount:function(govde){
+        govde.innerHTML = GV.notice({ tone:'neutral', icon:'i-flag',
+          title:'Öncelik durum ekseninden bağımsızdır',
+          text:'Hiçbir kaydın durumu, ilerlemesi ya da termini değişmez. Zaten bu değerde ' +
+               'olan kayıtlar reddedilir ve raporda ayrıca sayılır.' }) +
+          '<div data-grvform></div>';
+        form = GV.form({ mount:govde.querySelector('[data-grvform]'), id:'grvTopluOncelik',
+          record:{}, sections:[{ title:'Öncelik', icon:'i-flag', fields:[
+            { key:'oncelik', label:'Öncelik', type:'select', cols:12, required:true,
+              placeholder:'Öncelik seçiniz',
+              options:(DB.priorities || []).map(function(p){ return { value:p, label:p }; }) }
+          ] }] });
+      },
+      actions:[
+        { label:'Vazgeç', cls:'btn-line' },
+        { label:'Değiştir', cls:'btn-acc', close:false, onClick:function(close){
+            if(!form) return false;
+            var v = form.submit(); if(!v) return false;
+            form.setDirty(false); close();
+            topluUygula(kodlar, 'Öncelik — ' + v.oncelik, function(kod){
+              return GV.task.oncelik(kod, v.oncelik);
+            });
+          } }
+      ]
+    });
+  }
+
+  /* =================================================================
+     5. SEKMELER — durum listesi değil, ölçülen kurallar
+     ================================================================= */
+  var sekmeler = [
+    { key:'tumu', label:'Tümü', icon:'i-list', filter:null },
+    { key:'acik', label:'Açık', icon:'i-activity',
+      filter:function(t){ return acikMi(t); } }
+  ];
+  /* "Bana atanan" YALNIZ personel oturumunda anlamlıdır: müşteri oturumunda
+     `GV.session.emp` null olur ve sekme her zaman boş çıkardı (brief §2.2). */
+  if(me){
+    sekmeler.push({ key:'bana', label:'Bana atanan', icon:'i-user-check',
+      filter:function(t){ return t.sorumlu === me && acikMi(t); } });
+  }
+  sekmeler.push(
+    { key:'geciken', label:'Geciken', icon:'i-alert', filter:gecikenMi },
+    { key:'havuz', label:'Havuzda', icon:'i-inbox',
+      filter:function(t){ return icinde(HAVUZ, t.durum); } },
+    { key:'calisma', label:'Çalışmada', icon:'i-play',
+      filter:function(t){ return icinde(CALISMA, t.durum); } },
+    { key:'kontrol', label:'Kontrolde', icon:'i-clipboard-check',
+      filter:function(t){ return icinde(KONTROL, t.durum); } },
+    { key:'bekleyen', label:'Beklemede', icon:'i-hourglass', filter:bekleyenMi },
+    { key:'kapanan', label:'Kapanan', icon:'i-check-circle',
+      filter:function(t){ return icinde(KAPANAN, t.durum); } }
+  );
+
+  /* =================================================================
+     6. LİSTE
+     ================================================================= */
+  GV.list({
+    mount:'#grvListe', id:'gorev', key:'kod',
+    source:function(){ return DB.tasks; },
+    exportName:'gorevler', exportTitle:'Görev Listesi',
+    pageSize:10, views:['table','card','kanban'],
+    defaultSort:'termin', defaultDir:'asc',
+    /* `urlSync` AÇIK kalır (brief §18.8): R1'in dokuz menü girdisinin
+       `app-gorev.html?t=<anahtar>` bağlantı biçimi bunun üzerinden çalışır.
+       Bu sayfada URL senkronu kullanan başka liste yoktur, çakışma olmaz. */
+
+    search:{ placeholder:'Görev no, başlık, açıklama, etiket veya kişi ara',
+             fields:['kod','baslik','aciklama','amac','kabulKriteri','beklenenCikti',
+                     'etiketler','tur','durum','engelNedeni','beklemeNotu'],
+             /* Kayıtta KOD tutulup ekranda AD gösterilen alanlar ancak böyle aranır. */
+             extra:function(t){
+               return [t.sorumlu ? DB.empName(t.sorumlu) : '',
+                       t.veren ? DB.empName(t.veren) : '',
+                       projeAd(t.proje) || '', hesapAd(t.musteri) || '',
+                       depAd(t.dep) || '', t.proje || '', t.musteri || ''
+                      ].filter(Boolean).join(' ');
+             } },
+
+    /* Satır kapsamı — alan adları `DB.tasks` şemasından ÖLÇÜLDÜ:
+       `sorumlu` (EMP-*), `dep` (DEP-*) ve `musteri` (MUS-*) kayıtta yazılı.
+       Müşteri kapsamı gerçek: 26 görevin 18'i bir müşteriye bağlı; bağsız
+       8 iç görev müşteri oturumunda doğru biçimde dışarıda kalır. */
+    scopeField:{ kendi:'sorumlu', departman:'dep', musteri:'musteri' },
+
+    kpis:[
+      { label:'Açık görev', icon:'i-tasks',
+        meta:function(base){
+          return base.filter(function(t){ return icinde(KAPANAN, t.durum); }).length +
+                 ' kapanan · toplam ' + base.length + ' kayıt kapsamda';
+        },
+        calc:function(base){ return base.filter(acikMi).length; } },
+
+      { label:'Geciken', icon:'i-alert', tone:'danger', metaTone:'warn',
+        meta:function(){
+          return 'termini ' + F.date(DB.today) + ' tarihinden önce olan AÇIK görevler · ' +
+                 'kapanmış görevin geçmiş termini gecikme sayılmaz';
+        },
+        calc:function(base){ return base.filter(gecikenMi).length; } },
+
+      me
+        ? { label:'Bana atanan', icon:'i-user-check', tone:'info',
+            meta:function(base){
+              var hepsi = base.filter(function(t){ return t.sorumlu === me; }).length;
+              return 'açık görev · ' + hepsi + ' görevin sorumlusu ' +
+                     GV.esc((GV.session && GV.session.ad) || me);
+            },
+            calc:function(base){
+              return base.filter(function(t){ return t.sorumlu === me && acikMi(t); }).length;
+            } }
+        : { label:'Kontrol ve onay kuyruğu', icon:'i-clipboard-check', tone:'info',
+            meta:function(){
+              return 'oturumda personel kodu yok, "bana atanan" ölçülemiyor · ' +
+                     'kuyruk durumları: ' + KONTROL.join(' · ');
+            },
+            calc:function(base){
+              return base.filter(function(t){ return icinde(KONTROL, t.durum); }).length;
+            } },
+
+      { label:'Bekleyen ve engelli', icon:'i-hourglass', tone:'warn',
+        meta:function(base){
+          var b = base.filter(function(t){ return !!t.beklemeNedeni; }).length;
+          var e = base.filter(function(t){ return icinde(ENGEL, t.durum); }).length;
+          return b + ' görevde bekleme nedeni işaretli · ' + e + ' görev engel durumunda · ' +
+                 'ikisi ayrı eksendir, bir görev ikisini birden taşıyabilir';
+        },
+        calc:function(base){ return base.filter(bekleyenMi).length; } }
+    ],
+
+    tabs:sekmeler,
+
+    columns:[
+      GV.cols.kod('kod', 'Görev no', { width:'12%', locked:true,
+        /* Hedef ekran henüz yayında değil; normal `href` yazılır, kabuk
+           `markWip` ile kilitler (brief §2.7). Sahte `#` bağlantı yok. */
+        href:function(t){ return 'app-gorev-detay.html?id=' + t.kod; } }),
+
+      { key:'baslik', label:'Görev', width:'24%', cellClass:'cell-wrap', locked:true,
+        exportValue:function(t){ return t.baslik || ''; },
+        render:function(t){
+          var alt = [t.tur].concat(t.etiketler || []).filter(Boolean).join(' · ');
+          return '<span class="cell-main">' + GV.esc(t.baslik) + '</span>' +
+                 GV.cell.sub(GV.esc(alt)); } },
+
+      /* PROJE / MÜŞTERİ BAĞI — 26 görevin 8'i ikisine de bağlı değil ve bu
+         NORMALDİR (iç görev). "0" ya da boş hücre yerine "—" basılır ve
+         SEBEBİ alt satırda yazılır (brief §18.1 · L-13). */
+      { key:'bag', label:'Proje / müşteri', width:'18%', cellClass:'cell-wrap',
+        sortValue:function(t){ return projeAd(t.proje) || hesapAd(t.musteri) || null; },
+        exportValue:function(t){
+          return [projeAd(t.proje) || '', hesapAd(t.musteri) || ''].filter(Boolean).join(' · ') ||
+                 'iç görev — projeye ve müşteriye bağlı değil';
+        },
+        render:function(t){
+          if(t.proje){
+            return GV.cell.link('app-proje-detay.html?id=' + t.proje, projeAd(t.proje),
+              GV.cell.sub(t.musteri ? GV.esc(hesapAd(t.musteri)) : 'müşteri bağı yok'));
+          }
+          if(t.musteri){
+            return GV.cell.link('app-musteri-detay.html?id=' + t.musteri, hesapAd(t.musteri),
+              GV.cell.sub('projeye bağlı değil'));
+          }
+          return GV.cell.faint('—') +
+                 GV.cell.sub('iç görev · ' + GV.esc(depAd(t.dep) || t.dep || 'departman yazılmamış')); } },
+
+      GV.cols.kisi('sorumlu', 'Sorumlu', { width:'12%',
+        bosMetin:'atanmadı',
+        sub:function(t){ return GV.esc(depAd(t.dep) || t.dep || ''); } }),
+
+      GV.cols.durum('durum', 'Durum'),
+
+      /* BEKLEME — durumun YERİNE değil, YANINDA ayrı bir işaret (brief §18.4).
+         Ayrı kolon olmasının sebebi bu: rozetin içine sıkıştırılsaydı iki
+         eksen tek eksen gibi okunurdu. */
+      { key:'beklemeNedeni', label:'Bekleme', cellClass:'center',
+        sortValue:function(t){ return t.beklemeNedeni || null; },
+        exportValue:function(t){
+          return t.beklemeNedeni
+            ? t.beklemeNedeni + (t.beklemeNotu ? ' — ' + t.beklemeNotu : '')
+            : ''; },
+        render:function(t){
+          if(!t.beklemeNedeni){
+            return icinde(ENGEL, t.durum) && t.engelNedeni
+              ? GV.cell.faint('—') + GV.cell.sub(GV.esc(t.engelNedeni))
+              : GV.cell.faint('—'); }
+          return GV.badge(t.beklemeNedeni, 'is-warn') +
+                 (t.beklemeNotu ? GV.cell.sub(GV.esc(t.beklemeNotu)) : ''); } },
+
+      /* ÖNCELİK rozet DEĞİL düz metindir: `GV.badge` tonu ad eşleşmesinden
+         türetir ve ton sözlüğünde "Yüksek/Orta/Düşük" yok — üçü de nötr rozet
+         basardı, yani rozet hiçbir şey söylemezdi (app-satinalma.html ile
+         aynı ölçüm). Sıralama sözlük SIRASINDAN gelir, alfabetik değil. */
+      { key:'oncelik', label:'Öncelik', cellClass:'center',
+        sortValue:function(t){
+          var i = (DB.priorities || []).indexOf(t.oncelik);
+          return i === -1 ? null : i; },
+        exportValue:function(t){ return t.oncelik || ''; },
+        render:function(t){ return t.oncelik
+          ? '<span class="u-sm">' + GV.esc(t.oncelik) + '</span>' : GV.cell.faint('—'); } },
+
+      /* TERMİN — `GV.dateCell` gecikme/yaklaşma renklendirmesini kendi yapar.
+         `done` kapanmış görevlerde kırmızıyı söndürür: kapanmış bir görevin
+         geçmiş termini gecikme değildir. */
+      GV.cols.date('termin', 'Termin', {
+        bosMetin:'termin yok',
+        done:function(t){ return !acikMi(t); },
+        sub:function(t){
+          var g = gecikmeGun(t);
+          return g == null ? '' : GV.esc(g + ' gün gecikti'); } }),
+
+      GV.cols.pct('ilerleme', 'İlerleme', { bar:true, width:'10%' }),
+
+      /* SÜRE — kayıttaki `gercekSure` / `tahminiSure` alanlarıdır; zaman
+         defterinden (`GV.proje.sure`) TÜRETİLMİŞ değildir ve o iki sayı aynı
+         şey değildir. Kolon başlığı ve alt satır bunu söyler. */
+      { key:'gercekSure', label:'Gerçek süre', cellClass:'num',
+        sortValue:function(t){ return t.gercekSure == null ? null : t.gercekSure; },
+        exportValue:function(t){ return t.gercekSure == null ? '' : t.gercekSure; },
+        render:function(t){
+          if(t.gercekSure == null) return GV.cell.faint('—') + GV.cell.sub('kayıtta süre yok');
+          var sapma = (t.tahminiSure == null) ? null : t.gercekSure - t.tahminiSure;
+          return GV.cell.num(t.gercekSure, { basamak:1,
+                   tone:sapma != null && sapma > 0 ? 'warn' : null }) + ' sa' +
+                 GV.cell.sub(t.tahminiSure == null
+                   ? 'tahmin girilmemiş'
+                   : 'tahmin ' + t.tahminiSure + ' sa' +
+                     (sapma > 0 ? ' · ' + sapma + ' sa aşım' : sapma < 0 ? ' · ' + (-sapma) + ' sa altında' : ' · tahminde')); } },
+
+      GV.cols.num('tahminiSure', 'Tahmini süre (saat)', { basamak:1, visible:false }),
+      GV.cols.num('faturalanabilir', 'Faturalanabilir (saat)', { basamak:1, visible:false }),
+
+      { key:'tur', label:'Tür', visible:false, cellClass:'cell-wrap',
+        exportValue:function(t){ return t.tur || ''; },
+        render:function(t){ return t.tur ? GV.esc(t.tur) : GV.cell.faint('—'); } },
+
+      { key:'dep', label:'Departman', visible:false, cellClass:'cell-wrap',
+        sortValue:function(t){ return depAd(t.dep) || t.dep || null; },
+        exportValue:function(t){ return depAd(t.dep) || t.dep || ''; },
+        render:function(t){
+          var ad = depAd(t.dep);
+          if(!ad) return GV.cell.faint('—') +
+            GV.cell.sub(t.dep ? GV.esc(t.dep) + ' · departman kaydı yok' : 'departman yazılmamış');
+          return '<span class="cell-main">' + GV.esc(ad) + '</span>' + GV.cell.sub(GV.esc(t.dep)); } },
+
+      { key:'sprint', label:'Sprint', visible:false,
+        exportValue:function(t){ return t.sprint || ''; },
+        render:function(t){ return t.sprint
+          ? '<span class="cell-code">' + GV.esc(t.sprint) + '</span>'
+          : GV.cell.faint('—') + GV.cell.sub('sprint dışı'); } },
+
+      GV.cols.kisi('veren', 'Görevi veren', { visible:false }),
+      GV.cols.kisi('kontrolEden', 'Kontrol eden', { visible:false }),
+      GV.cols.kisi('onaylayan', 'Onaylayan', { visible:false,
+        sub:function(t){ return GV.task.onayGerekli(t)
+          ? 'ayrı onay adımı var' : 'kontrol eden ile aynı kişi'; } }),
+
+      GV.cols.date('baslangic', 'Başlangıç', { plain:true, visible:false, bosMetin:'başlamadı' }),
+      GV.cols.date('tamamlanma', 'Tamamlanma', { plain:true, visible:false, bosMetin:'tamamlanmadı' }),
+
+      GV.cols.num('revizyon', 'Revizyon', { visible:false }),
+      GV.cols.num('yenidenAcilma', 'Yeniden açılma', { visible:false }),
+
+      { key:'destek', label:'Kaynak destek talebi', visible:false,
+        exportValue:function(t){ return t.destek || ''; },
+        render:function(t){ return t.destek
+          ? GV.cell.link('app-destek-detay.html?id=' + t.destek, t.destek, '')
+          : GV.cell.faint('—') + GV.cell.sub('destek talebinden doğmadı'); } }
+    ],
+
+    filters:[
+      { key:'durum', label:'Durum', type:'multi',
+        /* Seçenekler sözlükten — ekran kendi durum listesini yazmaz. */
+        options:DURUMLAR.map(function(d){ return { value:d, label:d }; }) },
+      { key:'oncelik', label:'Öncelik', type:'multi',
+        options:(DB.priorities || []).map(function(p){ return { value:p, label:p }; }) },
+      { key:'tur', label:'Görev türü', type:'multi',
+        /* Sözlükte 18 tür var, kayıtta geçen daha az; geçmeyen tür hiçbir
+           kaydı süzmeyen ölü seçenek olurdu. */
+        options:mevcut('tur') },
+      { key:'sorumlu', label:'Sorumlu', type:'select',
+        options:mevcut('sorumlu', function(v){ return DB.empName(v); }) },
+      { key:'dep', label:'Departman', type:'select',
+        options:mevcut('dep', depAd) },
+      { key:'proje', label:'Proje', type:'select',
+        options:mevcut('proje', projeAd) },
+      { key:'musteri', label:'Müşteri', type:'select',
+        options:mevcut('musteri', hesapAd) },
+      { key:'beklemeNedeni', label:'Bekleme nedeni', type:'multi',
+        /* Sözlükte 7 neden var; kayıtta yalnız geçenler listelenir. */
+        options:mevcut('beklemeNedeni') },
+      { key:'bag', label:'Kayıt bağı', type:'select',
+        options:[{ value:'proje', label:'Projeye bağlı' },
+                 { value:'musteri', label:'Müşteriye bağlı' },
+                 { value:'ikisi', label:'Hem projeye hem müşteriye bağlı' },
+                 { value:'yok', label:'İç görev — ikisine de bağlı değil' }],
+        test:function(t, v){
+          if(v === 'proje')   return !!t.proje;
+          if(v === 'musteri') return !!t.musteri;
+          if(v === 'ikisi')   return !!t.proje && !!t.musteri;
+          return !t.proje && !t.musteri; } },
+      { key:'termin', label:'Termin', type:'daterange' },
+      { key:'ilerlemeMin', label:'En az ilerleme', type:'percent',
+        test:function(t, v){ return t.ilerleme != null && t.ilerleme >= Number(v); } },
+      { key:'ilerlemeMax', label:'En çok ilerleme', type:'percent',
+        test:function(t, v){ return t.ilerleme != null && t.ilerleme <= Number(v); } }
+    ],
+
+    /* Geciken görev uyarı tonu alır; kapanan görev SOLUK basılmaz —
+       tamamlanmış bir iş geçmiş değil, sonuçtur. Arşivli kayıt soluktur. */
+    rowClass:function(t){
+      if(t.arsiv === true || t.aktif === false || icinde(SON, t.durum)) return 'is-passive';
+      if(gecikenMi(t)) return 'is-late';
+      return '';
+    },
+
+    card:function(t){
+      return '<div class="gv-rcard-top"><div>' +
+        '<span class="cell-main">' + GV.esc(t.baslik) + '</span>' +
+        '<div class="cell-code">' + GV.esc(t.kod) + ' · ' + GV.esc(t.tur) + '</div></div>' +
+        GV.badge(t.durum) + '</div>' +
+        '<div class="gv-rcard-meta">' +
+          '<span>' + GV.esc(projeAd(t.proje) || hesapAd(t.musteri) || 'iç görev') + '</span>' +
+          '<span>' + GV.esc(t.oncelik || '—') + ' öncelik</span>' +
+          (t.beklemeNedeni ? '<span>' + GV.esc(t.beklemeNedeni) + ' bekleniyor</span>' : '') +
+        '</div>' +
+        '<div class="gv-rcard-foot">' +
+          (t.sorumlu ? GV.user(t.sorumlu, { sm:true }) : '<span class="u-faint">Atanmamış</span>') +
+          GV.dateCell(t.termin, { done:!acikMi(t) }) +
+        '</div>';
+    },
+
+    /* 980px altında tablo yerine bu markup basılır (ui.js:1116-1133);
+       `GV.cell.mrow` ızgarayı kendi kurar — 390px'te yatay taşma yok. */
+    mobile:function(t){
+      return GV.cell.mrow(
+        '<span class="cell-main">' + GV.esc(t.baslik) + '</span>' + GV.badge(t.durum),
+        GV.esc(t.kod) + ' · ' + GV.esc(t.tur),
+        [ GV.ico('i-briefcase','ic-sm') +
+            GV.esc(projeAd(t.proje) || hesapAd(t.musteri) || 'iç görev'),
+          GV.ico('i-flag','ic-sm') + GV.esc(t.oncelik || '—'),
+          GV.ico('i-calendar','ic-sm') + (t.termin ? F.dateShort(t.termin) : 'termin yok'),
+          GV.ico('i-percent','ic-sm') + (t.ilerleme == null ? '—' : '%' + t.ilerleme) ],
+        (t.sorumlu ? GV.user(t.sorumlu, { sm:true }) : '<span class="u-faint">Atanmamış</span>') +
+          (t.beklemeNedeni ? GV.badge(t.beklemeNedeni, 'is-warn') : '')
+      );
+    },
+
+    /* KANBAN — kolonlar geçiş tablosunun durum sözlüğünden gelir, elle
+       yazılmaz. Boş kolon SİLİNMEZ: akışta o durumun var olduğunu ama
+       bugün kaydı olmadığını göstermek bir ölçümdür. */
+    kanban:{
+      groupBy:'durum',
+      columns:DURUMLAR.map(function(d){ return { key:d, label:d }; }),
+      card:function(t){
+        return '<div class="gv-rcard-top"><div>' +
+            '<span class="cell-main">' + GV.esc(t.baslik) + '</span>' +
+            '<div class="cell-code">' + GV.esc(t.kod) + '</div></div></div>' +
+          '<div class="gv-rcard-meta">' +
+            '<span>' + GV.esc(t.oncelik || '—') + '</span>' +
+            '<span>' + GV.esc(projeAd(t.proje) || hesapAd(t.musteri) || 'iç görev') + '</span>' +
+            (t.beklemeNedeni ? '<span>' + GV.esc(t.beklemeNedeni) + ' bekleniyor</span>' : '') +
+          '</div>' +
+          '<div class="gv-rcard-foot">' +
+            (t.sorumlu ? GV.user(t.sorumlu, { sm:true }) : '<span class="u-faint">Atanmamış</span>') +
+            GV.dateCell(t.termin, { done:!acikMi(t) }) +
+          '</div>';
+      }
+    },
+
+    /* SATIR AKSİYONLARI — `run`u olmayan aksiyon HİÇ EKLENMEZ (UID-27).
+       Hedefi olmayan bir "detayı aç" düğmesi de bırakılmaz: kod kolonundaki
+       bağlantı yayına girene kadar kabuk tarafından kilitlenir. */
+    rowActions:[
+      { key:'ilerlet', icon:'i-refresh', label:'Durumu ilerlet',
+        show:function(t){ return !icinde(SON, t.durum); },
+        run:function(t){ ilerletAc(t); } },
+
+      { key:'ata', icon:'i-user-check', label:'Sorumlu ata / değiştir',
+        /* Havuzdan çıkış bir geçiştir ve `duzenle` yetkisi istemez; diğer
+           durumlarda alan değişimidir ve yordam `duzenle` arar. Kapanmış
+           görevde sorumlu değiştirmek anlamsızdır. */
+        show:function(t){
+          if(icinde(KAPANAN, t.durum)) return false;
+          return icinde(HAVUZ, t.durum) || canDuzenle; },
+        run:function(t){ ataAc(t); } },
+
+      { key:'oncelik', icon:'i-flag', label:'Öncelik değiştir',
+        show:function(t){ return canDuzenle && !icinde(KAPANAN, t.durum); },
+        run:function(t){ oncelikAc(t); } },
+
+      { key:'bekleme', icon:'i-hourglass', label:'Bekleme nedeni',
+        /* Bekleme ekseninin yordamı ayrı bir yetki aramaz; ekran kendi
+           kapısını uydurmaz. Kapanmış görevde bekleme anlamsızdır. */
+        show:function(t){ return acikMi(t); },
+        run:function(t){ beklemeAc(t); } },
+
+      { key:'arsivgeri', icon:'i-archive', label:'Arşivden geri al',
+        show:function(t){ return (icinde(SON, t.durum) || t.arsiv === true) && canDuzenle; },
+        run:function(t){ arsivGeriAc(t); } }
+    ],
+
+    bulk:[
+      { key:'disa', label:'Dışa aktar', icon:'i-download', export:true },
+      { key:'ata', label:'Sorumlu ata', icon:'i-user-check', perm:'duzenle',
+        run:function(kodlar){ topluAta(kodlar); } },
+      { key:'oncelik', label:'Öncelik değiştir', icon:'i-flag', perm:'duzenle',
+        run:function(kodlar){ topluOncelik(kodlar); } }
+    ],
+
+    emptyState:{ icon:'i-tasks', title:'Bu görünümde görev yok',
+      desc:'Sekmeyi ya da filtreleri değiştirebilirsiniz. Arşivlenen görevler ' +
+           'varsayılan görünümde gizlidir; "Arşivlenenleri Göster" ile açılır.' },
+
+    onRender:function(gorunen){ uyariCiz(gorunen); }
+  });
+
+  /* =================================================================
+     7. BACKEND PAYI — brief §18.10, tablo kopyalanır
+     ================================================================= */
+  document.getElementById('grvBackend').innerHTML =
+    '<section class="gv-card u-mt-8"><div class="gc-head">' +
+      '<h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+      '<span class="u-faint u-sm">3 madde</span></div>' +
+      '<div class="gc-body">' +
+        '<ul class="odl-gap">' +
+          '<li><span class="odl-gap-kod">BE-P1</span>' +
+            '<span>Görev/proje durum geçişi sunucuda yeniden doğrulanmaz; yetki ve zorunlu ' +
+              'alan kontrolü istemcide koşar</span>' +
+            '<span class="odl-gap-bolum">§9</span></li>' +
+          '<li><span class="odl-gap-kod">BE-P2</span>' +
+            '<span>Zaman kaydı ve onay zinciri gerçek bir timesheet servisine bağlı değil; ' +
+              'süreler bellekte</span>' +
+            '<span class="odl-gap-bolum">§9</span></li>' +
+          '<li><span class="odl-gap-kod">BE-S5</span>' +
+            '<span>Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır</span>' +
+            '<span class="odl-gap-bolum">§9 audit_event</span></li>' +
+        '</ul>' +
+        '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+          '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+        '<p class="u-faint u-sm">BE-S5 bu ekranda doğrudan görünür: arşivden geri alma, ' +
+          'görevin arşivlenme hareketini denetim izinden okur. İz kalıcı olmadığı için ' +
+          'sayfa yenilendiğinde bu turda üretilen arşiv kayıtları geri alınamaz hâle gelir ' +
+          've yordam bunu tahmin etmek yerine reddeder.</p>' +
+      '</div>' +
+    '</section>';
+});
+</script>
+</body>
+</html>
