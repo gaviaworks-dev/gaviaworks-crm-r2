@@ -90,11 +90,14 @@ window.DB = window.DB || {};
     };
   });
 
-  /* Sözleşme aşamasından çıkış = KAZANMA. Kapı buradadır. */
-  tablo[adi(12)].kapi = 'firsatKazanma';
-  tablo[adi(12)].istisnaRol = ['sahip', 'genelmudur'];
-
-  tablo[KAZANILDI]  = { next:[], terminal:true };
+  /* KAPI HEDEFE BAĞLIDIR, kaynağa değil.
+     İlk yazımda `tablo[adi(12)].kapi` kullanılmıştı ve ölçüldü: kapı,
+     `Sözleşme aşaması`ndan çıkan HER hedefe uygulanıyordu — yani bir satışı
+     KAYBETMEK için müşterinin vergi numarasını doldurmak gerekiyordu.
+     `girisKapi` yalnız `Kazanıldı` hedefinde çalışır (motor: domain.js `gec`). */
+  tablo[KAZANILDI]  = { next:[], terminal:true,
+                        girisKapi:'firsatKazanma',
+                        istisnaRol:['sahip', 'genelmudur'] };
   tablo[KAYBEDILDI] = { next:[], terminal:true, girisGerekce:true };
   tablo[BEKLEME]    = {
     next:[adi(1), KAYBEDILDI],

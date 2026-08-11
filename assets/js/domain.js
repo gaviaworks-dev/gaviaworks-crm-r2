@@ -92,8 +92,26 @@
         .map(function(x){ return { tarih:x.tarih, kisi:x.kisi, metin:x.islem,
           eski:x.eski, yeni:x.yeni, tone:'info', icon:'i-shield', kayit:x.kayit,
           modul:x.modul, ip:x.ip, defter:'sistem' }; });
+      /* ⚠️ ÇİFT SAYIM — `yaz({modul:…})` aynı olayı BİLEREK iki deftere
+         yazar (olay defteri + sistem günlüğü; sebebi yukarıda). Birleştirme
+         bunu görmezden gelince aynı satır zaman çizelgesinde İKİ KEZ
+         görünüyordu: ekran "iki kere olmuş" diyen bir geçmiş basıyordu.
+         Köprü kalır, tekrar düşer — aynı kayıt + aynı an + aynı metin tek
+         olaydır. Sistem defterinin ek alanları (`modul`, `ip`) hayatta
+         kalan satıra taşınır ki bilgi kaybolmasın. */
       var hepsi = a.concat(b).sort(function(x,y){ return String(y.tarih).localeCompare(String(x.tarih)); });
-      return limit ? hepsi.slice(0, limit) : hepsi;
+      var gorulen = {}, tekil = [];
+      hepsi.forEach(function(x){
+        var anahtar = [x.kayit || '', x.tarih || '', x.metin || ''].join('');
+        var onceki = gorulen[anahtar];
+        if(onceki){
+          if(x.modul && !onceki.modul){ onceki.modul = x.modul; onceki.ip = x.ip; }
+          return;
+        }
+        gorulen[anahtar] = x;
+        tekil.push(x);
+      });
+      return limit ? tekil.slice(0, limit) : tekil;
     },
 
     /* İki defterin çakışıp çakışmadığı — veri kalitesi ekseni için */
@@ -368,9 +386,20 @@
              : /İptal|Ret|Fesih|Feshedildi|Kaybedildi|Engel/.test(hedef) ? 'btn-danger-line'
              : /Revizyon|Revize|İade|Geri|Arşiv|Askı/.test(hedef) ? 'btn-line' : 'btn-acc',
           izin:izin, eksik:eksik,
-          gerekce:!!(kural.gerekce || hk.gerekce),
-          kapi:kural.kapi || null,
-          istisnaRol:kural.istisnaRol || []
+          /* ⚠️ DÜZELTME — burada `hk.gerekce` okunuyordu, oysa HEDEFİN
+             bayrağı `girisGerekce`dir (`gec` zaten onu okuyor, satır ~380).
+             Sonuç: gerekçe isteyen her hedef ekrana `gerekce:false` diye
+             bildiriliyordu ve ekran ya gerekçesiz geçiş deniyor ya da kuralı
+             `DB.transitions`ten KENDİSİ okumak zorunda kalıyordu — yani
+             sözleşme motorda, uygulaması ekrandaydı. İki okuma, tek kural
+             olması gereken yerde (L-40). Kaynak tarafındaki `gerekce` de
+             korunur: o "bu durumdan ÇIKARKEN gerekçe iste" demektir. */
+          gerekce:!!(kural.gerekce || hk.girisGerekce),
+          /* Kapı da hedefe bağlanabilir: `girisKapi` "bu duruma GİRERKEN
+             şu ön koşul" demektir. Kaynak taraflı `kapi` o durumdan çıkan
+             HER hedefe uygulanır ve bu bazen yanlıştır (bkz. `gec`). */
+          kapi:kural.kapi || hk.girisKapi || null,
+          istisnaRol:(kural.kapi ? kural.istisnaRol : hk.istisnaRol) || kural.istisnaRol || []
         };
       });
     },
@@ -409,17 +438,31 @@
                    ? '"' + hedef + '" kararı için neden kodu ve açıklama zorunludur'
                    : '"' + eski + '" durumundan çıkmak için neden kodu ve açıklama zorunludur' };
 
-      /* Ek engel kapısı */
+      /* Ek engel kapısı — İKİ BAĞLAMA NOKTASI, `gerekce`/`girisGerekce` ile
+         aynı ayrım:
+           `kapi`      → BU DURUMDAN ÇIKMAK ön koşul ister. Kaynak durumdan
+                         çıkan HER hedefe uygulanır.
+           `girisKapi` → BU DURUMA GİRMEK ön koşul ister. Yalnız o hedefte.
+
+         ⚠️ Bu ayrım ölçülmüş bir kusurdan doğdu: fırsat tablosunda kazanma
+         kapısı KAYNAĞA (`Sözleşme aşaması`) bağlanmıştı ve aynı kaynaktan
+         çıkan `Kaybedildi` ile `Beklemeye alındı` hedefleri de kapıya
+         takılıyordu — yani bir satışı KAYBETMEK için müşterinin vergi
+         numarasını doldurmak gerekiyordu. Kapı doğruydu, bağlandığı yer
+         yanlıştı; motorun hedef tarafında bir kancası olmadığı için bunu
+         veri tarafında düzeltmek mümkün değildi. */
       var kapiUyari = null;
-      if(kural.kapi && Gates[kural.kapi]){
-        var g = Gates[kural.kapi](rec);
+      var kapiAd  = kural.kapi || hk.girisKapi || null;
+      var kapiRol = (kural.kapi ? kural.istisnaRol : hk.istisnaRol) || kural.istisnaRol || [];
+      if(kapiAd && Gates[kapiAd]){
+        var g = Gates[kapiAd](rec);
         if(!g.ok){
           var rol = (GV.perm && GV.perm.role) ? GV.perm.role() : null;
-          var istisnaVar = (kural.istisnaRol || []).indexOf(rol) !== -1;
+          var istisnaVar = kapiRol.indexOf(rol) !== -1;
           if(!istisnaVar || !opts.istisna || !opts.neden)
             return { ok:false, why:'kapi', mesaj:g.why,
                      istisnaMumkun:istisnaVar,
-                     roller:kural.istisnaRol || [] };
+                     roller:kapiRol };
           kapiUyari = 'YÖNETİCİ İSTİSNASI — ' + g.why;
         } else if(g.gerekceZorunlu && !opts.neden){
           return { ok:false, why:'gerekce', mesaj:g.uyari };
@@ -560,6 +603,34 @@
       if(!h.sorumlu) eksik.push('Sorumlu');
       if(!h.tel && !h.eposta) eksik.push('Telefon veya e-posta');
       return eksik;
+    },
+
+    /* Evre rozeti — TEK yerde. `app-musteri.html` ve müşteri detayı aynı
+       `evreRozeti()` yordamını ayrı ayrı yazmıştı; sözlük (`tone`) değişince
+       ikisi sessizce ayrışırdı (L-40). Rozet işaretlemesi `GV.badge` ile
+       değil elle kurulur: yaşam evresi tonu ADI DEĞİL sözlükten gelir ve
+       `GV.badge`in ton türetmesi (metin eşleşmesi) burada yanlış olurdu —
+       "Aday" için §5.1 açıkça NÖTR etiket istiyor. */
+    rozet:function(evre){
+      var s = Lifecycle.sozluk()[evre];
+      if(!s) return '<span class="u-faint">—</span>';
+      var esc = (GV.esc || function(x){ return String(x == null ? '' : x); });
+      return '<span class="badge' + (s.tone ? ' ' + s.tone : '') + '">' + esc(s.ad) + '</span>';
+    },
+
+    /* DOĞUM EVRESİ KAPISI — §10 yetki tablosu: "Müşteri evresini Müşteri yap →
+       Satış yöneticisi veya tanımlı rol."
+       Ölçülen açık: `gec()` bu kapıyı tutuyordu ama form yeni kaydın evresini
+       DOĞARKEN yazıyor, yani geçişten geçmiyordu — herhangi bir rol doğrudan
+       `MUSTERI` evresinde hesap açarak kapının etrafından dolaşabiliyordu.
+       Kural ekranda ikinci kez yazılmaz; kapı burada. */
+    dogumIzni:function(evre){
+      if(evre !== 'MUSTERI') return { ok:true };
+      var rol = (GV.perm && GV.perm.role) ? GV.perm.role() : null;
+      if(EVRE_ROL.indexOf(rol) !== -1) return { ok:true };
+      return { ok:false, why:'yetki', roller:EVRE_ROL,
+               mesaj:'Kaydı doğrudan Müşteri evresinde açmak için satış yöneticisi ' +
+                     'yetkisi gerekir. Hesabı Aday ya da Nitelikli olarak kaydedin.' };
     },
 
     /* Bu hesap + bu oturum için yapılabilir evre geçişleri.
