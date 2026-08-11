@@ -39,7 +39,7 @@
 | KARAR BEKLİYOR | **0** | %0 | 9 |
 | **Toplam** | **148** | %100 | 148 |
 | YENİ yazılacak | **8** (2'si karar bekliyordu, artık kesin) | — | 6+2 |
-| **Bugün R2'de yayında** | **13** | | 9 |
+| **Bugün R2'de yayında** | **17** | | 13 |
 
 > **Bu tablo ölçüldü, yazılmadı.** Defterin §2–§12 arasındaki numaralı karar
 > satırları taranarak sayıldı: 148 satır, eksik numara yok, tekrar yok.
@@ -128,11 +128,11 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 |---|---|---|---|
 | 17 | `app-pipeline.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** `app-satis-akisi.html` — 12 fırsat, pano kolonu `DB.pipelineGroups` (6 grup), 15 aşamanın hiçbiri silinmedi. Aşama atlanamıyor; kazanma `GV.sales.firsatKazan` zinciriyle. |
 | 18 | `app-teklif.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** 8 teklif; hesap bağı iki yoldan da çözülüyor (5 doğrudan, 3 fırsat üzerinden). Kazanma oranı paydası 0 iken `—` basıyor. |
-| 19 | `app-teklif-detay.html` | **KARŞILIĞI VAR** | ⚠️ R1'in **teklif sürümleme borcu** açık geldi: revizyon yeni kayıt üretmiyor. R2'de kapatılacak mı? → `tasks/riskler-ve-kapsam.md` K-17 |
-| 20 | `app-teklif-form.html` | **KARŞILIĞI VAR** | — |
-| 21 | `app-onanaliz.html` | **GÖMÜLÜYOR** | §3.1: ön analiz "Müşteri ve Satış" altında birleştirilen içerik → müşteri/fırsat detayı sekmesi |
-| 22 | `app-onanaliz-detay.html` | **GÖMÜLÜYOR** | → aynı sekme |
-| 23 | `app-onanaliz-form.html` | **GÖMÜLÜYOR** | → drawer |
+| 19 | `app-teklif-detay.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Kalem dökümü 8 teklifin **1'inde** var (TKL-2026-014, 6 satır); kalanında satır uydurulmadı. Kalem toplamı ↔ kayıt tutarı ölçülüp karşılaştırılıyor. ⚠️ Teklif sürümleme borcu (K-17) **açık kaldı** ve ekranda beyan edildi. |
+| 20 | `app-teklif-form.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** İlk görünüm 6 alan; ara toplam kalem satırlarından TÜRETİLİR ve o hâlde salt okunur olur. Yeni teklif tablonun ilk durumunda (`Taslak`) doğar. |
+| 21 | `app-onanaliz.html` | **GÖMÜLÜYOR** ✅ | → fırsat detayı › Ön analiz bloğu — **çalışıyor**; 12 fırsatın 4'ünde analiz kaydı var, kalanında boş durum yazılı |
+| 22 | `app-onanaliz-detay.html` | **GÖMÜLÜYOR** ✅ | → aynı blokta kayıt görünümü + `GV.flow.adimlar('analysis')` ile durum ilerletme |
+| 23 | `app-onanaliz-form.html` | **GÖMÜLÜYOR** | → drawer · ⚠️ **YAZILMADI**: ön analiz OLUŞTURMA yüzeyi bu dilimde açılmadı, okuma ve durum ilerletme var. V2 borcu (`tasks/v2-borc.md` V2-04) |
 
 ### 3.5 Referans ve komisyon — şartname sessiz
 
@@ -448,8 +448,8 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | Y4 | `app-odeme-linki-detay.html` | §8.1 | kesin |
 | Y5 | `app-odeme.html` | §8.3 | kesin — TEST etiketli mock |
 | Y6 | `app-odeme-sonuc.html` | §8.1 | kesin |
-| Y7 | `app-firsat-detay.html` | §5.3 | **kesin** ✔ (ADR-R2-08) |
-| Y8 | `app-firsat-form.html` | §5.3 | **kesin** ✔ (ADR-R2-08) |
+| Y7 | `app-firsat-detay.html` | §5.3 | **YAZILDI** ✅ |
+| Y8 | `app-firsat-form.html` | §5.3 | **YAZILDI** ✅ |
 
 **Y7/Y8 gerekçesi:** §5.3 `opportunity`yi ayrı varlık yapıyor ve R2'de
 `DB.opportunities` **türetildi** (12 kayıt). Ama §3.1'de fırsatın menü
@@ -497,7 +497,7 @@ Her ikisi de rota haritasında zaten GÖMÜLÜYOR işaretliydi; değişen şey
 | Standart kullanıcıda görünür (en yüksek) | — | **17** |
 | Yönetici rolde görünür (toplam) | — | **20** (3'ü ayrı "Yönetim" bloğunda, soluk) |
 | Menü ayracı | 13 | **0** |
-| Yayında olan ekran | 148 | **13** |
+| Yayında olan ekran | 148 | **17** |
 
 ⚠️ **ADR-R2-06'nın menüye etkisi henüz uygulanmadı.** Doküman arşivi yönetim
 bloğuna dördüncü girdi olarak eklendiğinde yönetici rolde toplam 20 → 21,
