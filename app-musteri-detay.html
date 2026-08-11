@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Müşteri Detayı — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="satis" data-screen="musteri">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/data/firsat.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   MÜŞTERİ DETAYI — şartname §5.4 (sekiz sekme) · §5.1 · §5.2 · §5.3
+
+   TEK KAYIT, TEK EKRAN. Aday ve müşteri ayrı modül değildir (§5.1); bu
+   ekran `DB.accounts` üzerinde çalışır ve hesabın nereden türediğini
+   (`legacy_kaynak`) gizlemez — aday kaynaklı hesapta yetkili, proje,
+   fatura ve destek koleksiyonları BOŞ çıkar ve boşluğun SEBEBİ yazılır.
+   Sıfır yazmak, ölçülmemişi ölçülmüş göstermek olurdu (L-13).
+
+   EVRE DEĞİŞTİRMENİN TEK KAPISI `GV.lifecycle.gec`. `h.evre = …` yazmak
+   yasaktır; butonlar `GV.lifecycle.adimlar(h)` ne veriyorsa odur, ekran
+   kendi evre listesini YAZMAZ. Hata metni `GV.flowHata(r)`'dan gelir.
+
+   PARA yalnız `GV.fin.balance`'tan okunur (ikinci bakiye kaynağı yasak) ve
+   Finans sekmesi `GV.perm.can('finans')` yoksa "••••••" basar — `0` değil.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F     = GV.fmt;
+  var esc   = GV.esc;
+  var ico   = GV.ico;
+  var mount = document.getElementById('rec');
+  var kod   = new URLSearchParams(location.search).get('id');
+
+  var canFinans = GV.perm.can('finans');
+  var canEkle   = GV.perm.can('ekle');
+
+  var h = (DB.accounts || []).filter(function(x){ return x.kod === kod; })[0] || null;
+
+  /* ---- 1. KAYIT YOK ------------------------------------------------ */
+  if(!h){
+    GV.pageHead({
+      eyebrow:'Müşteri ve Satış', title:'Kayıt bulunamadı', sub:kod || '—',
+      actions:[{ label:'Listeye dön', icon:'i-arrow-left', href:'app-musteri.html' }]
+    });
+    mount.innerHTML = '<div class="gv-card">' + GV.errorState({
+      title:'Müşteri hesabı bulunamadı',
+      desc:'Aradığınız hesap silinmiş ya da adres hatalı olabilir. Doğru kaydı ' +
+           'müşteri listesinden seçebilirsiniz.'
+    }) + '</div>';
+    /* `GV.errorState` "Tekrar dene" düğmesini basar ama yordamı YALNIZ
+       `GV.list` içinde bağlıdır; tek başına kullanıldığında ölü kalırdı. */
+    var rt = mount.querySelector('[data-retry]');
+    if(rt) rt.addEventListener('click', function(){ GV.refresh(); });
+    return;
+  }
+
+  /* ---- 2. KAYIT SAHİPLİĞİ KAPISI (REVİZE 13) ----------------------- */
+  if(!GV.guardRecord({ mount:'#rec', musteri:h.kod, kod:h.kod,
+                       eyebrow:'Müşteri ve Satış', title:h.unvan,
+                       geriHref:'app-musteri.html', geriLabel:'Müşteri listesine dön' })) return;
+
+  /* ===================================================================
+     3. BAĞLAR — kural `firsat.js`'te tek yerde; ekran yordamı çağırır
+     =================================================================== */
+  var leadKodlari = h.leadKodlari || [];
+
+  /* Hesabın DOĞDUĞU kayıt. `lifecycle.js` türetmesi `kaynak` · `referans` ·
+     `ilkKayit` alanlarını hesaba KOPYALAMIYOR; bunlar kaynak kayıttan
+     okunur, uydurulmaz. */
+  var kaynakKayit = (h.legacy_kaynak === 'DB.customers'
+    ? (DB.customers || []).filter(function(c){ return c.kod === h.legacy_id; })[0]
+    : (DB.leads || []).filter(function(l){ return l.kod === h.legacy_id; })[0]) || null;
+
+  var adayKaynakli = h.legacy_kaynak === 'DB.leads';
+  var ilkKayit = kaynakKayit ? (kaynakKayit.ilkKayit || kaynakKayit.talepTarihi || null) : null;
+
+  var yetkililer  = (DB.contacts   || []).filter(function(c){ return c.musteri === h.kod; });
+  var firsatlar   = DB.accountOpportunities(h.kod);
+  var teklifler   = DB.accountQuotes(h.kod);
+  var projeler    = (DB.projects   || []).filter(function(p){ return p.musteri === h.kod; });
+  var faturalar   = (DB.invoices   || []).filter(function(f){ return f.musteri === h.kod; });
+  var sozlesmeler = (DB.contracts  || []).filter(function(c){ return c.musteri === h.kod; });
+  var szlKodlari  = sozlesmeler.map(function(c){ return c.kod; });
+  var taksitler   = (DB.milestones || []).filter(function(m){ return szlKodlari.indexOf(m.sozlesme) !== -1; });
+  var talepler    = (DB.tickets    || []).filter(function(t){ return t.musteri === h.kod; });
+  var paketler    = (DB.supportPackages || []).filter(function(p){ return p.musteri === h.kod; });
+  var belgeler    = (DB.documents  || []).filter(function(d){ return d.musteri === h.kod; });
+  /* §13.1 — iletişim kaydı ya hesaba ya hesabın katlandığı ADAY koduna bağlıdır */
+  var iletisimler = (DB.interactions || []).filter(function(i){
+    return i.musteri === h.kod || leadKodlari.indexOf(i.lead) !== -1; });
+  var izler       = GV.audit.oku(h.kod, 30);
+
+  var bosSebep = adayKaynakli
+    ? 'Bu hesap aday kaydından (' + h.legacy_id + ') türedi; kaynak veride bu bağ yok.'
+    : 'Bu hesap için kaynak veride böyle bir kayıt yok.';
+
+  /* ===================================================================
+     4. ORTAK ÇİZİM YARDIMCILARI (ekran içi — ortak katmana dokunulmadı)
+     =================================================================== */
+
+  /* Evre adı ve rozeti ORTAK KATMANDA (§5.1 · L-40): ekran kendi renk ya da
+     isim kararını vermez, üç ekran aynı yordamı çağırır. */
+  function evreAdi(evre){ return GV.lifecycle.ad(evre); }
+  function evreRozeti(evre){ return GV.lifecycle.rozet(evre); }
+
+  function kartBasi(ikon, baslik, sag){
+    return '<div class="gc-head"><h3 class="gc-title">' + ico(ikon) + esc(baslik) + '</h3>' +
+      (sag ? '<div class="gc-head-acts">' + sag + '</div>' : '') + '</div>';
+  }
+  function sayacEtiketi(n, birim){
+    return '<span class="u-faint u-sm">' + n + ' ' + esc(birim) + '</span>';
+  }
+
+  /* Tablo + mobil kart ikizi. `.gv-tablewrap:has(+ .gv-cardlist)` kuralı
+     (ui.css UID-14) 760 px altında tabloyu gizleyip kart listesini gösterir;
+     ikinci bir veri kaynağı yazılmaz, iki markup AYNI diziden üretilir. */
+  function tablo(kolonlar, satirlar, mobil, bos){
+    if(!satirlar.length) return GV.empty(bos);
+    return '<div class="gv-tablewrap"><table class="gtable"><thead><tr>' +
+      kolonlar.map(function(k){
+        return '<th' + (k.cls ? ' class="' + k.cls + '"' : '') + '>' + esc(k.label) + '</th>';
+      }).join('') + '</tr></thead><tbody>' +
+      satirlar.map(function(s){
+        return '<tr>' + s.map(function(hucre, i){
+          var k = kolonlar[i] || {};
+          return '<td' + (k.cls ? ' class="' + k.cls + '"' : '') + '>' + hucre + '</td>';
+        }).join('') + '</tr>';
+      }).join('') + '</tbody></table></div>' +
+      '<div class="gv-cardlist">' + mobil.map(function(m){
+        return '<div class="gv-mrow">' + m + '</div>'; }).join('') + '</div>';
+  }
+
+  var BOS = '<span class="u-faint">—</span>';
+
+  /* GEÇMİŞ tarih — `GV.dateCell` gecikmeyi kırmızı boyar; geçmişte kalmış bir
+     kayıt tarihi için bu yanlış anlam üretirdi. İleriye dönük tarihlerde
+     (vade, kapanış tahmini, taksit) `GV.dateCell` kullanılır. */
+  function tarih(iso){
+    return iso ? '<span class="cell-date">' + esc(F.date(iso)) + '</span>' : BOS;
+  }
+  function para(v){
+    if(!canFinans) return '<span class="cell-mask">••••••</span>';
+    return GV.cell.mny(v == null ? null : v);
+  }
+  function paraMetin(v){ return canFinans ? esc(F.money(v)) : '••••••'; }
+
+  /* Yeni kayıt kodu DEFTERDEN türetilir (§13.2). Yetkili ve iletişim
+     defterleri yıl taşımayan `ÖNEK-NNN` desenindedir; kod sabit yazılmaz. */
+  function yeniKod(list, onek, basamak){
+    var max = 0;
+    (list || []).forEach(function(x){
+      var m = new RegExp('^' + onek + '-(\\d+)$').exec(x.kod || '');
+      if(m) max = Math.max(max, +m[1]);
+    });
+    return onek + '-' + String(max + 1).padStart(basamak || 3, '0');
+  }
+  /* "Bugün" `DB.today`dan gelir — bütün ekranlar aynı sabit gün eksenindedir. */
+  function saatEki(){ return 'T' + new Date().toTimeString().slice(0,5); }
+  function aktor(){ return (GV.session && (GV.session.emp || GV.session.kontak)) || null; }
+
+  /* ===================================================================
+     5. SAYFA BAŞLIĞI — bileşenlerden ÖNCE
+     =================================================================== */
+  GV.pageHead({
+    eyebrow:'Müşteri ve Satış',
+    title:h.unvan,
+    sub:h.kod + ' · ' + (evreAdi(h.evre) || 'yaşam evresi türetilemedi'),
+    actions:[
+      { label:'Düzenle', icon:'i-edit', cls:'btn-acc', href:'app-musteri-form.html?id=' + h.kod },
+      { label:'Listeye dön', icon:'i-arrow-left', href:'app-musteri.html' }
+    ]
+  });
+
+  /* ===================================================================
+     6. SEKME ŞERİDİ — §5.4 sekiz sekme, her birinde SAYAÇ
+     =================================================================== */
+  var kimlik = [
+    h.unvan, h.kod, h.tip, h.sektor, h.vergiNo, h.tel, h.eposta,
+    h.sorumlu, ilkKayit, h.sonIletisim, h.evre
+  ];
+  var doluAlan = kimlik.filter(function(v){ return v != null && v !== ''; }).length;
+
+  var SEKME = [
+    { key:'ozet',     label:'Özet',
+      sayac:doluAlan, ipucu:kimlik.length + ' kimlik alanının ' + doluAlan + ' tanesi dolu' },
+    { key:'yetkili',  label:'Yetkililer',
+      sayac:yetkililer.length, ipucu:'bu hesaba bağlı yetkili kaydı' },
+    { key:'firsat',   label:'Fırsatlar ve Teklifler',
+      sayac:firsatlar.length + teklifler.length,
+      ipucu:firsatlar.length + ' fırsat · ' + teklifler.length + ' teklif' },
+    { key:'proje',    label:'Projeler',
+      sayac:projeler.length, ipucu:'bu hesaba bağlı proje kaydı' },
+    { key:'finans',   label:'Finans',
+      sayac:faturalar.length + sozlesmeler.length,
+      ipucu:faturalar.length + ' fatura · ' + sozlesmeler.length + ' sözleşme · ' +
+            taksitler.length + ' taksit' },
+    { key:'destek',   label:'Destek',
+      sayac:talepler.length + paketler.length,
+      ipucu:talepler.length + ' talep · ' + paketler.length + ' bakım paketi' },
+    { key:'belge',    label:'Belgeler',
+      sayac:belgeler.length, ipucu:'bu hesaba bağlı belge kaydı' },
+    { key:'aktivite', label:'Aktivite',
+      sayac:izler.length + iletisimler.length,
+      ipucu:izler.length + ' denetim izi · ' + iletisimler.length + ' iletişim kaydı' }
+  ];
+
+  /* ⚠️ SEKME ŞERİDİNDE İKON YOK — ölçüm kararı, tercih değil.
+     İkonlu sekiz sekme 1.139 px yer kaplıyordu; 1440 px'te içerik sütunu
+     1.058 px olduğu için "Aktivite" sekmesi kesiliyordu. `.gv-tabs` yatay
+     kayıyor ama scrollbar'ı GİZLİ (`ui.css`), yani kesilen sekme kullanıcıya
+     hiçbir işaret bırakmadan kayboluyordu. İkonlar kaldırılınca şerit
+     ~930 px'e indi ve 1440/1600'de tam sığıyor; ikonlar kart başlıklarında
+     yaşamayı sürdürüyor. Dar ekranda (≤1280) şerit yine kayar — bu
+     bileşenin kendi tasarımıdır. */
+  var sekmeHtml = SEKME.map(function(s){
+    return '<button type="button" class="gv-tab" role="tab" data-tab="' + s.key + '" ' +
+      'aria-selected="false" title="' + esc(s.ipucu) + '">' + esc(s.label) +
+      '<span class="gv-tab-cnt">' + s.sayac + '</span></button>';
+  }).join('');
+
+  var panelHtml = SEKME.map(function(s){
+    return '<div class="gv-tabpanel u-mt-4" role="tabpanel" data-panel="' + s.key + '" ' +
+      'aria-label="' + esc(s.label) + '" hidden></div>';
+  }).join('');
+
+  /* ===================================================================
+     7. SEKME İÇERİKLERİ
+     =================================================================== */
+
+  /* ---- 7.1 ÖZET ---------------------------------------------------- */
+  function cizOzet(){
+    /* ADR-R2-04 — yönlendiren AYRI EKRAN DEĞİL, burada bir ALANDIR. */
+    var ref = (kaynakKayit && kaynakKayit.referans) ? DB.referrer(kaynakKayit.referans) : null;
+    var yonlendiren = ref
+      ? esc(ref.ad) + GV.cell.sub(esc(ref.tur) + ' · ' + esc(ref.kod))
+      : (kaynakKayit && kaynakKayit.kaynak
+          ? esc(kaynakKayit.kaynak) +
+            GV.cell.sub('yalnız kanal biliniyor; yönlendiren kişi kaydı yok')
+          : null);
+
+    var satirlar = [
+      ['Firma / unvan',  esc(h.unvan)],
+      ['Kayıt no',       '<span class="cell-code">' + esc(h.kod) + '</span>'],
+      ['Yaşam evresi',   evreRozeti(h.evre)],
+      ['Müşteri tipi',   h.tip ? esc(h.tip) : null],
+      ['Sektör',         h.sektor ? esc(h.sektor) : null],
+      ['Vergi numarası', h.vergiNo ? '<span class="u-num">' + esc(h.vergiNo) + '</span>' : null],
+      ['Telefon',        h.tel ? esc(h.tel) : null],
+      ['E-posta',        h.eposta ? esc(h.eposta) : null],
+      ['Sorumlu',        h.sorumlu ? GV.user(h.sorumlu, { sm:true }) : null],
+      ['İlk kayıt',      ilkKayit
+        ? tarih(ilkKayit) + (adayKaynakli ? GV.cell.sub('aday talep tarihi') : '') : null],
+      ['Son iletişim',   h.sonIletisim ? tarih(h.sonIletisim) : null],
+      ['Yönlendiren',    yonlendiren]
+    ];
+    if(h.ihtiyac) satirlar.push(['Kısa ihtiyaç', esc(h.ihtiyac)]);
+    if(h.risk)    satirlar.push(['Risk',         GV.badge(h.risk)]);
+
+    /* Göç izi — §12 "legacy_id ile izlenebilirlik korunur". Küçük ve soluk;
+       kaydın nereden geldiği doğrulamanın kanıtıdır, üzerine yazılmaz. */
+    var goc = '<div class="gc-body u-faint u-xs">' +
+      'Göç izi · kaynak kayıt <span class="u-num">' + esc(h.legacy_id) + '</span> ' +
+      '(' + esc(h.legacy_kaynak) + ') · evre türetmesi: ' + esc(h.evreKaynak || '—') +
+      '</div>';
+
+    return '<div class="gv-grid gv-grid-main">' +
+      '<div>' +
+        '<section class="gv-card">' +
+          kartBasi('i-building', 'Kimlik ve iletişim', evreRozeti(h.evre)) +
+          '<div class="gc-body">' + GV.dl(satirlar) + '</div>' +
+          goc +
+        '</section>' +
+      '</div>' +
+      '<aside>' + cizEvreKarti() + '</aside>' +
+    '</div>';
+  }
+
+  /* Yaşam evresi geçişi — buton listesi `GV.lifecycle.adimlar`tan gelir. */
+  function cizEvreKarti(){
+    var adimlar = GV.lifecycle.adimlar(h) || [];
+    var eksik   = GV.lifecycle.eksikAlanlar(h, 'MUSTERI');
+
+    var govde = adimlar.length
+      ? '<div class="gc-body"><div class="u-row u-wrap">' +
+          adimlar.map(function(a){
+            var kilit = !a.izin
+              ? ' disabled title="Bu geçiş için yetkiniz yok"'
+              : (a.eksik && a.eksik.length
+                  ? ' disabled title="Eksik alan: ' + esc(a.eksik.join(', ')) + '"' : '');
+            return '<button type="button" class="btn ' + (a.tone || 'btn-line') + ' btn-sm" ' +
+              'data-evre="' + esc(a.hedef) + '"' + kilit + '>' + esc(a.etiket) + '</button>';
+          }).join('') + '</div></div>'
+      : '<div class="gc-body u-faint u-sm">Bu evreden tanımlı bir geçiş yok.</div>';
+
+    /* §5.2 — kapı UYARMAZ, REDDEDER. Eksik listesi motordan gelir; ekran
+       kendi zorunlu alan listesini yazmaz. */
+    var uyari = (eksik.length && h.evre !== 'MUSTERI')
+      ? '<div class="gc-body">' + GV.notice({ tone:'warn', icon:'i-alert',
+          title:'Müşteri evresine geçiş için eksik alan var',
+          text:eksik.join(' · ') + ' — bu alanlar dolmadan geçiş reddedilir.',
+          actions:[{ label:'Kaydı düzenle', href:'app-musteri-form.html?id=' + h.kod,
+                     cls:'btn-line' }] }) + '</div>'
+      : '';
+
+    return '<section class="gv-card">' +
+      kartBasi('i-refresh', 'Yaşam evresi') +
+      '<div class="gc-body u-sm u-muted">Şu an: <b class="u-ink">' +
+        esc(evreAdi(h.evre) || h.evre || '—') + '</b>. Aşağıdaki geçişler §5.1 ' +
+        'tablosundan türetilir; ekran kendi listesini yazmaz.</div>' +
+      govde + uyari +
+    '</section>';
+  }
+
+  /* ---- 7.2 YETKİLİLER ---------------------------------------------- */
+  function cizYetkili(){
+    var ekle = canEkle
+      ? '<button type="button" class="btn btn-acc btn-sm" id="ytkEkle">' +
+        ico('i-user-plus','ic-sm') + ' Yetkili ekle</button>' : '';
+
+    var kolonlar = [
+      { label:'Yetkili' }, { label:'Pozisyon' }, { label:'Telefon' },
+      { label:'E-posta' }, { label:'Rol' }, { label:'Durum', cls:'center' }
+    ];
+    var satirlar = yetkililer.map(function(c){
+      var roller = (c.birincil ? GV.badge('Birincil','is-accent') : '') +
+                   (c.karar ? ' ' + GV.badge('Karar verici','is-info') : '');
+      return [
+        '<span class="cell-main">' + esc(c.ad) + '</span>' +
+          '<span class="cell-code">' + esc(c.kod) + '</span>',
+        c.pozisyon ? esc(c.pozisyon) : BOS,
+        c.tel ? esc(c.tel) : BOS,
+        c.eposta ? esc(c.eposta) : BOS,
+        roller || BOS,
+        c.aktif === false ? GV.badge('Pasif') : GV.badge('Aktif')
+      ];
+    });
+    var mobil = yetkililer.map(function(c){
+      return GV.cell.mrow(
+        '<span class="cell-main">' + esc(c.ad) + '</span>' +
+          (c.aktif === false ? GV.badge('Pasif') : GV.badge('Aktif')),
+        esc(c.kod) + (c.pozisyon ? ' · ' + esc(c.pozisyon) : ''),
+        [ c.tel ? ico('i-phone','ic-sm') + esc(c.tel) : '',
+          c.eposta ? ico('i-mail','ic-sm') + esc(c.eposta) : '' ].filter(Boolean),
+        (c.birincil ? GV.badge('Birincil','is-accent') : '') +
+          (c.karar ? GV.badge('Karar verici','is-info') : ''));
+    });
+
+    return '<section class="gv-card">' +
+      kartBasi('i-users', 'Yetkililer',
+        ekle + ' ' + sayacEtiketi(yetkililer.length, 'kayıt')) +
+      tablo(kolonlar, satirlar, mobil, {
+        icon:'i-users',
+        title:'Bu hesapta yetkili kaydı yok',
+        desc:adayKaynakli
+          ? 'Bu hesap aday kaydından (' + h.legacy_id + ') türedi; kaynak veride yetkili ' +
+            'kaydı yok. Görüşülen kişinin adı aday kaydında düz metin olarak duruyor, ' +
+            'ayrı bir yetkili kaydı değil.'
+          : 'Bu hesaba bağlı bir yetkili kaydı bulunmuyor. Yeni yetkili ekleyebilirsiniz.'
+      }) +
+    '</section>';
+  }
+
+  /* ---- 7.3 FIRSATLAR VE TEKLİFLER ---------------------------------- */
+  function cizFirsat(){
+    var fKol = [
+      { label:'Fırsat' }, { label:'Aşama' }, { label:'Bütçe', cls:'num' },
+      { label:'Kapanış tahmini', cls:'center' }, { label:'Sorumlu' }
+    ];
+    var fSat = firsatlar.map(function(o){
+      var s = DB.pipelineStage(o.asama);
+      return [
+        GV.cell.link('app-firsat-detay.html?id=' + o.kod, o.kod, GV.cell.sub(esc(o.baslik || '—'))),
+        GV.badge(o.asama) +
+          (s ? GV.cell.sub('%' + s.olasilik + ' olasılık · ' + esc(s.grup)) : ''),
+        GV.cell.mny(o.butce),
+        GV.dateCell(o.kapanisTahmini),
+        o.sorumlu ? GV.user(o.sorumlu, { sm:true }) : BOS
+      ];
+    });
+    var fMob = firsatlar.map(function(o){
+      return GV.cell.mrow(
+        '<a class="cell-main" href="app-firsat-detay.html?id=' + o.kod + '">' +
+          esc(o.baslik || o.kod) + '</a>' + GV.badge(o.asama),
+        esc(o.kod),
+        [ ico('i-wallet','ic-sm') + esc(F.money(o.butce)),
+          ico('i-calendar','ic-sm') + esc(F.dateShort(o.kapanisTahmini)) ],
+        o.sorumlu ? GV.user(o.sorumlu, { sm:true }) : '');
+    });
+
+    var tKol = [
+      { label:'Teklif' }, { label:'Durum' }, { label:'Tutar', cls:'num' },
+      { label:'Tarih', cls:'center' }, { label:'Geçerlilik', cls:'center' },
+      { label:'Sürüm', cls:'num' }
+    ];
+    var tSat = teklifler.map(function(q){
+      return [
+        GV.cell.link('app-teklif-detay.html?id=' + q.kod, q.kod, GV.cell.sub(esc(q.firma || '—'))),
+        GV.badge(q.durum),
+        GV.cell.mny(q.toplam),
+        tarih(q.tarih),
+        GV.dateCell(q.gecerlilik),
+        GV.cell.num(q.versiyon)
+      ];
+    });
+    var tMob = teklifler.map(function(q){
+      return GV.cell.mrow(
+        '<a class="cell-main" href="app-teklif-detay.html?id=' + q.kod + '">' + esc(q.kod) + '</a>' +
+          GV.badge(q.durum),
+        esc(q.firma || '—') + ' · v' + esc(q.versiyon),
+        [ ico('i-wallet','ic-sm') + esc(F.money(q.toplam)),
+          ico('i-calendar','ic-sm') + esc(F.dateShort(q.tarih)) ],
+        '');
+    });
+
+    return '<section class="gv-card">' +
+      kartBasi('i-funnel', 'Fırsatlar', sayacEtiketi(firsatlar.length, 'kayıt')) +
+      tablo(fKol, fSat, fMob, {
+        icon:'i-funnel', title:'Fırsat kaydı yok',
+        desc:'Bu hesaba bağlı açık ya da kapanmış bir fırsat bulunmuyor. ' + bosSebep
+      }) +
+    '</section>' +
+    '<section class="gv-card">' +
+      kartBasi('i-quote', 'Teklifler', sayacEtiketi(teklifler.length, 'kayıt')) +
+      tablo(tKol, tSat, tMob, {
+        icon:'i-quote', title:'Teklif kaydı yok',
+        desc:'Teklif hesaba ya doğrudan (musteri alanı) ya da fırsat üzerinden bağlanır; ' +
+             'bu hesapta iki yol da tutmadı, yani bağ yok. Tarih ya da firma adı benzerliği ' +
+             'bağ sayılmaz.'
+      }) +
+    '</section>';
+  }
+
+  /* ---- 7.4 PROJELER ------------------------------------------------ */
+  function cizProje(){
+    var acikProje = projeler.filter(function(p){ return GV.proje.acik(p); });
+    var kolonlar = [
+      { label:'Proje' }, { label:'Durum' }, { label:'Sağlık' },
+      { label:'İlerleme' }, { label:'Proje yöneticisi' }, { label:'Planlanan bitiş', cls:'center' }
+    ];
+    var satirlar = projeler.map(function(p){
+      var acik = GV.proje.acik(p);
+      return [
+        GV.cell.link('app-proje-detay.html?id=' + p.kod, p.kod, GV.cell.sub(esc(p.ad))),
+        GV.badge(p.durum) + GV.cell.sub(acik ? 'açık' : 'kapalı'),
+        p.saglik ? GV.badge(p.saglik) : BOS,
+        GV.progress(p.ilerleme),
+        p.pm ? GV.user(p.pm, { sm:true }) : BOS,
+        GV.dateCell(p.planlananBitis, { done:!acik })
+      ];
+    });
+    var mobil = projeler.map(function(p){
+      return GV.cell.mrow(
+        '<a class="cell-main" href="app-proje-detay.html?id=' + p.kod + '">' + esc(p.ad) + '</a>' +
+          GV.badge(p.durum),
+        esc(p.kod),
+        [ ico('i-gauge','ic-sm') + '%' + esc(p.ilerleme),
+          ico('i-calendar','ic-sm') + esc(F.dateShort(p.planlananBitis)) ],
+        p.pm ? GV.user(p.pm, { sm:true }) : '');
+    });
+
+    return '<section class="gv-card">' +
+      kartBasi('i-briefcase', 'Projeler',
+        sayacEtiketi(acikProje.length, 'açık') + ' ' + sayacEtiketi(projeler.length, 'toplam')) +
+      tablo(kolonlar, satirlar, mobil, {
+        icon:'i-briefcase', title:'Bu hesapta proje yok',
+        desc:'Proje kaydı musteri alanıyla hesaba bağlanır. ' + bosSebep
+      }) +
+    '</section>';
+  }
+
+  /* ---- 7.5 FİNANS -------------------------------------------------- */
+  function cizFinans(){
+    /* Bakiye TEK kaynaktan: `GV.fin.balance`. İkinci formül yasak. */
+    var bakiyeler = faturalar.map(function(f){ return GV.fin.balance(f); });
+    var brutT = 0, tahsilT = 0, acikT = 0;
+    bakiyeler.forEach(function(b){
+      if(!b) return;
+      brutT += b.brut; tahsilT += b.tahsil; acikT += b.acik;
+    });
+
+    var ozet = faturalar.length
+      ? '<div class="gc-body"><div class="gv-summary">' +
+          '<div class="gv-summary-row"><span class="gv-summary-lbl">' +
+            'Toplam fatura (brüt, KDV dahil)</span>' +
+            '<span class="gv-summary-val">' + para(brutT) + '</span></div>' +
+          '<div class="gv-summary-row"><span class="gv-summary-lbl">Tahsil edilen</span>' +
+            '<span class="gv-summary-val">' + para(tahsilT) + '</span></div>' +
+          '<div class="gv-summary-row"><span class="gv-summary-lbl">Toplam açık bakiye</span>' +
+            '<span class="gv-summary-val">' + para(acikT) + '</span></div>' +
+        '</div></div>'
+      : '';
+
+    var fKol = [
+      { label:'Fatura' }, { label:'Tarih', cls:'center' }, { label:'Vade', cls:'center' },
+      { label:'Brüt', cls:'num' }, { label:'Tahsil', cls:'num' }, { label:'Açık', cls:'num' },
+      { label:'Ödeme durumu', cls:'center' }
+    ];
+    var fSat = faturalar.map(function(f, i){
+      var b = bakiyeler[i];
+      var gecikme = (GV.fin.gecikti(f) && b && !b.tamOdendi)
+        ? GV.cell.sub('<span class="u-danger">' + GV.fin.gecikmeGun(f) + ' gün gecikti</span>') : '';
+      return [
+        '<span class="cell-main">' + esc(f.kod) + '</span>' +
+          GV.cell.sub(esc(f.sozlesme || f.proje || '—')),
+        tarih(f.tarih),
+        GV.dateCell(f.vade, { done:!!(b && b.tamOdendi) }) + gecikme,
+        para(b ? b.brut : null),
+        para(b ? b.tahsil : null),
+        para(b ? b.acik : null),
+        GV.badge(GV.fin.odemeDurum(f))
+      ];
+    });
+    var fMob = faturalar.map(function(f, i){
+      var b = bakiyeler[i];
+      return GV.cell.mrow(
+        '<span class="cell-main">' + esc(f.kod) + '</span>' + GV.badge(GV.fin.odemeDurum(f)),
+        esc(f.sozlesme || f.proje || '—'),
+        [ ico('i-wallet','ic-sm') + (b ? paraMetin(b.acik) + ' açık' : '—'),
+          ico('i-calendar','ic-sm') + esc(F.dateShort(f.vade)) ],
+        '');
+    });
+
+    var sKol = [
+      { label:'Sözleşme' }, { label:'Durum' }, { label:'Tutar (KDV dahil)', cls:'num' },
+      { label:'Başlangıç', cls:'center' }, { label:'Bitiş', cls:'center' }
+    ];
+    var sSat = sozlesmeler.map(function(c){
+      return [
+        '<span class="cell-main">' + esc(c.kod) + '</span>' + GV.cell.sub(esc(c.ad || '—')),
+        GV.badge(c.durum),
+        para(c.toplam),
+        tarih(c.baslangic),
+        GV.dateCell(c.bitis)
+      ];
+    });
+    var sMob = sozlesmeler.map(function(c){
+      return GV.cell.mrow(
+        '<span class="cell-main">' + esc(c.ad || c.kod) + '</span>' + GV.badge(c.durum),
+        esc(c.kod),
+        [ ico('i-wallet','ic-sm') + paraMetin(c.toplam),
+          ico('i-calendar','ic-sm') + esc(F.dateShort(c.bitis)) ],
+        '');
+    });
+
+    var mKol = [
+      { label:'Taksit' }, { label:'Sözleşme' }, { label:'Tarih', cls:'center' },
+      { label:'Tutar', cls:'num' }, { label:'Ödeme durumu', cls:'center' }
+    ];
+    var mSat = taksitler.map(function(m){
+      return [
+        '<span class="cell-main">' + esc(m.ad) + '</span>' +
+          GV.cell.sub(esc(m.kod) + ' · ' + esc(m.taksit) + '. taksit'),
+        '<span class="cell-code">' + esc(m.sozlesme) + '</span>',
+        GV.dateCell(m.tarih, { done:m.odemeDurum === 'Ödendi' }),
+        para(m.odeme),
+        GV.badge(m.odemeDurum)
+      ];
+    });
+    var mMob = taksitler.map(function(m){
+      return GV.cell.mrow(
+        '<span class="cell-main">' + esc(m.ad) + '</span>' + GV.badge(m.odemeDurum),
+        esc(m.kod) + ' · ' + esc(m.sozlesme),
+        [ ico('i-wallet','ic-sm') + paraMetin(m.odeme),
+          ico('i-calendar','ic-sm') + esc(F.dateShort(m.tarih)) ],
+        '');
+    });
+
+    var maskeNotu = canFinans ? ''
+      : '<div class="u-mb-4">' + GV.notice({ tone:'info', icon:'i-lock',
+          title:'Finans alanları maskeli',
+          text:'Rolünüzde finans yetkisi yok; tutarlar "••••••" basılır. Bu bir SIFIR ' +
+               'değildir — değer vardır, size gösterilmez.' }) + '</div>';
+
+    return maskeNotu +
+      '<section class="gv-card">' +
+        kartBasi('i-wallet', 'Faturalar ve bakiye', sayacEtiketi(faturalar.length, 'fatura')) +
+        ozet +
+        tablo(fKol, fSat, fMob, {
+          icon:'i-receipt', title:'Fatura kaydı yok',
+          desc:'Bu hesapta fatura yok; açık bakiye ölçülemez, bu yüzden "0 ₺" değil hiçbir ' +
+               'tutar basılmadı. ' + bosSebep
+        }) +
+      '</section>' +
+      '<section class="gv-card">' +
+        kartBasi('i-file-check', 'Sözleşmeler', sayacEtiketi(sozlesmeler.length, 'kayıt')) +
+        tablo(sKol, sSat, sMob, {
+          icon:'i-file-check', title:'Sözleşme kaydı yok',
+          desc:'Sözleşme musteri alanıyla hesaba bağlanır. ' + bosSebep
+        }) +
+      '</section>' +
+      '<section class="gv-card">' +
+        kartBasi('i-milestone', 'Ödeme planı (taksitler)', sayacEtiketi(taksitler.length, 'taksit')) +
+        tablo(mKol, mSat, mMob, {
+          icon:'i-milestone', title:'Ödeme planı yok',
+          desc:'Taksitler sözleşme üzerinden bağlanır; bu hesapta bağlı sözleşme ' +
+               (sozlesmeler.length ? 'var ama taksit kaydı yok.' : 'olmadığı için taksit de yok.')
+        }) +
+      '</section>';
+  }
+
+  /* ---- 7.6 DESTEK -------------------------------------------------- */
+  function cizDestek(){
+    var acikTalep = talepler.filter(function(t){ return GV.destek.acik(t); });
+
+    var tKol = [
+      { label:'Talep' }, { label:'Kategori' }, { label:'Öncelik', cls:'center' },
+      { label:'Durum' }, { label:'Açılış', cls:'center' }, { label:'Sorumlu' }
+    ];
+    var tSat = talepler.map(function(t){
+      return [
+        '<span class="cell-main">' + esc(t.kod) + '</span>' + GV.cell.sub(esc(t.baslik)),
+        t.kategori ? esc(t.kategori) : BOS,
+        GV.pri(t.oncelik),
+        GV.badge(t.durum) + GV.cell.sub(GV.destek.acik(t) ? 'açık' : 'kapalı'),
+        tarih(t.acilis),
+        t.sorumlu ? GV.user(t.sorumlu, { sm:true }) : BOS
+      ];
+    });
+    var tMob = talepler.map(function(t){
+      return GV.cell.mrow(
+        '<span class="cell-main">' + esc(t.baslik) + '</span>' + GV.badge(t.durum),
+        esc(t.kod) + ' · ' + (GV.destek.acik(t) ? 'açık' : 'kapalı'),
+        [ ico('i-flag','ic-sm') + esc(t.oncelik || '—'),
+          ico('i-clock','ic-sm') + esc(F.dateShort(t.acilis)) ],
+        t.sorumlu ? GV.user(t.sorumlu, { sm:true }) : '');
+    });
+
+    var pKol = [
+      { label:'Paket' }, { label:'Tip' }, { label:'Dönem', cls:'center' },
+      { label:'Aylık saat', cls:'num' }, { label:'Kullanılan', cls:'num' },
+      { label:'Tutar', cls:'num' }, { label:'Durum', cls:'center' }
+    ];
+    var pSat = paketler.map(function(p){
+      return [
+        '<span class="cell-main">' + esc(p.ad || p.kod) + '</span>' +
+          '<span class="cell-code">' + esc(p.kod) + ' · ' + esc(p.periyot || '—') + '</span>',
+        p.tip ? esc(p.tip) : BOS,
+        tarih(p.baslangic) + GV.cell.sub(esc(F.date(p.bitis))),
+        GV.cell.num(p.aylikSaat),
+        GV.cell.num(p.kullanilan) +
+          GV.cell.sub(p.kalan == null ? '—' : esc(F.num(p.kalan)) + ' saat kaldı'),
+        para(p.tutar),
+        GV.badge(p.durum)
+      ];
+    });
+    var pMob = paketler.map(function(p){
+      return GV.cell.mrow(
+        '<span class="cell-main">' + esc(p.ad || p.kod) + '</span>' + GV.badge(p.durum),
+        esc(p.kod) + ' · ' + esc(p.periyot || '—'),
+        [ ico('i-timer','ic-sm') + esc(F.num(p.kullanilan)) + ' / ' + esc(F.num(p.kalan)),
+          ico('i-calendar','ic-sm') + esc(F.dateShort(p.bitis)) ],
+        '');
+    });
+
+    return '<section class="gv-card">' +
+      kartBasi('i-support', 'Destek talepleri',
+        sayacEtiketi(acikTalep.length, 'açık') + ' ' + sayacEtiketi(talepler.length, 'toplam')) +
+      tablo(tKol, tSat, tMob, {
+        icon:'i-support', title:'Destek talebi yok',
+        desc:'Destek talebi musteri alanıyla hesaba bağlanır. ' + bosSebep
+      }) +
+    '</section>' +
+    '<section class="gv-card">' +
+      kartBasi('i-shield-check', 'Bakım ve destek paketleri',
+        sayacEtiketi(paketler.length, 'kayıt')) +
+      tablo(pKol, pSat, pMob, {
+        icon:'i-shield-check', title:'Bakım paketi yok',
+        desc:'Bu hesapta aktif ya da sona ermiş bir bakım/destek paketi kaydı bulunmuyor. ' + bosSebep
+      }) +
+    '</section>';
+  }
+
+  /* ---- 7.7 BELGELER ------------------------------------------------ */
+  function cizBelge(){
+    var kolonlar = [
+      { label:'Belge' }, { label:'Tür' }, { label:'Biçim' },
+      { label:'Sürüm', cls:'num' }, { label:'Yükleyen' },
+      { label:'Tarih', cls:'center' }, { label:'Gizlilik' }, { label:'Onay', cls:'center' }
+    ];
+    var satirlar = belgeler.map(function(d){
+      return [
+        '<span class="cell-main">' + esc(d.ad) + '</span>' +
+          '<span class="cell-code">' + esc(d.kod) + '</span>',
+        d.tur ? esc(d.tur) : BOS,
+        (d.format ? esc(d.format) : '—') + GV.cell.sub(esc(d.boyut || '—')),
+        GV.cell.num(d.versiyon),
+        d.yukleyen ? GV.user(d.yukleyen, { sm:true }) : BOS,
+        tarih(d.tarih),
+        d.gizlilik ? GV.badge(d.gizlilik, 'is-neutral') : BOS,
+        d.onay ? GV.badge(d.onay) : BOS
+      ];
+    });
+    var mobil = belgeler.map(function(d){
+      return GV.cell.mrow(
+        '<span class="cell-main">' + esc(d.ad) + '</span>' + (d.onay ? GV.badge(d.onay) : ''),
+        esc(d.kod) + ' · ' + esc(d.tur || '—'),
+        [ ico('i-paperclip','ic-sm') + esc(d.format || '—') + ' · ' + esc(d.boyut || '—'),
+          ico('i-calendar','ic-sm') + esc(F.dateShort(d.tarih)) ],
+        '');
+    });
+
+    return '<section class="gv-card">' +
+      kartBasi('i-file', 'Belgeler', sayacEtiketi(belgeler.length, 'kayıt')) +
+      tablo(kolonlar, satirlar, mobil, {
+        icon:'i-file', title:'Belge kaydı yok',
+        desc:'Belge musteri alanıyla hesaba bağlanır. ' + bosSebep
+      }) +
+    '</section>' +
+    '<section class="gv-card">' +
+      kartBasi('i-upload', 'Belge yükle') +
+      '<div class="gc-body"><div id="belgeYukle"></div></div>' +
+      '<div class="gc-body">' +
+        GV.notice({ tone:'warn', icon:'i-alert',
+          title:'Seçilen dosya depoya YAZILMAZ (BE-S4)',
+          text:'Prototipte gerçek dosya deposu yoktur. Seçtiğiniz dosyanın yalnız adı ve ' +
+               'boyutu bellekte tutulur; sayfa yenilenince kaybolur ve DB.documents kaydı ' +
+               'oluşmaz. Yükleme yalnız alanın davranışını gösterir.' }) +
+      '</div>' +
+    '</section>';
+  }
+
+  /* ---- 7.8 AKTİVİTE ------------------------------------------------ */
+  function cizAktivite(){
+    var ekle = canEkle
+      ? '<button type="button" class="btn btn-acc btn-sm" id="iltEkle">' +
+        ico('i-plus','ic-sm') + ' İletişim kaydı ekle</button>' : '';
+
+    var kolonlar = [
+      { label:'Tür' }, { label:'Tarih', cls:'center' }, { label:'Konu' },
+      { label:'Sonuç' }, { label:'Muhatap' }, { label:'Kaydeden' }
+    ];
+    var satirlar = iletisimler.map(function(i){
+      return [
+        GV.badge(i.tur, 'is-neutral') + '<span class="cell-code">' + esc(i.kod) + '</span>',
+        '<span class="cell-date">' + esc(F.dt(i.tarih)) + '</span>',
+        '<span class="cell-main">' + esc(i.konu) + '</span>' + GV.cell.sub(esc(i.ozet || '—')),
+        i.sonuc ? esc(i.sonuc) : BOS,
+        i.kontak ? esc(DB.contactName(i.kontak))
+                 : BOS + GV.cell.sub('aday görüşmesi — yetkili kaydı yok'),
+        i.kisi ? GV.user(i.kisi, { sm:true }) : BOS
+      ];
+    });
+    var mobil = iletisimler.map(function(i){
+      return GV.cell.mrow(
+        '<span class="cell-main">' + esc(i.konu) + '</span>' + GV.badge(i.tur, 'is-neutral'),
+        esc(i.kod) + ' · ' + esc(F.dt(i.tarih)),
+        [ i.sonuc ? ico('i-flag','ic-sm') + esc(i.sonuc) : '',
+          i.kontak ? ico('i-user','ic-sm') + esc(DB.contactName(i.kontak)) : '' ].filter(Boolean),
+        i.kisi ? GV.user(i.kisi, { sm:true }) : '');
+    });
+
+    return '<section class="gv-card">' +
+      kartBasi('i-chat', 'İletişim geçmişi',
+        ekle + ' ' + sayacEtiketi(iletisimler.length, 'kayıt')) +
+      tablo(kolonlar, satirlar, mobil, {
+        icon:'i-chat', title:'İletişim kaydı yok',
+        desc:'İletişim kaydı hesabın kendisine ya da katlandığı aday koduna bağlanır' +
+             (leadKodlari.length ? ' (' + leadKodlari.join(', ') + ')' : '') +
+             '; bu hesapta iki yol da eşleşmedi.'
+      }) +
+    '</section>' +
+    '<section class="gv-card">' +
+      kartBasi('i-activity', 'Denetim izi', sayacEtiketi(izler.length, 'hareket')) +
+      '<div class="gc-body">' + GV.activity(izler) + '</div>' +
+    '</section>';
+  }
+
+  var PANEL = {
+    ozet:cizOzet, yetkili:cizYetkili, firsat:cizFirsat, proje:cizProje,
+    finans:cizFinans, destek:cizDestek, belge:cizBelge, aktivite:cizAktivite
+  };
+
+  /* ===================================================================
+     8. BACKEND PAYI — brief §10.2 (b). Tablo KOPYALANIR, madde uydurulmaz.
+     =================================================================== */
+  var BACKEND = [
+    { kod:'BE-S1', bolum:'§5.3',
+      madde:'Mükerrer kontrolü istemcide koşar; sunucuda benzersizlik kısıtı (vergi no) yoktur' },
+    { kod:'BE-S2', bolum:'§9',
+      madde:'PATCH /api/customers/:id/lifecycle-stage yok; evre değişimi bellekte' },
+    { kod:'BE-S4', bolum:'§9',
+      madde:'Belge yükleme gerçek depoya yazmaz; dosya adı ve boyutu bellekte tutulur' },
+    { kod:'BE-S5', bolum:'§9 audit_event',
+      madde:'Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır' }
+  ];
+  function cizBackend(){
+    return '<section class="gv-card u-mt-4">' +
+      kartBasi('i-shield', 'Backend payı', sayacEtiketi(BACKEND.length, 'madde')) +
+      '<ul class="gv-checklist">' + BACKEND.map(function(g){
+        return '<li><span><b>' + esc(g.kod) + '</b> — ' + esc(g.madde) + '</span>' +
+          '<span class="cell-sub">' + esc(g.bolum) + '</span></li>';
+      }).join('') + '</ul>' +
+      '<div class="gc-body u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+        '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</div>' +
+    '</section>';
+  }
+
+  /* ===================================================================
+     9. ÇİZİM
+     =================================================================== */
+  mount.innerHTML =
+    (adayKaynakli
+      ? '<div class="u-mb-4">' + GV.notice({ tone:'info', icon:'i-user-plus',
+          title:'Bu hesap aday kaydından türedi',
+          text:'Kaynak kayıt ' + h.legacy_id + '. Yetkili, proje, fatura, sözleşme, destek ve ' +
+               'belge sekmeleri bu yüzden boş çıkar — eksik veri değil, henüz doğmamış bağdır.' }) +
+        '</div>'
+      : '') +
+    '<div class="gv-card">' +
+      '<div class="gv-tabs" id="musteriSekme" role="tablist" ' +
+        'aria-label="Müşteri detay sekmeleri">' + sekmeHtml + '</div>' +
+    '</div>' +
+    panelHtml +
+    cizBackend();
+
+  /* Tembel çizim — ağır sekme yalnız açıldığında kurulur. `gv:tab`
+     `document`a atılır; `document` kalıcı düğümdür, bu yüzden dinleyici
+     `GV.on` ile tekil anahtar üzerinden bağlanır (L-16). */
+  var cizildi = {};
+  function cizPanel(key){
+    if(cizildi[key] || !PANEL[key]) return;
+    var el = mount.querySelector('[data-panel="' + key + '"]');
+    if(!el) return;
+    el.innerHTML = PANEL[key]();
+    cizildi[key] = true;
+    if(key === 'belge') kurYukleme(el);
+  }
+  GV.on(document, 'gv:tab', function(e){ cizPanel(e.detail.key); }, 'musteriDetay-tab');
+
+  GV.tabs('#musteriSekme');   /* açılış sekmesini kendisi seçer ve gv:tab atar */
+
+  function kurYukleme(panel){
+    var host = panel.querySelector('#belgeYukle');
+    if(!host) return;
+    GV.upload({
+      mount:host, maxMB:20,
+      title:'Belge seçin veya sürükleyip bırakın',
+      hint:'PDF, DOCX, XLSX, PNG, JPG · en fazla 20 MB · dosya depoya YAZILMAZ (BE-S4)',
+      onChange:function(secilenler){
+        if(secilenler.length)
+          GV.toast(secilenler.length + ' dosya seçildi — depoya yazılmadı (BE-S4)', 'warn');
+      }
+    });
+  }
+
+  /* ===================================================================
+     10. EYLEMLER — mount içi delegasyon
+     =================================================================== */
+  GV.on(mount, 'click', function(ev){
+    var evreBtn = ev.target.closest('[data-evre]');
+    if(evreBtn){ evreGec(evreBtn.dataset.evre); return; }
+    if(ev.target.closest('#ytkEkle')){ yetkiliCekmecesi(); return; }
+    if(ev.target.closest('#iltEkle')){ iletisimCekmecesi(); return; }
+  }, 'musteriDetay-click');
+
+  /* ---- 10.1 YAŞAM EVRESİ GEÇİŞİ ------------------------------------ */
+  function evreGec(hedef){
+    var adim = (GV.lifecycle.adimlar(h) || []).filter(function(a){ return a.hedef === hedef; })[0];
+    if(!adim) return;
+
+    if(!adim.gerekce){
+      var r = GV.lifecycle.gec(h.kod, hedef);
+      if(r.ok === false){ GV.toast(GV.flowHata(r), 'danger'); return; }
+      GV.toast(h.kod + ' → ' + (evreAdi(hedef) || hedef), 'ok');
+      GV.refresh();
+      return;
+    }
+
+    /* Gerekçe isteyen hedef (KAYIP) — ortak eylem penceresi. Kendi modalımı
+       kurmam yasak; neden kodu listesi `DB.reasonCodes`tan daraltılır. */
+    GV.action({
+      eylem:'İptal Et',
+      kayit:{ kod:h.kod, baslik:h.unvan },
+      sonuc:'Hesabın yaşam evresi "' + (evreAdi(hedef) || hedef) + '" olacak.',
+      gerekce:true, nedenTuru:'iptal', tone:'danger',
+      run:function(v){
+        var r = GV.lifecycle.gec(h.kod, hedef, { neden:v.neden, not:v.not });
+        if(r.ok === false) return { ok:false, mesaj:GV.flowHata(r) };
+        GV.refresh();
+        return { mesaj:h.kod + ' → ' + (evreAdi(hedef) || hedef) };
+      }
+    });
+  }
+
+  /* ---- 10.2 YETKİLİ EKLE (drawer — ayrı ekran DEĞİL, §8.1) ---------- */
+  function yetkiliCekmecesi(){
+    var form = null;
+    GV.drawer({
+      title:'Yetkili ekle',
+      body:'<div id="ytkForm"></div>',
+      onMount:function(govde){
+        form = GV.form({
+          mount:govde.querySelector('#ytkForm'), id:'ytkForm', record:{},
+          sections:[{
+            title:'Yetkili bilgileri', icon:'i-users',
+            desc:'Kayıt ' + h.kod + ' hesabına bağlanır.',
+            fields:[
+              { key:'ad',       label:'Ad soyad', required:true, cols:12 },
+              { key:'pozisyon', label:'Pozisyon', cols:12 },
+              { key:'tel',      label:'Telefon', type:'tel', cols:6 },
+              { key:'eposta',   label:'E-posta', type:'email', cols:6 },
+              { key:'birincil', label:'Birincil yetkili', type:'switch',
+                onLabel:'Birincil iletişim kişisi', cols:6 },
+              { key:'karar',    label:'Karar verici', type:'switch',
+                onLabel:'Karar verici', cols:6 }
+            ]
+          }]
+        });
+      },
+      actions:[
+        { label:'Vazgeç', cls:'btn-line' },
+        { label:'Kaydet', cls:'btn-acc', close:false, onClick:function(close){
+            if(!form) return false;
+            var v = form.submit();
+            if(!v) return false;
+            var yeni = {
+              kod:yeniKod(DB.contacts, 'YTK', 3), musteri:h.kod,
+              ad:v.ad, pozisyon:v.pozisyon || null,
+              tel:v.tel || null, eposta:v.eposta || null,
+              birincil:!!v.birincil, karar:!!v.karar, aktif:true
+            };
+            DB.contacts.push(yeni);
+            GV.audit.yaz({
+              kayit:h.kod, modul:'Müşteri',
+              islem:'Yetkili eklendi — ' + yeni.ad + ' (' + yeni.kod + ')',
+              yeni:yeni.kod, tone:'ok', icon:'i-user-plus'
+            });
+            GV.toast(yeni.kod + ' yetkili kaydı eklendi', 'ok');
+            close();
+            GV.refresh();
+          } }
+      ]
+    });
+  }
+
+  /* ---- 10.3 İLETİŞİM KAYDI EKLE ------------------------------------ */
+  function iletisimCekmecesi(){
+    var form = null;
+    var alanlar = [
+      { key:'tur',   label:'İletişim türü', type:'select', required:true,
+        options:DB.interactionTypes, cols:6 },
+      { key:'tarih', label:'Tarih', type:'date', required:true, cols:6 },
+      { key:'konu',  label:'Konu', required:true, cols:12 },
+      { key:'ozet',  label:'Özet', type:'textarea', rows:3, cols:12 },
+      { key:'sonuc', label:'Sonuç / sonraki adım', cols:12 }
+    ];
+    /* Muhatap alanı YALNIZ yetkili kaydı varsa sorulur — boş bir seçim
+       kutusu, doldurulamayacak bir alan bırakırdı. */
+    if(yetkililer.length){
+      alanlar.push({ key:'kontak', label:'Görüşülen yetkili', type:'select', cols:12,
+        options:yetkililer.map(function(c){ return { value:c.kod, label:c.ad }; }) });
+    }
+
+    GV.drawer({
+      title:'İletişim kaydı ekle',
+      body:'<div id="iltForm"></div>',
+      onMount:function(govde){
+        form = GV.form({
+          mount:govde.querySelector('#iltForm'), id:'iltForm',
+          record:{ tarih:DB.today },
+          sections:[{
+            title:'Görüşme', icon:'i-chat',
+            desc:yetkililer.length
+              ? 'Kayıt ' + h.kod + ' hesabına bağlanır.'
+              : 'Kayıt ' + h.kod + ' hesabına bağlanır. Bu hesapta yetkili kaydı yok, ' +
+                'bu yüzden muhatap alanı sorulmuyor.',
+            fields:alanlar
+          }]
+        });
+      },
+      actions:[
+        { label:'Vazgeç', cls:'btn-line' },
+        { label:'Kaydet', cls:'btn-acc', close:false, onClick:function(close){
+            if(!form) return false;
+            var v = form.submit();
+            if(!v) return false;
+            /* Bağ ekseni hesabın türediği deftere göre kurulur: müşteri
+               kaynaklı hesapta `musteri`, aday kaynaklı hesapta `lead`
+               (§13.1 okuma kuralının aynası). */
+            var yeni = {
+              kod:yeniKod(DB.interactions, 'ILT', 3),
+              musteri:adayKaynakli ? null : h.kod,
+              lead:adayKaynakli ? h.kod : null,
+              tur:v.tur,
+              tarih:v.tarih + saatEki(),
+              kisi:aktor(), kontak:v.kontak || null,
+              konu:v.konu, ozet:v.ozet || '', sonuc:v.sonuc || ''
+            };
+            DB.interactions.push(yeni);
+            GV.audit.yaz({
+              kayit:h.kod, modul:'Müşteri',
+              islem:'İletişim kaydı eklendi — ' + yeni.tur + ': ' + yeni.konu +
+                    ' (' + yeni.kod + ')',
+              yeni:yeni.kod, tone:'info', icon:'i-chat'
+            });
+            GV.toast(yeni.kod + ' iletişim kaydı eklendi', 'ok');
+            close();
+            GV.refresh();
+          } }
+      ]
+    });
+  }
+});
+</script>
+</body>
+</html>
