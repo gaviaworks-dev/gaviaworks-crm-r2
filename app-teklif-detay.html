@@ -74,7 +74,9 @@ document.addEventListener('gv:ready', function(){
     mount.innerHTML = '<div class="gv-card">' + GV.errorState({
       title:'Teklif bulunamadı',
       desc:'Aradığınız teklif silinmiş ya da adres hatalı olabilir. Doğru kaydı ' +
-           'teklif listesinden seçebilirsiniz.',
+           'teklif listesinden seçebilirsiniz. Az önce açtığınız bir REVİZYON sürümünü ' +
+           'arıyorsanız sebebi başkadır: prototipte kayıtlar bellekte tutulur, sayfa ' +
+           'yenilendiğinde ya da yeni sekmede sıfırlanır (BE-S3).',
       action:'<a class="btn btn-acc" href="app-teklif.html">Teklif listesine dön</a>'
     }) + '</div>';
     return;
@@ -142,6 +144,29 @@ document.addEventListener('gv:ready', function(){
      4. TÜRETMELER — hepsi kayıttan, hiçbiri uydurma
      =================================================================== */
   function terminal(durum){ return !!(TQ[durum] || {}).terminal; }
+
+  /* ---- 4.1 SÜRÜM ZİNCİRİ (K-17 · brief §17.1) -----------------------
+     Üç soru da MOTORDA cevaplanır; ekran hiçbirini kendi hesaplamaz:
+       · bu kayıt kilitli mi   → `GV.flow.kilit('quote', kod)`
+       · zincirde kimler var   → `GV.teklif.zincir(kod)`
+       · revizyon açılabilir mi→ `GV.teklif.revizyonIzni(kod)`
+     Kilit bir ALAN değildir, ardılın varlığından türer (domain.js:302-316):
+     revize edilmiş sürüm salt okunurdur. `GV.flow.adimlar` kilitli kayıtta
+     zaten boş döner — ekran ölü buton basmaz, sebebini yazar. */
+  var kayitKilidi = GV.flow.kilit('quote', q.kod);
+  var zincir = GV.teklif.zincir(q.kod);
+  var revIzin = GV.teklif.revizyonIzni(q.kod);
+
+  /* Zincirde bu kaydın komşuları — karşılaştırma yalnız GERÇEK bir komşu
+     varsa açılır. `oncekiSurum` alanı olmayan kayıtta ardıl aranır ki
+     kilitli kök sürüm de kendi ardılıyla karşılaştırılabilsin. */
+  var oncekiKod = q.oncekiSurum || null;
+  var ardilKod  = (zincir && zincir.surum.filter(function(s){
+                    return s.oncekiSurum === q.kod; })[0] || {}).kod || null;
+
+  /* Para alanı sözlüğü — yalnız BİÇİM kararıdır (hangi fark hücresi maskeli
+     basılacak). İş kuralı değil; motorun alan listesi `GV.teklif.fark`ta. */
+  var PARA_ALAN = ['araToplam','indirim','vergi','toplam'];
 
   var kalemler = (DB.quoteItems || []).filter(function(x){ return x.teklif === q.kod; })
     .sort(function(a, b){ return (a.sira || 0) - (b.sira || 0); });
@@ -215,10 +240,22 @@ document.addEventListener('gv:ready', function(){
       ['Destek',        q.destek]
     ] });
 
+    /* Belgenin sürüm beyanı ZİNCİRDEN okunur. İki farklı güvenilirlikteki
+       sayı aynı cümleyle basılmaz (brief §17.1): zincirde kaydı olan sürüm
+       ile R1'den devralınmış sayaç ayrı ayrı anlatılır. */
+    var zBeyan;
+    if(!zincir)                 zBeyan = 'Sürüm zinciri okunamadı.';
+    else if(zincir.devralinan)  zBeyan = 'Kayıt ' + zincir.devralinanSayi + '. sürüm olduğunu ' +
+      'söylüyor ama zincirde tek kayıt var: önceki sürümlerin kaydı kaynak veride yok ' +
+      '(R1\'den devralınan sayaç). Belge yalnız bu kaydı gösterir.';
+    else if(zincir.adet > 1)    zBeyan = 'Bu teklifin ' + zincir.adet + ' sürümü var; belge ' +
+      zincir.sira + '. sürümü gösterir. Güncel sürüm ' + zincir.guncel + '.' +
+      (zincir.kilit ? ' Bu sürüm revize edilmiştir ve salt okunurdur.' : '');
+    else                        zBeyan = 'Bu teklifin tek sürümü var; henüz revizyon açılmadı.';
+
     bolumler.push({ h:'Beyan', metin:'Bu belge kayıttan türetilmiştir ve ayrıca saklanmaz. ' +
-      'Teklif sürümleme (revizyon = yeni kayıt) bu turda kapsam dışıdır (K-17): belge ' +
-      (q.versiyon > 1 ? q.versiyon + '. sürümü gösterir ama önceki sürümün kaydı yoktur.'
-                      : 'tek sürümlüdür.') });
+      zBeyan + ' Revizyon yeni bir kayıt üretir ve revize edilen sürüm kilitlenir (K-17); ' +
+      'zincir prototipte bellekte yaşar, sayfa yenilenince sıfırlanır.' });
 
     return GV.doc({
       baslik:'Teklif ' + q.kod + (q.firma ? ' — ' + q.firma : ''),
@@ -294,8 +331,19 @@ document.addEventListener('gv:ready', function(){
       ['Ön analiz',     analizHtml],
       ['Teklif tarihi', q.tarih ? tarih(q.tarih) : null],
       ['Geçerlilik',    gecerlilikHtml],
+      /* Sürüm satırı ZİNCİRDEN yazılır: sayaç ile kayıt sayısı çelişiyorsa
+         (devralınan) bu söylenir, sahte sürüm satırı üretilmez. */
       ['Sürüm',         GV.cell.num(q.versiyon) +
-                        (q.versiyon > 1 ? GV.cell.sub('önceki sürüm kaydı yok · K-17') : '')],
+                        (!zincir ? ''
+                          : zincir.devralinan
+                            ? GV.cell.sub('kayıt ' + esc(zincir.devralinanSayi) + '. sürüm diyor; ' +
+                                'zincirde tek kayıt var — önceki sürümlerin kaydı kaynak veride yok')
+                            : zincir.adet > 1
+                              ? GV.cell.sub(esc(zincir.adet) + ' sürümlük zincirin ' +
+                                  esc(zincir.sira) + '. kaydı' +
+                                  (zincir.sonuncuMu ? ' · güncel sürüm' : ' · güncel sürüm ' +
+                                    esc(zincir.guncel)))
+                              : GV.cell.sub('tek sürüm — henüz revizyon açılmadı'))],
       ['Hazırlayan',    q.hazirlayan ? GV.user(q.hazirlayan, { sm:true }) : null],
       ['Ödeme planı',   q.odemePlani ? esc(q.odemePlani) : null],
       ['Teslim süresi', q.teslimSuresi ? esc(q.teslimSuresi) : null],
@@ -451,10 +499,15 @@ document.addEventListener('gv:ready', function(){
 
     var govde;
     if(!adimlar.length){
+      /* Boş adım listesinin ÜÇ ayrı sebebi olabilir ve üçü aynı cümleyle
+         anlatılamaz: kayıt kilidi · terminal durum · tablosuz durum. */
       govde = '<div class="gc-body u-faint u-sm">' +
-        (kural.terminal
-          ? '“' + esc(q.durum) + '” terminal bir durumdur; geçiş tablosunda tanımlı çıkış yok.'
-          : 'Bu durumdan tanımlı bir geçiş yok.') + '</div>';
+        (kayitKilidi
+          ? 'Bu kayıt kilitli: revize edilmiş sürüm salt okunurdur. Hiçbir geçiş ' +
+            'yapılamaz — düğme basılmadı, çünkü basılsaydı motor reddedecekti.'
+          : kural.terminal
+            ? '“' + esc(q.durum) + '” terminal bir durumdur; geçiş tablosunda tanımlı çıkış yok.'
+            : 'Bu durumdan tanımlı bir geçiş yok.') + '</div>';
     }else{
       govde = '<div class="gc-body"><div class="u-row u-wrap">' +
         adimlar.map(function(a){
@@ -556,30 +609,98 @@ document.addEventListener('gv:ready', function(){
     '</section>';
   }
 
-  /* ---- 6.6 SÜRÜMLEME BORCU (K-17) ----------------------------------- */
-  function cizSurum(){
+  /* ---- 6.6 SÜRÜM ZİNCİRİ (K-17 · brief §17.1) ----------------------- */
+  function cizZincir(){
+    if(!zincir){
+      return '<section class="gv-card">' +
+        kartBasi('i-copy', 'Sürüm zinciri') +
+        GV.empty({ icon:'i-copy', title:'Sürüm zinciri okunamadı',
+          desc:'GV.teklif.zincir bu kayıt için bir zincir döndürmedi; sürüm geçmişi ' +
+               'ölçülemedi. Bu bir “tek sürüm” beyanı DEĞİLDİR — ölçüm yapılamadı.' }) +
+      '</section>';
+    }
+
+    /* Her satır zincirdeki GERÇEK bir kayıttır. Kilitli sürüm salt okunurdur,
+       güncel sürüm vurgulanır, açık olan kayıt `aria-current` taşır. */
+    var satirlar = zincir.surum.map(function(s){
+      var guncelMi = s.kod === zincir.guncel;
+      var acikMi   = s.kod === q.kod;
+      var v        = 'v' + (s.versiyon || 1);
+      return '<li>' +
+        '<span>' +
+          '<a class="cell-main" href="app-teklif-detay.html?id=' + esc(s.kod) + '"' +
+            (acikMi ? ' aria-current="page"' : '') + '>' + esc(s.kod) + '</a> ' +
+          (guncelMi ? '<b class="u-num">' + esc(v) + '</b>'
+                    : '<span class="u-num u-muted">' + esc(v) + '</span>') + ' ' +
+          GV.badge(s.durum) +
+          (guncelMi ? ' ' + GV.badge('güncel sürüm', 'is-accent') : '') +
+          GV.cell.sub(esc(s.tarih ? F.date(s.tarih) : '—') + ' · ' + esc(paraMetin(s.toplam)) +
+            (acikMi ? ' · şu an açık olan kayıt' : '')) +
+        '</span>' +
+        '<span class="cell-sub">' + (guncelMi ? 'işlemler burada' : 'salt okunur') + '</span>' +
+      '</li>';
+    }).join('');
+
+    /* DEVRALINAN SAYAÇ — iki farklı güvenilirlikteki sayı aynı biçimde
+       basılamaz (brief §17.1). Olmayan sürüm için satır ÜRETİLMEZ. */
+    var devNotu = zincir.devralinan
+      ? '<div class="gc-body">' + GV.notice({ tone:'warn', icon:'i-alert',
+          title:'Sürüm sayacı ile zincir çelişiyor',
+          text:'Bu kayıt sürüm ' + zincir.devralinanSayi + ' diyor; önceki sürümlerin kaydı ' +
+               'kaynak veride yok (R1\'den devralınan sayaç). Zincirde tek kayıt olduğu için ' +
+               'yukarıda tek satır var — olmayan sürümler için satır uydurulmadı.' }) + '</div>'
+      : '';
+
+    /* Karşılaştırma yalnız GERÇEK bir komşu varsa açılır. */
+    var farkDugme = '';
+    if(oncekiKod)
+      farkDugme = '<button type="button" class="btn btn-line btn-sm" data-fark="onceki">' +
+        ico('i-columns') + ' Önceki sürümle karşılaştır</button>' +
+        '<span class="u-faint u-xs">' + esc(oncekiKod) + ' → ' + esc(q.kod) + '</span>';
+    else if(ardilKod)
+      farkDugme = '<button type="button" class="btn btn-line btn-sm" data-fark="ardil">' +
+        ico('i-columns') + ' Sonraki sürümle karşılaştır</button>' +
+        '<span class="u-faint u-xs">' + esc(q.kod) + ' → ' + esc(ardilKod) + '</span>';
+
+    /* Revizyon izni motordan okunur. `ok:false` ise DÜĞME BASILMAZ; sebebi
+       yazılır — kilitli/terminal/yetkisiz üç ayrı cümledir. */
+    var revNotu;
+    if(revIzin.ok){
+      revNotu = '<div class="gc-body u-faint u-sm">Bu sürümden revizyon açılabilir; ' +
+        '“Revizyon Aç” düğmesi sayfa başlığındadır. Revizyon <b>yeni bir kayıt</b> doğurur ' +
+        've bu kayıt kilitlenir — üzerine yazılmaz.</div>';
+    }else{
+      var sebep = revIzin.why === 'kilit'    ? 'kayıt kilitli'
+                : revIzin.why === 'terminal' ? 'durum sonuçlandı'
+                : revIzin.why === 'yetki'    ? 'yetki yok'
+                : revIzin.why === 'kayit'    ? 'kayıt bulunamadı'
+                : String(revIzin.why || 'sebep bildirilmedi');
+      revNotu = '<div class="gc-body">' + GV.notice({ tone:'info', icon:'i-lock',
+        title:'Revizyon açılamaz — ' + sebep,
+        text:revIzin.mesaj || 'Motor sebep bildirmedi.' }) + '</div>';
+    }
+
     return '<section class="gv-card">' +
-      kartBasi('i-copy', 'Sürümleme borcu — K-17') +
-      '<div class="gc-body">' + GV.notice({ tone:'warn', icon:'i-alert',
-        title:'“Müzakere/Revizyon → Taslak” geçişi YENİ TEKLİF ÜRETMEZ',
-        text:'tasks/riskler-ve-kapsam.md K-17: teklif sürümleme R1\'de yapılmadı — revizyon ' +
-             'yeni bir kayıt doğurmuyor ve eski sürüm kilitlenmiyor. R2\'de yapılacak ama bu ' +
-             'dilimde değil (ADR-R2-11). Bu düğmeye basıldığında AYNI kayıt Taslak durumuna ' +
-             'döner; ' + q.kod + ' üzerindeki değişiklikler önceki sürümün üstüne yazılır.' }) +
-      '</div>' +
-      '<div class="gc-body u-faint u-sm">Bu kayıt <b>' + esc(q.versiyon) + '. sürüm</b> olarak ' +
-        'işaretli' + (q.versiyon > 1
-          ? ', ama önceki ' + (q.versiyon - 1) + ' sürümün kaydı defterde yok — sürüm numarası ' +
-            'var, sürüm GEÇMİŞİ yok.'
-          : '; bu teklifin henüz bir revizyonu olmadı.') +
-      '</div>' +
+      kartBasi('i-copy', 'Sürüm zinciri', sayacEtiketi(zincir.adet, 'kayıt')) +
+      '<ul class="gv-checklist">' + satirlar + '</ul>' +
+      devNotu +
+      (farkDugme ? '<div class="gc-body"><div class="u-row u-wrap">' + farkDugme + '</div></div>' : '') +
+      revNotu +
+      '<div class="gc-body u-faint u-sm">Zincir <code>kokTeklif</code> ve ' +
+        '<code>oncekiSurum</code> alanlarından türetilir; kilit ayrı bir bayrak değil, ' +
+        'ardılın varlığından doğar. Prototipte zincir <b>bellekte</b> yaşar — sayfa ' +
+        'yenilenince açılan revizyonlar kaybolur (BE-S3).</div>' +
     '</section>';
   }
 
   /* ---- 6.7 BACKEND PAYI — brief §10.2 (b). Tablo KOPYALANIR. -------- */
+  /* BE-S3 GÜNCELLENDİ: sürümleme artık kapsam dışı DEĞİL — revizyon yeni
+     kayıt üretiyor, eski sürüm kilitleniyor, fark karşılaştırılabiliyor.
+     Kalan pay dürüstçe daraltıldı: kalıcılık. Bu, BE-S5 ile aynı sınıftır. */
   var BACKEND = [
     { kod:'BE-S3', bolum:'riskler K-17',
-      madde:'Teklif sürümleme (revizyon = yeni kayıt) bu turda kapsam dışı — K-17' },
+      madde:'Teklif sürümleme UYGULANDI (revizyon = yeni kayıt, eski sürüm kilitli, fark ' +
+            'karşılaştırılabilir); kalan pay: sürüm zinciri bellekte yaşar, sayfa yenilenince sıfırlanır' },
     { kod:'BE-S5', bolum:'§9 audit_event',
       madde:'Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır' }
   ];
@@ -599,18 +720,39 @@ document.addEventListener('gv:ready', function(){
      7. ÇİZİM — idempotent; `gv:ready` her atıldığında aynı sonucu verir
      =================================================================== */
   function ciz(){
+    /* KİLİTLİ KAYITTA EYLEM BASILMAZ. “Teklifi yazdır” ve “Listeye dön”
+       salt okunurdur, kalır; “Düzenle” ve “Revizyon Aç” kaydı değiştirir,
+       kilitliyken hiç doğmaz — motor zaten reddederdi (ölü buton yasağı). */
+    var eylemler = [
+      { label:'Teklifi yazdır', icon:'i-printer', cls:'btn-acc',
+        run:function(){ belge().onizle(); } }
+    ];
+    if(revIzin.ok)
+      eylemler.push({ label:'Revizyon Aç', icon:'i-copy', cls:'btn-line', run:revizyonAcDene });
+    if(!kayitKilidi)
+      eylemler.push({ label:'Düzenle', icon:'i-edit', href:'app-teklif-form.html?id=' + q.kod });
+    eylemler.push({ label:'Listeye dön', icon:'i-arrow-left', href:'app-teklif.html' });
+
     GV.pageHead({
       eyebrow:'Müşteri ve Satış · Teklifler',
       title:q.kod,
       sub:(q.firma || '—') + ' · ' + q.durum + ' · sürüm ' + q.versiyon +
+          (zincir && zincir.adet > 1 ? '/' + zincir.adet : '') +
+          (kayitKilidi ? ' · kilitli' : '') +
           ' · ' + paraMetin(q.toplam) + ' (KDV dahil)',
-      actions:[
-        { label:'Teklifi yazdır', icon:'i-printer', cls:'btn-acc',
-          run:function(){ belge().onizle(); } },
-        { label:'Düzenle', icon:'i-edit', href:'app-teklif-form.html?id=' + q.kod },
-        { label:'Listeye dön', icon:'i-arrow-left', href:'app-teklif.html' }
-      ]
+      actions:eylemler
     });
+
+    /* Kilit uyarısı SAYFANIN EN ÜSTÜNDE — sebebi motordan (`kl.why`) gelir. */
+    var kilitUst = kayitKilidi
+      ? '<div class="u-mb-4">' + GV.notice({ tone:'warn', icon:'i-lock',
+          title:'Bu sürüm kilitli',
+          text:kayitKilidi.why,
+          actions:(zincir && zincir.guncel && zincir.guncel !== q.kod)
+            ? [{ label:'Güncel sürümü aç', cls:'btn-acc',
+                 href:'app-teklif-detay.html?id=' + zincir.guncel }]
+            : [] }) + '</div>'
+      : '';
 
     var ust = gecerlilikGecti
       ? '<div class="u-mb-4">' + GV.notice({ tone:'warn', icon:'i-hourglass',
@@ -621,10 +763,10 @@ document.addEventListener('gv:ready', function(){
                'sağdaki düğmelerden yapılır.' }) + '</div>'
       : '';
 
-    mount.innerHTML = ust +
+    mount.innerHTML = kilitUst + ust +
       '<div class="gv-grid gv-grid-main">' +
         '<div>' + cizOzet() + cizKalem() + cizTutar() + cizAktivite() + '</div>' +
-        '<aside>' + cizGecis() + cizSurum() + cizBackend() + '</aside>' +
+        '<aside>' + cizGecis() + cizZincir() + cizBackend() + '</aside>' +
       '</div>';
   }
 
@@ -636,6 +778,13 @@ document.addEventListener('gv:ready', function(){
     if(b && !b.disabled){ gecisDene(b.getAttribute('data-hedef')); return; }
     var i = ev.target.closest('[data-istisna]');
     if(i){ istisnaAc(i.getAttribute('data-istisna')); return; }
+    var f = ev.target.closest('[data-fark]');
+    if(f){
+      var yon = f.getAttribute('data-fark');
+      if(yon === 'onceki') farkAc(oncekiKod, q.kod);
+      else                 farkAc(q.kod, ardilKod);
+      return;
+    }
   }, 'teklifDetay-click');
 
   function adimOf(hedef){
@@ -783,6 +932,172 @@ document.addEventListener('gv:ready', function(){
         return { mesaj:q.kod + ' kazanıldı' +
                  (o ? ' · ' + o.kod + ' fırsatı da kazanıldı' : ''), auditKod:r.kayit.kod };
       }
+    });
+  }
+
+  /* ---- 8.4 REVİZYON AÇ (K-17) ---------------------------------------
+     Sürüm ÜRETİMİ yalnız `GV.teklif.revizyonAc`tadır; ekran ne `versiyon`
+     ne `durum` yazar. Onay penceresinde ne olacağı ÖNCEDEN SAYILIR: yeni
+     sürüm numarası, kopyalanacak kalem adedi, kilitlenecek kayıt. */
+  function revizyonAcDene(){
+    var izin = GV.teklif.revizyonIzni(q.kod);
+    if(!izin.ok){ GV.toast(izin.mesaj || 'Bu kayıttan revizyon açılamaz.', 'danger'); return; }
+
+    var z      = GV.teklif.zincir(q.kod);
+    var enBuyuk = z ? z.surum.reduce(function(m, s){ return Math.max(m, s.versiyon || 1); }, 0)
+                    : (q.versiyon || 1);
+    var yeniV  = enBuyuk + 1;
+    var kalemN = kalemler.length;
+
+    GV.action({
+      eylem:'Revizyon Aç',
+      kayit:{ kod:q.kod, baslik:q.firma },
+      tone:'accent',
+      sonuc:'Yeni bir teklif KAYDI açılacak: sürüm ' + yeniV + ', durum “Taslak”, iç onay ' +
+        '“Bekliyor”. ' +
+        (kalemN ? kalemN + ' kalem satırı yeni sürüme kopyalanacak.'
+                : 'Bu teklifin kalem dökümü kaynak veride yok; kopyalanacak satır da yok.') +
+        ' Bu kayıt (' + q.kod + ' · sürüm ' + (q.versiyon || 1) + ') kilitlenip salt okunur ' +
+        'olacak — içeriği DEĞİŞMEZ, üzerine yazılmaz.',
+      etkilenen:[
+        q.kod + ' — kilitlenir; hiçbir durum geçişi yapılamaz',
+        'Yeni kayıt sürüm ' + yeniV + ' — Taslak olarak doğar, karar alanları taşınmaz',
+        'Prototip sınırı: yeni kayıt BELLEKTE tutulur, sayfa yenilenince kaybolur (BE-S3)'
+      ],
+      run:function(v){
+        var r = GV.teklif.revizyonAc(q.kod, { not:v.not });
+        if(!r || !r.ok) return { ok:false, mesaj:(r && r.mesaj) || 'Revizyon açılamadı.' };
+        GV.afterSave({
+          kod:r.yeni.kod,
+          liste:'app-teklif.html',
+          detay:'app-teklif-detay.html',
+          yeni:true,
+          mesaj:r.yeni.kod + ' açıldı — ' + q.kod + ' sürüm ' + (q.versiyon || 1) +
+                ' kilitlendi. Yeni sürüm ' + r.versiyon + ', durum Taslak; ' +
+                (r.kalem ? r.kalem + ' kalem kopyalandı.' : 'kopyalanacak kalem satırı yoktu.')
+        });
+        return { mesaj:'Revizyon açıldı: ' + r.yeni.kod + ' · sürüm ' + r.versiyon };
+      }
+    });
+  }
+
+  /* ---- 8.5 SÜRÜM FARKI -----------------------------------------------
+     Karşılaştırmayı `GV.teklif.fark` yapar; ekran yalnız BASAR. İki
+     sözlük burada durur ve ikisi de biçim kararıdır: hangi alanın para
+     olduğu (maskeleme) ve kalem alan adlarının Türkçe etiketi. */
+  var KALEM_ETIKET = { kalem:'Kalem adı', tur:'Tür', birim:'Birim',
+                       miktar:'Miktar', birimFiyat:'Birim fiyat', tutar:'Tutar' };
+
+  function farkDeger(f, v){
+    if(v == null || v === '' || String(v).trim() === '—') return BOS;
+    if(PARA_ALAN.indexOf(f.alan) !== -1) return para(v);
+    if(f.alan === 'tarih' || f.alan === 'gecerlilik') return tarih(v);
+    if(f.alan === 'durum' || f.alan === 'icOnay' || f.alan === 'musteriOnay') return GV.badge(v);
+    if(f.alan === 'vergiOran') return '<span class="u-num">%' + esc(v) + '</span>';
+    if(f.alan === 'hazirlayan') return GV.user(v, { sm:true });
+    return esc(String(v));
+  }
+  /* Sayısal alanda fark AYRICA gösterilir — "1.000 → 1.200" okunur ama
+     "+200" doğrudan söylenir. İki taraf da sayı değilse fark yoktur. */
+  function farkDelta(f){
+    if(!f.sayisal || typeof f.eski !== 'number' || typeof f.yeni !== 'number') return BOS;
+    var d = f.yeni - f.eski;
+    if(PARA_ALAN.indexOf(f.alan) !== -1)
+      return canFinans ? GV.cell.mny(d, { signed:true }) : '<span class="cell-mask">••••••</span>';
+    return '<span class="u-num ' + (d > 0 ? 'u-ok' : d < 0 ? 'u-danger' : 'u-faint') + '">' +
+      (d > 0 ? '+' : '') + esc(F.num(d)) + '</span>';
+  }
+
+  function farkAc(aKod, bKod){
+    if(!aKod || !bKod){ GV.toast('Karşılaştırılacak ikinci sürüm yok.', 'warn'); return; }
+    var d = GV.teklif.fark(aKod, bKod);
+    if(!d){ GV.toast('Sürüm farkı ölçülemedi; kayıtlardan biri bulunamadı.', 'danger'); return; }
+
+    var govde;
+    if(!d.degisiklikSayisi){
+      govde = GV.empty({ icon:'i-copy',
+        title:'İki sürüm arasında fark yok',
+        desc:aKod + ' ile ' + bKod + ' arasında değişen alan da değişen kalem de yok. ' +
+             'Revizyon açıldı ama içerik henüz düzenlenmedi — bu bir ölçüm sonucudur, ' +
+             'karşılaştırma yapılmadığı anlamına gelmez.' });
+    }else{
+      var ozet = GV.notice({ tone:'info', icon:'i-columns',
+        title:d.degisiklikSayisi + ' değişiklik · ' + d.alan.length + ' alan · ' +
+              d.kalem.length + ' kalem',
+        text:'Tutar farkı: ' +
+             (canFinans ? (d.tutarFarki > 0 ? '+' : '') + F.money(d.tutarFarki) : '••••••') +
+             ' (genel toplam ekseninde, ' + aKod + ' → ' + bKod + ').' +
+             (canFinans ? '' : ' Rolünüzde finans yetkisi yok; tutar maskeli basıldı.') });
+
+      var alanBlok;
+      if(!d.alan.length){
+        alanBlok = '<div class="gc-body u-faint u-sm">Hiçbir alan değişmedi; ' +
+          'fark yalnız kalem tablosunda.</div>';
+      }else{
+        var aKol = [{ label:'Alan', cls:'cell-wrap' }, { label:'Eski', cls:'cell-wrap' },
+                    { label:'Yeni', cls:'cell-wrap' }, { label:'Fark', cls:'num' }];
+        var aSat = d.alan.map(function(f){
+          return ['<span class="cell-main">' + esc(f.etiket) + '</span>' +
+                    GV.cell.sub('<code>' + esc(f.alan) + '</code>'),
+                  farkDeger(f, f.eski), farkDeger(f, f.yeni), farkDelta(f)];
+        });
+        var aMob = d.alan.map(function(f){
+          return GV.cell.mrow('<span class="cell-main">' + esc(f.etiket) + '</span>',
+            esc(f.alan),
+            [ farkDeger(f, f.eski) + ' → ' + farkDeger(f, f.yeni) ],
+            farkDelta(f));
+        });
+        alanBlok = tablo(aKol, aSat, aMob);
+      }
+
+      var kalemBlok;
+      if(!d.kalem.length){
+        kalemBlok = '<div class="gc-body u-faint u-sm">Kalem satırlarında değişiklik yok. ' +
+          'Not: bu iki sürümün kalem dökümü kaynak veride hiç olmayabilir — o durumda ' +
+          '“değişiklik yok” ile “kalem yok” aynı görünür, ikisi aynı şey değildir.</div>';
+      }else{
+        var kKol = [{ label:'#', cls:'center' }, { label:'Değişim' },
+                    { label:'Kalem', cls:'cell-wrap' }, { label:'Değişen alanlar', cls:'cell-wrap' }];
+        var kAd = function(x){
+          var r = x.yeni || x.eski || {};
+          return '<span class="cell-main">' + esc(r.kalem || '—') + '</span>' +
+            (x.tur === 'degisti' && x.eski && x.yeni && x.eski.kalem !== x.yeni.kalem
+              ? GV.cell.sub('eski ad: ' + esc(x.eski.kalem || '—')) : '');
+        };
+        var kRozet = function(t){
+          return t === 'eklendi' ? GV.badge('eklendi', 'is-ok')
+               : t === 'silindi' ? GV.badge('silindi', 'is-danger')
+               : GV.badge('değişti', 'is-warn');
+        };
+        var kAlanlar = function(x){
+          if(x.tur !== 'degisti') return '<span class="u-faint">satırın tamamı</span>';
+          return (x.alanlar || []).map(function(k){
+            return '<span class="badge is-neutral">' + esc(KALEM_ETIKET[k] || k) + '</span>';
+          }).join(' ');
+        };
+        var kSat = d.kalem.map(function(x){
+          return [GV.cell.num(x.sira), kRozet(x.tur), kAd(x), kAlanlar(x)];
+        });
+        var kMob = d.kalem.map(function(x){
+          return GV.cell.mrow(kAd(x), esc(x.sira + '. kalem'), [kAlanlar(x)], kRozet(x.tur));
+        });
+        kalemBlok = tablo(kKol, kSat, kMob);
+      }
+
+      govde = ozet +
+        '<div class="gc-head"><h3 class="gc-title">' + ico('i-list') + 'Alan farkları</h3>' +
+          '<div class="gc-head-acts">' + sayacEtiketi(d.alan.length, 'alan') + '</div></div>' +
+        alanBlok +
+        '<div class="gc-head"><h3 class="gc-title">' + ico('i-package') + 'Kalem farkları</h3>' +
+          '<div class="gc-head-acts">' + sayacEtiketi(d.kalem.length, 'satır') + '</div></div>' +
+        kalemBlok;
+    }
+
+    GV.modal({
+      title:'Sürüm farkı — ' + aKod + ' → ' + bKod,
+      text:'Karşılaştırmayı GV.teklif.fark ölçtü; ekran kendi karşılaştırmasını yapmaz.',
+      icon:'i-columns', size:'lg', body:govde,
+      actions:[{ label:'Kapat', cls:'btn-line' }]
     });
   }
 
