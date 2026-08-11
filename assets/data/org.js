@@ -501,13 +501,38 @@ DB.transitions = {
        ve `İptal Edildi`ye gitmeyi de. Yani başlatma koşulunu sağlamayan bir
        proje İPTAL DE EDİLEMİYORDU. Bir işi iptal etmek, onu başlatmaktan
        daha ağır koşula bağlanamaz (aynı sınıf düzeltme: `leave`, `quote`). */
-    'Başlatma Onayı':  { next:['Aktif','Plan','İptal Edildi'],   yetki:['sahip','genelmudur'],      zorunlu:[], etiket:'Projeyi Başlat', tone:'btn-ok' },
-    'Aktif':           { next:['Test/Kabul','Beklemede','İptal Edildi'], yetki:['pm','sahip'], zorunlu:[], girisKapi:'projeAktif', anaHedef:'Test/Kabul', etiket:'Teste Al', tone:'btn-acc' },
+    /* K-32 eki — `projeAktif` HEDEFTEN KENARA indi. Hedefe bağlıyken ölçüldü:
+       `Aktif` durumuna ÜÇ kenar giriyor (`Başlatma Onayı` ileri · `Beklemede`
+       devam · `Test/Kabul` geri). Kapı "başlatmak için pm/tarih/müşteri/
+       sözleşme eksik olmasın" der ve yalnız İLK aktivasyonu ilgilendirir;
+       öbür iki kenar zaten bir kez aktif olmuş projenin geri dönüşüdür ve
+       kapıya takılıyordu — beklemeye alınmış proje devam ettirilemiyor,
+       testten geliştirmeye dönülemiyordu. Kapı doğruydu, bağı geniş kalmıştı. */
+    'Başlatma Onayı':  { next:['Aktif','Plan','İptal Edildi'],   yetki:['sahip','genelmudur'],      zorunlu:[], etiket:'Projeyi Başlat', tone:'btn-ok',
+                         kenarKapi:{ 'Aktif':{ kapi:'projeAktif', istisnaRol:[] } } },
+    'Aktif':           { next:['Test/Kabul','Beklemede','İptal Edildi'], yetki:['pm','sahip'], zorunlu:[], anaHedef:'Test/Kabul', etiket:'Teste Al', tone:'btn-acc' },
     'Beklemede':       { next:['Aktif','İptal Edildi'],          yetki:['pm','sahip'],      zorunlu:[], girisGerekce:true, etiket:'Devam Ettir', tone:'btn-acc' },
-    'Test/Kabul':      { next:['Teslim','Aktif'],                yetki:['pm','sahip'],      zorunlu:[], kapi:'projeTeslim', istisnaRol:['sahip','genelmudur'], etiket:'Teslime Al', tone:'btn-acc' },
+    /* K-32 · 1/4 — `projeTeslim` kapısı KAYNAKTAN KENARA taşındı.
+       Kapı "açık kritik hata varken teslime alma" der. Kaynağa bağlıyken
+       `Test/Kabul → Aktif` kenarını da kesiyordu: testte kritik hata bulunan
+       proje geliştirmeye GERİ ALINAMIYORDU — kapının engellemesi gereken şeyin
+       tam tersi.
+       `girisKapi` ile `Teslim` hedefine taşımak YETMEZ, ölçüldü: `Teslim`e iki
+       kenar giriyor (`Test/Kabul` ileri · `Kapanış` geri) ve o zaman kapanıştan
+       teslime GERİ DÖNÜŞ kritik hata kapısına takılırdı. Bu yüzden kenara
+       bağlandı — engellenen tek iş kaldı: kritik hatayla teslime İLERLEMEK. */
+    'Test/Kabul':      { next:['Teslim','Aktif'],                yetki:['pm','sahip'],      zorunlu:[], etiket:'Teslime Al', tone:'btn-acc',
+                         kenarKapi:{ 'Teslim':{ kapi:'projeTeslim', istisnaRol:['sahip','genelmudur'] } } },
     'Teslim':          { next:['Kapanış','Test/Kabul'],          yetki:['pm','sahip'],      zorunlu:[], etiket:'Kapanışa Al', tone:'btn-acc' },
-    'Kapanış':         { next:['Tamamlandı','Teslim'],           yetki:['pm','sahip','genelmudur'], zorunlu:[], kapi:'projeKapanis', istisnaRol:['sahip','genelmudur'], etiket:'Projeyi Tamamla', tone:'btn-ok' },
-    'Tamamlandı':      { next:['Arşivlendi'],                    yetki:['sahip','genelmudur'],      zorunlu:[], etiket:'Arşivle', tone:'btn-line' },
+    /* K-32 · 2/4 — `projeKapanis` kapısı hedefe taşındı. Kaynağa bağlıyken
+       `Kapanış → Teslim` kenarını da kesiyordu: kapanış koşulunu sağlamayan
+       proje teslim aşamasına geri döndürülemiyordu, yani eksiği tamamlamak
+       için gereken yol kapalıydı.
+       Ölçüldü: `Tamamlandı` hedefine TEK kenar giriyor, o yüzden `girisKapi`
+       kenarı tam bağlar; `kenarKapi`ye gerek yok. */
+    'Kapanış':         { next:['Tamamlandı','Teslim'],           yetki:['pm','sahip','genelmudur'], zorunlu:[], anaHedef:'Tamamlandı', etiket:'Projeyi Tamamla', tone:'btn-ok' },
+    'Tamamlandı':      { next:['Arşivlendi'],                    yetki:['sahip','genelmudur'],      zorunlu:[], etiket:'Arşivle', tone:'btn-line',
+                         girisKapi:'projeKapanis', istisnaRol:['sahip','genelmudur'] },
     'İptal Edildi':    { next:['Arşivlendi'],                    yetki:['sahip','genelmudur'],      zorunlu:[], gerekce:true, etiket:'Arşivle', tone:'btn-line' },
     'Arşivlendi':      { next:[], terminal:true }
   },
@@ -517,14 +542,24 @@ DB.transitions = {
     'Taslak':            { next:['İç İnceleme','İptal Edildi'],            yetki:['satismudur','satistemsilci','sahip','genelmudur'], zorunlu:['musteri','tutar'], etiket:'İç İncelemeye Gönder', tone:'btn-acc' },
     'İç İnceleme':       { next:['Müşteri İncelemesi','Taslak','İptal Edildi'], yetki:['sahip','genelmudur'],    zorunlu:[], etiket:'Müşteriye Gönder', tone:'btn-acc' },
     'Müşteri İncelemesi':{ next:['İmza','İç İnceleme','İptal Edildi'],     yetki:['satismudur','satistemsilci','sahip','genelmudur'], zorunlu:[], etiket:'İmzaya Al', tone:'btn-acc' },
-    /* ⚠️ `sozlesmeAktif` kapısı HEDEFE bağlıdır. Kaynakta dururken `İmza`dan
-       çıkan üç hedefi birden engelliyordu: ödeme planı dengesiz bir sözleşme
-       ne aktive edilebiliyor, ne müşteri incelemesine geri gönderilebiliyor,
-       NE DE İPTAL EDİLEBİLİYORDU. İptal, aktive etmekten ağır olamaz. */
-    'İmza':              { next:['Aktif','Müşteri İncelemesi','İptal Edildi'], yetki:['sahip','genelmudur'],     zorunlu:['imzaTarihi'], etiket:'Sözleşmeyi Aktive Et', tone:'btn-ok' },
-    'Aktif':             { next:['Tamamlandı','Askıda','Yenileme/Zeyil','Feshedildi'], yetki:['sahip','genelmudur'], zorunlu:[], girisKapi:'sozlesmeAktif', anaHedef:'Tamamlandı', etiket:'Tamamlandı İşaretle', tone:'btn-ok' },
+    /* ⚠️ `sozlesmeAktif` kapısı önce KAYNAKTAN HEDEFE, K-32 ekiyle HEDEFTEN
+       KENARA taşındı — iki adımlı bir düzeltmenin ikinci adımı.
+       Kaynakta dururken `İmza`dan çıkan üç hedefi birden engelliyordu: ödeme
+       planı dengesiz bir sözleşme ne aktive edilebiliyor, ne müşteri
+       incelemesine geri gönderilebiliyor, NE DE İPTAL EDİLEBİLİYORDU.
+       Hedefe taşındıktan sonra ölçüldü: `Aktif` durumuna ÜÇ kenar giriyor ve
+       `Askıda → Aktif` kenarı da kapıya takılıyordu — askıya alınmış bir
+       sözleşme, bir kez aktive edilmişken, askıdan İNDİRİLEMİYORDU.
+       Kapı şimdi İKİ İLERİ KENARA bağlı: ilk aktivasyon (`İmza`) ve zeylin
+       yürürlüğe girmesi (`Yenileme/Zeyil`) — ikisi de ödeme planını
+       değiştiren kararlardır. Askıdan dönüş serbesttir: geri almak,
+       başlatmaktan ağır olamaz. */
+    'İmza':              { next:['Aktif','Müşteri İncelemesi','İptal Edildi'], yetki:['sahip','genelmudur'],     zorunlu:['imzaTarihi'], etiket:'Sözleşmeyi Aktive Et', tone:'btn-ok',
+                           kenarKapi:{ 'Aktif':{ kapi:'sozlesmeAktif', istisnaRol:[] } } },
+    'Aktif':             { next:['Tamamlandı','Askıda','Yenileme/Zeyil','Feshedildi'], yetki:['sahip','genelmudur'], zorunlu:[], anaHedef:'Tamamlandı', etiket:'Tamamlandı İşaretle', tone:'btn-ok' },
     'Askıda':            { next:['Aktif','Feshedildi'],                    yetki:['sahip','genelmudur'],         zorunlu:[], girisGerekce:true, etiket:'Askıyı Kaldır', tone:'btn-acc' },
-    'Yenileme/Zeyil':    { next:['Aktif','İptal Edildi'],                  yetki:['sahip','genelmudur'],         zorunlu:[], etiket:'Zeyili Yürürlüğe Al', tone:'btn-ok' },
+    'Yenileme/Zeyil':    { next:['Aktif','İptal Edildi'],                  yetki:['sahip','genelmudur'],         zorunlu:[], etiket:'Zeyili Yürürlüğe Al', tone:'btn-ok',
+                           kenarKapi:{ 'Aktif':{ kapi:'sozlesmeAktif', istisnaRol:[] } } },
     'Tamamlandı':        { next:[], terminal:true },
     'Feshedildi':        { next:[], terminal:true },
     'İptal Edildi':      { next:[], terminal:true }
@@ -598,7 +633,16 @@ DB.transitions = {
     'Atandı':        { next:['Devam ediyor','Triage'],           yetki:['sorumlu','destek','pm'], zorunlu:[], etiket:'Çalışmaya Başla', tone:'btn-acc' },
     'Devam ediyor':  { next:['Çözüldü','Triage'],                yetki:['sorumlu','destek','pm'], zorunlu:['cozumAciklama'], etiket:'Çözüldü İşaretle', tone:'btn-ok' },
     'Çözüldü':       { next:['Müşteri Onayı','Devam ediyor'],    yetki:['sorumlu','destek','pm'], zorunlu:[], etiket:'Müşteri Onayına Gönder', tone:'btn-acc' },
-    'Müşteri Onayı': { next:['Kapandı','Devam ediyor'],          yetki:['destek','pm','sahip','musteri'], zorunlu:[], kapi:'destekKota', etiket:'Kapat', tone:'btn-ok' },
+    /* K-32 · 3/4 — `destekKota` kapısı KAYNAKTAN KENARA taşındı.
+       Kapı kota düşümünü denetler. Kaynağa bağlıyken `Müşteri Onayı → Devam
+       ediyor` kenarını da kesiyordu: müşteri onaylamayıp talebi geri
+       gönderdiğinde kota yüzünden talep çalışmaya GERİ ALINAMIYORDU — hiç
+       kota harcamayan bir kenar kota kapısına takılıyordu.
+       Ölçüldü: `Kapandı` hedefine iki kenar giriyor (`Müşteri Onayı` ·
+       `Yeni`); `girisKapi` yeni açılan bir talebi doğrudan kapatmayı da
+       kotaya bağlardı. Bu yüzden kenara bağlandı. */
+    'Müşteri Onayı': { next:['Kapandı','Devam ediyor'],          yetki:['destek','pm','sahip','musteri'], zorunlu:[], etiket:'Kapat', tone:'btn-ok',
+                       kenarKapi:{ 'Kapandı':{ kapi:'destekKota', istisnaRol:[] } } },
     'Kapandı':       { next:['Yeniden Açıldı'],                  yetki:['destek','pm','sahip'], zorunlu:[], gerekce:true, etiket:'Yeniden Aç', tone:'btn-line' },
     'Yeniden Açıldı':{ next:['Triage'],                          yetki:['destek','pm','sahip'], zorunlu:[], etiket:'Triage Et', tone:'btn-acc' }
   },
@@ -642,8 +686,15 @@ DB.transitions = {
   /* Teslim — şartname [9.4.2]/[9.4.3] · kritik hata kapısı ADR-05 */
   delivery:{
     'Taslak':               { next:['İç Kontrol','Geri Çekildi'],           yetki:['pm','sahip'],  zorunlu:['ad','tarih'], etiket:'İç Kontrole Gönder', tone:'btn-acc' },
-    'İç Kontrol':           { next:['Müşteriye Gönderildi','Taslak'],       yetki:['pm','sahip'],  zorunlu:[], kapi:'teslimKritikHata', istisnaRol:['sahip','genelmudur'], etiket:'Müşteriye Gönder', tone:'btn-acc' },
-    'Müşteriye Gönderildi': { next:['Kabul','Kısmi Kabul','Ret','Geri Çekildi'], yetki:['pm','sahip','musteri'], zorunlu:[], anaHedef:'Kabul', etiket:'Kabul İşaretle', tone:'btn-ok' },
+    /* K-32 · 4/4 — `teslimKritikHata` kapısı hedefe taşındı. Kaynağa
+       bağlıyken `İç Kontrol → Taslak` kenarını da kesiyordu: iç kontrolde
+       kritik hata bulunan teslim taslağa GERİ ALINAMIYORDU, yani hatayı
+       düzeltmek için gereken yol kapının kendisi tarafından kapatılıyordu.
+       Ölçüldü: `Müşteriye Gönderildi` hedefine TEK kenar giriyor (`İç
+       Kontrol`), o yüzden `girisKapi` kenarı tam bağlar. */
+    'İç Kontrol':           { next:['Müşteriye Gönderildi','Taslak'],       yetki:['pm','sahip'],  zorunlu:[], etiket:'Müşteriye Gönder', tone:'btn-acc' },
+    'Müşteriye Gönderildi': { next:['Kabul','Kısmi Kabul','Ret','Geri Çekildi'], yetki:['pm','sahip','musteri'], zorunlu:[], anaHedef:'Kabul', etiket:'Kabul İşaretle', tone:'btn-ok',
+                              girisKapi:'teslimKritikHata', istisnaRol:['sahip','genelmudur'] },
     'Kabul':                { next:['Kapandı'],                              yetki:['pm','sahip'],  zorunlu:[], etiket:'Kapat', tone:'btn-ok' },
     'Kısmi Kabul':          { next:['Revizyon','Kapandı'],                   yetki:['pm','sahip'],  zorunlu:[], etiket:'Revizyona Al', tone:'btn-acc' },
     'Ret':                  { next:['Revizyon'],                             yetki:['pm','sahip'],  zorunlu:[], gerekce:true, girisGerekce:true, etiket:'Revizyona Al', tone:'btn-acc' },
@@ -705,11 +756,24 @@ DB.transitions = {
      onları SESSİZCE ATLAR. Yani kural yazılıdır ama henüz uygulanmıyor;
      bunu bilerek ve yazılı bırakmak, uygulanmadığını gizlemekten iyidir.
 
-     ⚠️ GERİ DÖNÜŞ YOLU YOK — bilerek. `kapi` ve `zorunlu` KAYNAK durumda
-     tanımlıdır, hedefe göre daralmaz: `Offboarding` üzerine konan zimmet
-     kapısı, oradan çıkan HER hedefe uygulanırdı. Bir istifayı geri almak için
-     personele zimmetli cihazı iade ettirmek saçma olurdu; bu yüzden
-     `Offboarding` tek hedeflidir. Aynı sebeple `Onboarding` de tek hedeflidir.
+     ✅ GERİ DÖNÜŞ YOLU AÇILDI — K-31 (V2-42). Buradaki eski not "geri dönüş
+     yolu yok, bilerek" diyordu ve gerekçesi motorun eksikliğiydi: `kapi` ve
+     `zorunlu` yalnız KAYNAK tarafa bağlanabildiği için `Offboarding` üzerine
+     konan zimmet kapısı ile çıkış evrakı zorunluluğu, oradan çıkan HER hedefe
+     uygulanıyordu. Yani yanlışlıkla çıkış sürecine alınmış bir personeli geri
+     döndürmek için ona zimmetli cihazı iade ettirmek ve çıkış tarihini
+     doldurmak gerekiyordu. Bu, bir eksikliği iş kuralı gibi sunmaktı.
+
+     Motora `girisKapi` (zaten vardı) ve `girisZorunlu` (K-31'de eklendi)
+     bağlandı; ikisi de HEDEFE bağlanır. Artık:
+       · `Offboarding → Ayrıldı`  zimmet kapısı + çıkış evrakı ister
+       · `Offboarding → Aktif`    yalnız GEREKÇE ister — geri almak, ayrılışı
+                                  tamamlamaktan daha ağır koşula bağlı değildir
+     `Onboarding` üzerindeki `personelEvrak` kapısı KAYNAKTA KALIR ve bu
+     doğrudur: tek hedefi vardır, ayrıca hedef `Aktif`e `İzinli` ve `Pasif`
+     durumlarından da gelinir — kapıyı oraya taşımak izinden dönen personelden
+     işe giriş evrakı istemek olurdu. Kapı reddeder, ama doğru tarafa konur.
+
      `İzinli` girişinde gerekçe İSTENMEZ: sebebi izin kaydında (`DB.leaves`)
      zaten yazılıdır, ikinci kez sorulması aynı bilgiyi iki yere yazardı. */
   employee:{
@@ -722,8 +786,15 @@ DB.transitions = {
        edilebilir olsun diye), gerekçe metni ise geçiş kaydında durur.
        `girisGerekce` bu duruma GİRERKEN neden kodu + açıklama ister;
        `zorunlu` ise ayrılışı TAMAMLAMADAN önce iki alanın dolu olmasını. */
-    'Offboarding': { next:['Ayrıldı'],                          yetki:['ik','sahip','genelmudur'], zorunlu:['cikisTarihi','cikisNedenKodu'], girisGerekce:true, kapi:'personelZimmet', etiket:'Ayrılışı Tamamla', tone:'btn-ok' },
-    'Ayrıldı':     { next:[], terminal:true }
+    /* K-31: iki hedef. Zimmet kapısı ve çıkış evrakı `Ayrıldı` HEDEFİNE
+       bağlıdır, kaynağa değil.
+       Gerekçe kaynak tarafta (`gerekce:true`) durur — çünkü `Offboarding`
+       durumundan çıkmanın her iki yönü de gerekçe ister ve `Aktif` kuralına
+       `girisGerekce` konamaz: `Aktif`e izinden de dönülüyor, orası gerekçe
+       istemez. Böylece geri alma (`Aktif`) ile ilerletme (`Ayrıldı`) aynı
+       gerekçe koşulunu paylaşır, geri alma daha ağır DEĞİLDİR. */
+    'Offboarding': { next:['Ayrıldı','Aktif'],                  yetki:['ik','sahip','genelmudur'], zorunlu:[], gerekce:true, anaHedef:'Ayrıldı', etiket:'Ayrılışı Tamamla', tone:'btn-ok' },
+    'Ayrıldı':     { next:[], terminal:true, girisGerekce:true, girisZorunlu:['cikisTarihi','cikisNedenKodu'], girisKapi:'personelZimmet' }
   }
 };
 

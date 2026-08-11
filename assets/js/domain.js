@@ -391,13 +391,58 @@
       });
     },
 
-    eksikAlanlar:function(rec, kural, ek){
-      if(!kural || !kural.zorunlu || !kural.zorunlu.length) return [];
+    /* ZORUNLU ALAN — İKİ BAĞLAMA NOKTASI, `kapi`/`girisKapi` ve
+       `gerekce`/`girisGerekce` ile birebir aynı ayrım:
+         `zorunlu`      → BU DURUMDAN ÇIKMAK alan ister. Kaynak durumdan
+                          çıkan HER hedefe uygulanır.
+         `girisZorunlu` → BU DURUMA GİRMEK alan ister. Yalnız o hedefte.
+
+       ⚠️ Bu ayrım K-31 ile ölçülmüş bir kusurdan doğdu: `Offboarding`
+       üzerindeki `zorunlu:['cikisTarihi','cikisNedenKodu']` kaynak taraflıydı
+       ve oradan çıkan her hedefe uygulanıyordu. Çıkış sürecine YANLIŞLIKLA
+       alınmış bir personeli `Aktif`e geri döndürmek için önce çıkış tarihi ve
+       çıkış nedeni doldurmak gerekiyordu — yani ayrılmadığını söylemek için
+       ayrılış evrakını tamamlamak. Alan doğruydu, bağlandığı yer yanlıştı.
+
+       `hk` = HEDEFİN kuralı. Verilmezse yalnız kaynak tarafı okunur (eski
+       çağrı biçimi kırılmaz). */
+    eksikAlanlar:function(rec, kural, ek, hk){
+      var alanlar = [];
+      if(kural && kural.zorunlu) alanlar = alanlar.concat(kural.zorunlu);
+      if(hk && hk.girisZorunlu) hk.girisZorunlu.forEach(function(a){
+        if(alanlar.indexOf(a) === -1) alanlar.push(a); });
+      if(!alanlar.length) return [];
       ek = ek || {};
-      return kural.zorunlu.filter(function(a){
+      return alanlar.filter(function(a){
         var v = (a in ek) ? ek[a] : rec[a];
         return v == null || v === '' || (Array.isArray(v) && !v.length);
       });
+    },
+
+    /* KAPI ÇÖZÜMLEME — TEK KARAR NOKTASI (K-32).
+       Bir kapı üç yere bağlanabilir; öncelik daralttıkça artar:
+
+         1. `kenarKapi:{ hedef:{ kapi, istisnaRol } }`  KAYNAK kuralında.
+            YALNIZ o kenarı bağlar. En dar bağ.
+         2. `kapi` (+ `istisnaRol`)  KAYNAK kuralında.
+            O durumdan çıkan HER hedefi bağlar. En geniş bağ.
+         3. `girisKapi` (+ `istisnaRol`)  HEDEF kuralında.
+            O duruma giren HER kenarı bağlar.
+
+       ⚠️ 2 ile 3 arasında seçim yaparken ölçülecek şey KENAR SAYISIDIR:
+       hedefe tek kenar giriyorsa `girisKapi` kenarı tam bağlar; birden çok
+       kenar giriyorsa `girisKapi` de fazladan kenar keser ve `kenarKapi`
+       gerekir. K-32'de ölçüldü: `projeTeslim`in hedefi `Teslim`e iki kenar
+       (`Test/Kabul` ileri · `Kapanış` geri), `destekKota`nın hedefi
+       `Kapandı`ya iki kenar (`Müşteri Onayı` · `Yeni`) giriyor — o ikisi
+       `kenarKapi` ile bağlandı. Diğer ikisinin hedefine tek kenar giriyor. */
+    kapiCoz:function(kural, hk, hedef){
+      kural = kural || {}; hk = hk || {};
+      var kenar = kural.kenarKapi && kural.kenarKapi[hedef];
+      if(kenar) return { ad:kenar.kapi || null, istisnaRol:kenar.istisnaRol || [], nere:'kenar' };
+      if(kural.kapi) return { ad:kural.kapi, istisnaRol:kural.istisnaRol || [], nere:'kaynak' };
+      if(hk.girisKapi) return { ad:hk.girisKapi, istisnaRol:hk.istisnaRol || [], nere:'hedef' };
+      return { ad:null, istisnaRol:[], nere:null };
     },
 
     /* Bu kayıt + bu oturum için yapılabilir geçişler. Ekran buradan buton üretir. */
@@ -410,7 +455,6 @@
       var kural = Flow.kural(tur, rec[Flow.alan(tur)]);
       if(!kural || !kural.next || !kural.next.length) return [];
       var izin = Flow.yetkili(rec, kural);
-      var eksik = Flow.eksikAlanlar(rec, kural);
       /* Dostane etiket YALNIZ birincil hedefe verilir. Eskiden `next[0]`a
          veriliyordu ve ikisi ayrışabiliyordu: proje `Aktif` durumunda etiket
          "Teste Al" iken `next[0]` `Beklemede`ydi — düğme yanlış işi vaat
@@ -426,7 +470,9 @@
           tone:/Onay|Kabul|Tamam|Aktif|Kapandı|Kapat|Ödendi/.test(hedef) ? 'btn-ok'
              : /İptal|Ret|Fesih|Feshedildi|Kaybedildi|Engel/.test(hedef) ? 'btn-danger-line'
              : /Revizyon|Revize|İade|Geri|Arşiv|Askı/.test(hedef) ? 'btn-line' : 'btn-acc',
-          izin:izin, eksik:eksik,
+          /* Eksik alan HEDEFE GÖRE hesaplanır — `girisZorunlu` yalnız kendi
+             hedefini bağlar. Eskiden tek liste bütün hedeflere basılıyordu. */
+          izin:izin, eksik:Flow.eksikAlanlar(rec, kural, null, hk),
           /* ⚠️ DÜZELTME — burada `hk.gerekce` okunuyordu, oysa HEDEFİN
              bayrağı `girisGerekce`dir (`gec` zaten onu okuyor, satır ~380).
              Sonuç: gerekçe isteyen her hedef ekrana `gerekce:false` diye
@@ -436,11 +482,9 @@
              olması gereken yerde (L-40). Kaynak tarafındaki `gerekce` de
              korunur: o "bu durumdan ÇIKARKEN gerekçe iste" demektir. */
           gerekce:!!(kural.gerekce || hk.girisGerekce),
-          /* Kapı da hedefe bağlanabilir: `girisKapi` "bu duruma GİRERKEN
-             şu ön koşul" demektir. Kaynak taraflı `kapi` o durumdan çıkan
-             HER hedefe uygulanır ve bu bazen yanlıştır (bkz. `gec`). */
-          kapi:kural.kapi || hk.girisKapi || null,
-          istisnaRol:(kural.kapi ? kural.istisnaRol : hk.istisnaRol) || kural.istisnaRol || []
+          /* Kapı ÜÇ yere bağlanabilir — `Flow.kapiCoz` tek karar noktasıdır. */
+          kapi:Flow.kapiCoz(kural, hk, hedef).ad,
+          istisnaRol:Flow.kapiCoz(kural, hk, hedef).istisnaRol
         };
       });
     },
@@ -464,7 +508,10 @@
         return { ok:false, why:'"' + eski + '" durumundan "' + hedef + '" durumuna geçilemez' };
       if(!Flow.yetkili(rec, kural))
         return { ok:false, why:'yetki', roller:kural.yetki };
-      var eksik = Flow.eksikAlanlar(rec, kural, ek);
+      /* HEDEFİN kuralı zorunlu alan denetiminden ÖNCE okunur: `girisZorunlu`
+         hedefe bağlıdır ve kaynak taraflı `zorunlu` ile birlikte değerlenir. */
+      var hk = Flow.kural(tur, hedef) || {};
+      var eksik = Flow.eksikAlanlar(rec, kural, ek, hk);
       if(eksik.length) return { ok:false, why:'zorunlu', eksik:eksik };
 
       /* Gerekçe zorunluluğu — şartname [2.0.6]: neden KODU + açıklama.
@@ -476,7 +523,6 @@
          Tek bayrakla yürütülünce ikisi karışıyordu: `Kapandı` üzerindeki
          "yeniden açarken gerekçe iste" bayrağı, talebi KAPATIRKEN de gerekçe
          dayatıyordu. */
-      var hk = Flow.kural(tur, hedef) || {};
       if((kural.gerekce || hk.girisGerekce) && !opts.neden)
         return { ok:false, why:'gerekce',
                  mesaj:hk.girisGerekce
@@ -497,8 +543,9 @@
          yanlıştı; motorun hedef tarafında bir kancası olmadığı için bunu
          veri tarafında düzeltmek mümkün değildi. */
       var kapiUyari = null;
-      var kapiAd  = kural.kapi || hk.girisKapi || null;
-      var kapiRol = (kural.kapi ? kural.istisnaRol : hk.istisnaRol) || kural.istisnaRol || [];
+      var coz     = Flow.kapiCoz(kural, hk, hedef);
+      var kapiAd  = coz.ad;
+      var kapiRol = coz.istisnaRol;
       if(kapiAd && Gates[kapiAd]){
         var g = Gates[kapiAd](rec);
         if(!g.ok){
@@ -2836,6 +2883,28 @@
       log(z.kod, 'Zimmet kabulü geri alındı — ' + String(gerekce).trim(),
           'Onaylandı', 'Bekliyor', 'warn', 'i-refresh');
       return { ok:true, zimmet:z, demirbas:r && r.demirbas };
+    },
+
+    /* DÜŞÜRÜLEN ZİMMET İDDİASI (K-30) — envanterin bir zamanlar söylediği
+       ama defterin doğrulamadığı iddia. `null` dönmesi "iddia yoktu"
+       demektir, "iddia vardı ama bilmiyoruz" değil. */
+    dusenIddia:function(demirbasKod){
+      return ((window.DB && DB.assetClaimDrops) || []).filter(function(d){
+        return d.demirbas === demirbasKod; })[0] || null;
+    },
+
+    /* Zaman çizelgesine basılacak satır — sahte aktivite kaydı olarak
+       veriye YAZILMAZ, defterden okunup görüntü anında türetilir. */
+    dusenIddiaSatiri:function(demirbasKod){
+      var d = Varlik.dusenIddia(demirbasKod);
+      if(!d) return null;
+      return {
+        kayit:d.demirbas, tarih:d.dusurulme, kisi:null, tone:'warn', icon:'i-alert-triangle',
+        eski:d.iddiaDurum, yeni:'Depoda', turetilmis:true,
+        metin:'Envanterdeki "' + d.iddiaPersonel + ' zimmetli" iddiası düşürüldü (' +
+              d.karar + ') — ' + d.neden + '. İddianın kaynağı: ' + d.kaynak.join(' · ') +
+              '. Eksik tutanak üretilmedi.'
+      };
     }
   };
 
