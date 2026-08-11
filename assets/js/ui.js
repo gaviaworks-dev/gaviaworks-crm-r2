@@ -2078,11 +2078,23 @@
                 '<div class="gv-upload-hint">' + esc(f.hint || 'PDF, DOCX, XLSX, PNG, JPG · en fazla 20 MB') + '</div>' +
                 '<input type="file" id="' + id + '" name="' + f.key + '" hidden' + (f.multiple ? ' multiple' : '') + '></div>' +
                 '<div class="gv-filelist" data-filelist></div>';
+      /* ⚠️ `readonly` SÖZLEŞMESİ BU İKİ DALDA UYGULANMIYORDU. Metin, çok
+         satırlı ve seçim alanlarında kilit vardı; para ve yüzde alanında
+         yoktu. Sonuç: türetilmiş bir tutar (kalemlerden hesaplanan ara
+         toplam) `readonly:true` bildirmesine rağmen düzenlenebiliyordu ve
+         ekran kilidi kendi DOM'una elle yazmak zorunda kalıyordu — yani
+         kural bileşende değil çağıranda yaşıyordu. [3.1.11] tam bunu
+         yasaklıyor. */
       }else if(f.type === 'money'){
-        inner = '<div class="f-affix"><input type="number" class="inp" id="' + id + '" name="' + f.key + '" value="' + esc(v) + '"' +
-                (reqSabit ? ' required' : '') + ' min="0" step="1"><span class="f-suffix">' + esc(f.currency || '₺') + '</span></div>';
+        inner = '<div class="f-affix"><input type="number" class="inp' + (salt ? ' is-readonly' : '') +
+                '" id="' + id + '" name="' + f.key + '" value="' + esc(v) + '"' +
+                (reqSabit ? ' required' : '') + (salt ? ' readonly aria-readonly="true"' : '') +
+                ' min="0" step="1"><span class="f-suffix">' + esc(f.currency || '₺') + '</span></div>';
       }else if(f.type === 'percent'){
-        inner = '<div class="f-affix"><input type="number" class="inp" id="' + id + '" name="' + f.key + '" value="' + esc(v) + '" min="0" max="100"><span class="f-suffix">%</span></div>';
+        inner = '<div class="f-affix"><input type="number" class="inp' + (salt ? ' is-readonly' : '') +
+                '" id="' + id + '" name="' + f.key + '" value="' + esc(v) + '"' +
+                (salt ? ' readonly aria-readonly="true"' : '') +
+                ' min="0" max="100"><span class="f-suffix">%</span></div>';
       }else{
         var t = f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : f.type === 'email' ? 'email' :
                 f.type === 'tel' ? 'tel' : f.type === 'url' ? 'url' : 'text';

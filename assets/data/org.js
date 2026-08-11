@@ -501,9 +501,14 @@ DB.transitions = {
   },
 
   /* Teklif — şartname [7.3.1]/[7.3.2]/[7.3.3] · ADR-18 (icOnay eritildi) */
+    /* ⚠️ KAPI HEDEFE TAŞINDI. Eskiden `Taslak` üzerinde `kapi` olarak
+       duruyordu ve motor kaynak taraflı kapıyı o durumdan çıkan HER hedefe
+       uyguluyordu: bir taslağı İPTAL ETMEK için de onaylı ön analiz
+       gerekiyordu. Ölçüldü ve `firsat.js`teki aynı sınıf kusurla birlikte
+       kapatıldı; `girisKapi` yalnız `İç Onay` hedefinde çalışır. */
   quote:{
-    'Taslak':            { next:['İç Onay','İptal Edildi'],                yetki:['satismudur','satistemsilci','sahip','genelmudur'], zorunlu:['musteri','toplam'], kapi:'teklifOnAnaliz', istisnaRol:['sahip','genelmudur'], etiket:'İç Onaya Gönder', tone:'btn-acc' },
-    'İç Onay':           { next:['Onaylandı','Taslak','İptal Edildi'],     yetki:['sahip','genelmudur'],         zorunlu:[], etiket:'Onayla', tone:'btn-ok' },
+    'Taslak':            { next:['İç Onay','İptal Edildi'],                yetki:['satismudur','satistemsilci','sahip','genelmudur'], zorunlu:['musteri','toplam'], etiket:'İç Onaya Gönder', tone:'btn-acc' },
+    'İç Onay':           { next:['Onaylandı','Taslak','İptal Edildi'],     yetki:['sahip','genelmudur'],         zorunlu:[], girisKapi:'teklifOnAnaliz', istisnaRol:['sahip','genelmudur'], etiket:'Onayla', tone:'btn-ok' },
     'Onaylandı':         { next:['Gönderildi','Taslak'],                   yetki:['satismudur','satistemsilci','sahip','genelmudur'], zorunlu:[], etiket:'Müşteriye Gönder', tone:'btn-acc' },
     'Gönderildi':        { next:['Müşteri İncelemesi','Süresi Doldu','İptal Edildi'], yetki:['satismudur','satistemsilci','sahip','genelmudur'], zorunlu:[], anaHedef:'Müşteri İncelemesi', etiket:'İncelemede İşaretle', tone:'btn-line' },
     'Müşteri İncelemesi':{ next:['Kazanıldı','Kaybedildi','Müzakere/Revizyon','Süresi Doldu'], yetki:['satismudur','satistemsilci','sahip','genelmudur'], zorunlu:[], anaHedef:'Kazanıldı', etiket:'Kazanıldı', tone:'btn-ok' },

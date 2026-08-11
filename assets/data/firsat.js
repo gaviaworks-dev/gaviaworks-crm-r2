@@ -95,9 +95,18 @@ window.DB = window.DB || {};
      `Sözleşme aşaması`ndan çıkan HER hedefe uygulanıyordu — yani bir satışı
      KAYBETMEK için müşterinin vergi numarasını doldurmak gerekiyordu.
      `girisKapi` yalnız `Kazanıldı` hedefinde çalışır (motor: domain.js `gec`). */
-  tablo[KAZANILDI]  = { next:[], terminal:true,
-                        girisKapi:'firsatKazanma',
-                        istisnaRol:['sahip', 'genelmudur'] };
+  /* ⚠️ İSTİSNA VAAT EDİLMİYOR — ve bu bilerek.
+     İlk yazımda `istisnaRol:['sahip','genelmudur']` vardı; motor bunu
+     `istisnaMumkun:true` diye bildiriyor, ekran da "yönetici istisnasıyla
+     geç" düğmesi basıyordu. Ölçüldü: o düğme ASLA sonuç veremez, çünkü
+     zincirin üçüncü adımı (`GV.lifecycle.gec` → MUSTERI) istisna tanımıyor
+     ve AYNI eksik alan listesine bakıyor — geçiş `why:'evre'` ile düşüyor ve
+     aşama geri alınıyor. Basılabilen ama hiçbir zaman iş görmeyen düğme,
+     L-23'ün tarifi.
+     Kalıcı çözüm şartnamede yazılı: §5.2 müşteri evresine geçerken yasal ve
+     fatura alanlarının DOĞRULANMASINI emrediyor ve bir istisna yolu
+     tanımlamıyor. Vaat kaldırıldı; eksik alan doldurulur, geçilmez. */
+  tablo[KAZANILDI]  = { next:[], terminal:true, girisKapi:'firsatKazanma' };
   tablo[KAYBEDILDI] = { next:[], terminal:true, girisGerekce:true };
   tablo[BEKLEME]    = {
     next:[adi(1), KAYBEDILDI],
