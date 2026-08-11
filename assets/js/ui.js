@@ -844,7 +844,22 @@
                        .filter(Boolean);
     }
 
-    /* ---- URL senkronu ---- */
+    /* ---- URL senkronu ----
+       `cfg.urlKeep:['t']` — SAYFANIN sahiplendiği adres anahtarları. Liste
+       onları ne okur ne yazar ne siler.
+
+       ⚠️ Ölçülmüş kusurdan doğdu: `writeURL` yedi anahtarın (`t q p s d v
+       arsiv`) hepsini KOŞULSUZ siliyor, sonra yalnız `cfg.tabs` varsa `t`yi
+       geri yazıyordu. Sekmesi kendi kayıtlı görünümünde olan bir sayfa
+       (`app-varlik.html` — üç yüzeyin `source`/`columns`/`kpis`'ı ayrı,
+       tek `cfg.tabs` ile ifade edilemez) `?t=` parametresini HER arama,
+       filtre ve sıralama etkileşiminde kaybediyordu. Bileşen, sahibi
+       olmadığı bir anahtarı siliyordu.
+
+       Ekranda bunu telafi eden bir yama yazmak omurgayı çatallamak olurdu:
+       aynı yamayı yazan ikinci ekran ikinci bir kural doğurur. Sözleşme
+       burada, tek yerde. */
+    function korunan(k){ return (cfg.urlKeep || []).indexOf(k) !== -1; }
     function readURL(){
       /* `urlSync:false` İKİ YÖNLÜDÜR. Eskiden yalnız YAZMA susturuluyordu,
          okuma her listede koşuyordu — tek listeli sayfada fark etmezdi.
@@ -856,7 +871,7 @@
          durumunu kendine mal etmektir. */
       if(cfg.urlSync === false) return;
       var q = new URLSearchParams(location.search);
-      if(q.get('t')) state.tab = q.get('t');
+      if(q.get('t') && !korunan('t')) state.tab = q.get('t');
       if(q.get('q')) state.q = q.get('q');
       if(q.get('p')) state.page = Math.max(1, parseInt(q.get('p'),10) || 1);
       if(q.get('s')){ state.sort = q.get('s'); state.dir = q.get('d') === 'desc' ? 'desc' : 'asc'; }
@@ -870,10 +885,10 @@
     function writeURL(){
       if(cfg.urlSync === false) return;
       var q = new URLSearchParams(location.search);
-      ['t','q','p','s','d','v','arsiv'].forEach(function(k){ q.delete(k); });
+      ['t','q','p','s','d','v','arsiv'].forEach(function(k){
+        if(!korunan(k)) q.delete(k); });
       Array.from(q.keys()).forEach(function(k){ if(k.indexOf('f_') === 0) q.delete(k); });
-      if(state.tab && cfg.tabs && state.tab !== cfg.tabs[0].key) q.set('t', state.tab);
-      else if(state.tab && cfg.tabs) q.set('t', state.tab);
+      if(state.tab && cfg.tabs && !korunan('t')) q.set('t', state.tab);
       if(state.q) q.set('q', state.q);
       if(state.page > 1) q.set('p', state.page);
       if(state.sort){ q.set('s', state.sort); q.set('d', state.dir); }

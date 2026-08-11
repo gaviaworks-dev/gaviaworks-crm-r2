@@ -551,6 +551,23 @@
       return { ad:null, istisnaRol:[], nere:null };
     },
 
+    /* Kaydın durumu HAKKINDA tek başvuru noktası. `adimlar()` yapılabilir
+       geçişleri verir; bu ise durumun KENDİSİNİ anlatır — terminal mi,
+       hangi roller bu durumdan çıkabilir. İkisini ayrı ayrı `DB.transitions`
+       okuyarak öğrenmek, aynı kuralın ikinci okuyucusunu doğurur. */
+    durumBilgi:function(tur, kod){
+      var rec = Flow.kayit(tur, kod);
+      if(!rec) return null;
+      var durum = rec[Flow.alan(tur)];
+      var kural = Flow.kural(tur, durum) || {};
+      return {
+        durum:durum,
+        terminal:!!kural.terminal || !(kural.next && kural.next.length),
+        yetki:kural.yetki || [],
+        kilit:Flow.kilit(tur, rec) || null
+      };
+    },
+
     /* Bu kayıt + bu oturum için yapılabilir geçişler. Ekran buradan buton üretir. */
     adimlar:function(tur, kod){
       if(tur === 'task') return GV.task.nextSteps(kod);
@@ -578,7 +595,12 @@
              : /Revizyon|Revize|İade|Geri|Arşiv|Askı/.test(hedef) ? 'btn-line' : 'btn-acc',
           /* Eksik alan HEDEFE GÖRE hesaplanır — `girisZorunlu` yalnız kendi
              hedefini bağlar. Eskiden tek liste bütün hedeflere basılıyordu. */
-          izin:izin, eksik:Flow.eksikAlanlar(rec, kural, null, hk),
+          /* `yetki` — bu geçişi HANGİ roller yapabilir. Ekran bunu yazmak
+             için `DB.transitions`i kendisi okumak zorunda kalıyordu; kural
+             motorda, okunuşu ekranda olurdu (L-40). Artık adımla birlikte
+             gelir. */
+          izin:izin, yetki:kural.yetki || [],
+          eksik:Flow.eksikAlanlar(rec, kural, null, hk),
           /* ⚠️ DÜZELTME — burada `hk.gerekce` okunuyordu, oysa HEDEFİN
              bayrağı `girisGerekce`dir (`gec` zaten onu okuyor, satır ~380).
              Sonuç: gerekçe isteyen her hedef ekrana `gerekce:false` diye
@@ -3012,7 +3034,9 @@
       var d = Varlik.dusenIddia(demirbasKod);
       if(!d) return null;
       return {
-        kayit:d.demirbas, tarih:d.dusurulme, kisi:null, tone:'warn', icon:'i-alert-triangle',
+        /* ⚠️ `i-alert-triangle` DEĞİL — o ad 113 sembollük sprite'ta yok ve
+           boş bir `<use>` çizerdi. Sprite'ta duran ad `i-alert`tir. */
+        kayit:d.demirbas, tarih:d.dusurulme, kisi:null, tone:'warn', icon:'i-alert',
         eski:d.iddiaDurum, yeni:'Depoda', turetilmis:true,
         metin:'Envanterdeki "' + d.iddiaPersonel + ' zimmetli" iddiası düşürüldü (' +
               d.karar + ') — ' + d.neden + '. İddianın kaynağı: ' + d.kaynak.join(' · ') +
