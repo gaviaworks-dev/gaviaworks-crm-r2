@@ -1,0 +1,213 @@
+/* =====================================================================
+   GAVIAWORKS CRM — DESIGN TOKENS
+   Tek doğru kaynak. Aşağıdaki dosyalarda (shell.css, ui.css, sayfa CSS'i)
+   hardcode renk / boşluk / yarıçap / gölge / tipografi değeri BULUNMAZ.
+
+   Katmanlar:
+     1. Marka (koyu katman)      — Gavia Works kurumsal kimliği
+     2. Accent                   — bölüm/marka yeniden renklendirme ekseni
+     3. Nötr içerik skalası      — açık zemin arayüzü
+     4. Semantik durumlar        — accent'ten BAĞIMSIZ (durum rengi markayla değişmez)
+     5. Ölçü sistemi             — spacing, radius, shadow, type, motion, z-index, layout
+   ===================================================================== */
+
+:root{
+  /* ==== 1. MARKA — koyu katman ============================================ */
+  --brand-abyss:#020734;      /* ikon rail zemini — en koyu */
+  --brand-night:#0F1230;      /* bölüm menüsü zemini */
+  --brand-deep:#080B24;       /* koyu yüzey (kod bloğu, dark kart) */
+  --brand-mint:#3FD5AD;       /* ana accent (koyu zeminde) */
+  --brand-mint-bright:#54E7C0;
+  --brand-mint-dim:rgba(63,213,173,.14);
+  --brand-hair:rgba(233,238,241,.10);
+  --brand-line:#1D2440;
+
+  /* koyu zemin üzeri metin kademeleri */
+  --on-dark:#E9EEF3;
+  --on-dark-2:rgba(233,238,243,.76);
+  --on-dark-mut:rgba(233,238,243,.50);
+  --on-dark-faint:rgba(233,238,243,.34);
+
+  /* ==== 2. ACCENT ========================================================= */
+  --acc:#3FD5AD;
+  --acc-rgb:63,213,173;
+  --acc-ink:#0C8467;          /* açık zeminde erişilebilir accent (metin/link) */
+  --acc-deep:#096B53;         /* acc-ink hover */
+  --acc-tint:#E4F8F2;         /* açık zemin accent dolgusu */
+  --acc-tint-2:#CDF1E6;
+  --acc-ring:rgba(63,213,173,.34);
+
+  /* ==== 3. NÖTR İÇERİK SKALASI ============================================ */
+  --bg:#F5F7FA;               /* uygulama zemini */
+  --bg-sunk:#EDF0F5;          /* gömük alan (tablo başlığı, zebra) */
+  --paper:#FFFFFF;            /* kart yüzeyi */
+  --paper-2:#FBFCFD;          /* ikincil yüzey */
+  --ink:#101426;              /* birincil metin */
+  --ink-2:#3A4058;            /* ikincil metin */
+  /* KONTRAST ÖLÇÜMÜ (WCAG AA 4.5:1, normal metin) — 11. oturumda ölçüldü.
+     Eski değerler: `--muted` beyazda 4.84 geçiyordu ama `--danger-tint` zeminli
+     geciken satırda **4.13**'e düşüyordu; `--faint` beyazda **2.61**, tint'te
+     **2.23** ile eşiğin çok altındaydı ve "—", "Zimmetsiz", "Tahsis yok" gibi
+     ANLAM TAŞIYAN yer tutucular bu tonda basılıyordu. İkisi de en zor zemine
+     (danger-tint) göre koyulaştırıldı; hiyerarşi korundu (faint hâlâ muted'dan
+     açık, muted hâlâ ink-2'den açık). */
+  --muted:#646B81;            /* sessiz metin — beyazda 5.30, danger-tint 4.52 */
+  --faint:#646976;            /* en sessiz — beyazda 5.49, danger-tint 4.68 */
+  --line:#E3E7EE;             /* ince çizgi */
+  --line-2:#CBD1DE;           /* belirgin çizgi / kenarlık */
+  --line-3:#AEB6C7;           /* input kenarlığı hover */
+
+  /* ==== 4. SEMANTİK DURUMLAR (accent'ten bağımsız sabit) ================== */
+  --ok:#1F8F5F;         --ok-tint:#E4F4EC;      --ok-line:#B9E2CE;
+  --warn:#A0730A;       --warn-tint:#FBF2DA;    --warn-line:#EBD79B;
+  --danger:#C93A3A;     --danger-tint:#FAE9E9;  --danger-line:#EFC1C1;
+  --info:#2F63C8;       --info-tint:#E8EFFB;    --info-line:#BFD2F1;
+  --neutral:#5B6379;    --neutral-tint:#EEF0F4; --neutral-line:#D5DAE3;
+  --purple:#6D4AC4;     --purple-tint:#EFEAFB;  --purple-line:#D2C4F0;
+
+  /* METİN TONU — durum rozetinin YAZISI kendi tint zemininde WCAG AA (4.5:1)
+     sağlamalıdır. Ölçüldü: `--ok` kendi tint'i üzerinde 3.58, `--warn` 3.80,
+     `--danger` 4.31 — üçü de eşiğin altındaydı. Renkler kenarlık ve ikon için
+     3:1 yeterli olduğundan DEĞİŞMEDİ; yalnız metin için koyu ikizi tanımlandı.
+     `--info` · `--neutral` · `--purple` zaten eşiği geçiyordu, ikizleri kendileri. */
+  --ok-ink:#19764F;     --warn-ink:#8D6608;     --danger-ink:#BD3737;
+  --info-ink:#2F63C8;   --neutral-ink:#5B6379;  --purple-ink:#6D4AC4;
+
+  /* ==== 5a. SPACING (4px tabanlı) ========================================= */
+  --sp-0:0;
+  --sp-1:2px;
+  --sp-2:4px;
+  --sp-3:6px;
+  --sp-4:8px;
+  --sp-5:10px;
+  --sp-6:12px;
+  --sp-7:14px;
+  --sp-8:16px;
+  --sp-9:20px;
+  --sp-10:24px;
+  --sp-11:28px;
+  --sp-12:32px;
+  --sp-13:40px;
+  --sp-14:48px;
+  --sp-15:56px;
+  --sp-16:64px;
+  --sp-17:80px;
+
+  /* ==== 5b. YARIÇAP ======================================================= */
+  --r-xs:4px;
+  --r-sm:7px;
+  --r-md:11px;
+  --r-lg:15px;
+  --r-xl:20px;
+  --r-pill:999px;
+  --r-circle:50%;
+
+  /* ==== 5c. GÖLGE ========================================================= */
+  --sh-xs:0 1px 2px rgba(16,20,38,.05);
+  --sh-sm:0 1px 2px rgba(16,20,38,.04), 0 2px 6px rgba(16,20,38,.05);
+  --sh-md:0 4px 16px rgba(16,20,38,.08);
+  --sh-lg:0 16px 44px rgba(16,20,38,.14);
+  --sh-xl:0 28px 70px rgba(16,20,38,.20);
+  --sh-ring:0 0 0 3px var(--acc-ring);
+  --sh-inset-line:inset 0 -1px 0 var(--line);
+
+  /* ==== 5d. TİPOGRAFİ ===================================================== */
+  --font:"Manrope","Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --font-num:"Manrope",ui-monospace,"SF Mono",monospace;
+
+  --fs-2xs:10.5px;
+  --fs-xs:11.5px;
+  --fs-sm:12.5px;
+  --fs-md:13.5px;
+  --fs-base:14px;
+  --fs-lg:16px;
+  --fs-xl:19px;
+  --fs-2xl:23px;
+  --fs-3xl:28px;
+  --fs-4xl:34px;
+  --fs-5xl:44px;
+
+  --fw-400:400;
+  --fw-500:500;
+  --fw-600:600;
+  --fw-700:700;
+  --fw-800:800;
+
+  --lh-tight:1.2;
+  --lh-snug:1.35;
+  --lh-base:1.5;
+  --lh-loose:1.65;
+
+  --ls-tight:-.02em;
+  --ls-normal:0;
+  --ls-wide:.04em;
+  --ls-caps:.09em;
+
+  /* ==== 5e. HAREKET ======================================================= */
+  --ease:cubic-bezier(.22,.61,.36,1);
+  --ease-out:cubic-bezier(.16,1,.3,1);
+  --dur-fast:120ms;
+  --dur:200ms;
+  --dur-slow:320ms;
+
+  /* ==== 5f. LAYOUT ÖLÇÜLERİ =============================================== */
+  --rail-w:74px;
+  --menu-w-full:258px;        /* menünün açık genişliği — geri dönüş referansı */
+  --side-w-full:332px;        /* rail + menü */
+  --menu-w:var(--menu-w-full);
+  --side-w:var(--side-w-full);
+  --menu-w-collapsed:0px;
+  --top-h:62px;
+  --page-max:1560px;
+  --page-pad:var(--sp-10);
+  --page-pad-sm:var(--sp-8);
+  --card-pad:var(--sp-9);
+  --drawer-w:420px;
+  --modal-w:560px;
+
+  /* ==== 5g. Z-INDEX ======================================================= */
+  --z-base:1;
+  --z-sticky:20;
+  --z-rail:60;
+  --z-menu:55;
+  --z-top:50;
+  --z-overlay:100;
+  --z-drawer:110;
+  --z-modal:120;
+  --z-popover:130;
+  --z-toast:140;
+
+  /* ==== 5h. KONTROL YÜKSEKLİKLERİ ========================================= */
+  --h-xs:26px;
+  --h-sm:32px;
+  --h-md:38px;
+  --h-lg:44px;
+  --h-input:38px;
+  --h-row:52px;
+
+  /* ==== 5i. ODAK =========================================================== */
+  --focus-ring:0 0 0 2px var(--paper), 0 0 0 4px var(--acc-ring);
+  --focus-ring-dark:0 0 0 2px var(--brand-night), 0 0 0 4px var(--acc-ring);
+}
+
+/* ---- Yoğunluk: dar ekranlarda ölçüler otomatik sıkışır ---- */
+@media (max-width:980px){
+  :root{
+    --page-pad:var(--sp-8);
+    --card-pad:var(--sp-8);
+  }
+}
+@media (max-width:640px){
+  :root{
+    --page-pad:var(--sp-6);
+    --card-pad:var(--sp-7);
+    --top-h:58px;
+    --drawer-w:100vw;
+  }
+}
+
+/* ---- Hareket azaltma tercihi ---- */
+@media (prefers-reduced-motion:reduce){
+  :root{ --dur-fast:0ms; --dur:0ms; --dur-slow:0ms; }
+  *,*::before,*::after{ animation-duration:.01ms !important; transition-duration:.01ms !important; }
+}

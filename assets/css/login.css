@@ -1,0 +1,141 @@
+/* =====================================================================
+   GAVIAWORKS CRM — GİRİŞ EKRANI
+   ===================================================================== */
+body.gv-login{ background:var(--brand-abyss); }
+
+.lg-wrap{
+  min-height:100vh; display:grid; grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);
+}
+
+/* ---- Sol marka paneli ---- */
+.lg-brand{
+  background:
+    radial-gradient(circle at 18% 12%, rgba(63,213,173,.16), transparent 46%),
+    radial-gradient(circle at 82% 88%, rgba(63,213,173,.09), transparent 52%),
+    var(--brand-abyss);
+  color:var(--on-dark); display:flex; align-items:center;
+  padding:var(--sp-16) var(--sp-14); position:relative; overflow:hidden;
+}
+.lg-brand::after{
+  content:""; position:absolute; inset:0;
+  background-image:linear-gradient(var(--brand-hair) 1px, transparent 1px),
+                   linear-gradient(90deg, var(--brand-hair) 1px, transparent 1px);
+  background-size:var(--sp-16) var(--sp-16);
+  mask-image:radial-gradient(circle at 30% 40%, black, transparent 72%);
+  opacity:.5; pointer-events:none;
+}
+.lg-brand-inner{ position:relative; max-width:calc(var(--sp-17) * 6.4); }
+
+.lg-logo{
+  display:flex; align-items:center; gap:var(--sp-5);
+  font-size:var(--fs-lg); font-weight:var(--fw-800); letter-spacing:var(--ls-tight);
+  color:var(--on-dark); margin-bottom:var(--sp-14);
+}
+.lg-logo .ic{ color:var(--brand-mint); }
+
+.lg-brand h1{
+  margin:0 0 var(--sp-8); font-size:var(--fs-5xl); line-height:var(--lh-tight);
+  font-weight:var(--fw-800); letter-spacing:var(--ls-tight);
+}
+.lg-brand > .lg-brand-inner > p{
+  margin:0 0 var(--sp-12); font-size:var(--fs-lg); line-height:var(--lh-loose);
+  color:var(--on-dark-2); max-width:calc(var(--sp-17) * 5.6);
+}
+
+.lg-points{ list-style:none; margin:0 0 var(--sp-14); padding:0; display:grid; gap:var(--sp-6); }
+.lg-points li{
+  display:flex; align-items:center; gap:var(--sp-6);
+  font-size:var(--fs-md); color:var(--on-dark-2); font-weight:var(--fw-500);
+}
+.lg-points .ic{
+  color:var(--brand-mint); background:var(--brand-mint-dim);
+  width:var(--sp-9); height:var(--sp-9); padding:var(--sp-1);
+  border-radius:var(--r-circle); flex:none;
+}
+.lg-foot{ font-size:var(--fs-xs); color:var(--on-dark-faint); letter-spacing:var(--ls-wide); text-transform:uppercase; font-weight:var(--fw-700); }
+
+/* ---- Sağ panel ---- */
+.lg-panel{ background:var(--paper); display:flex; align-items:center; justify-content:center; padding:var(--sp-14) var(--sp-12); }
+.lg-panel-inner{ width:100%; max-width:calc(var(--sp-17) * 5.6); }
+
+.lg-tabs{
+  display:flex; gap:var(--sp-2); padding:var(--sp-2);
+  background:var(--bg-sunk); border-radius:var(--r-md); margin-bottom:var(--sp-12);
+}
+.lg-tab{
+  flex:1; height:var(--h-md); border:0; border-radius:var(--r-sm); background:transparent;
+  font-size:var(--fs-md); font-weight:var(--fw-700); color:var(--muted); cursor:pointer;
+  transition:background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.lg-tab[aria-selected="true"]{ background:var(--paper); color:var(--ink); box-shadow:var(--sh-xs); }
+
+.lg-pane h2{
+  margin:0 0 var(--sp-3); font-size:var(--fs-2xl); font-weight:var(--fw-800);
+  letter-spacing:var(--ls-tight); color:var(--ink);
+}
+.lg-sub{ margin:0 0 var(--sp-11); font-size:var(--fs-md); color:var(--muted); }
+.lg-pane .field{ margin-bottom:var(--sp-8); }
+
+.lg-pass{ position:relative; display:flex; align-items:center; }
+.lg-pass .ia{ position:absolute; right:var(--sp-3); border:0; background:transparent; }
+.lg-pass .inp{ padding-right:var(--sp-14); }
+
+.lg-row{ display:flex; align-items:center; justify-content:space-between; gap:var(--sp-6); margin-bottom:var(--sp-9); }
+.lg-link{
+  border:0; background:transparent; cursor:pointer; padding:0;
+  font-size:var(--fs-sm); font-weight:var(--fw-700); color:var(--acc-ink);
+}
+.lg-link:hover{ color:var(--acc-deep); text-decoration:underline; }
+
+.lg-demo{
+  margin:var(--sp-9) 0 0; padding:var(--sp-7); border-radius:var(--r-md);
+  background:var(--bg); border:1px solid var(--line);
+  font-size:var(--fs-sm); color:var(--muted); line-height:var(--lh-loose);
+}
+.lg-demo b{ color:var(--ink-2); }
+
+/* ---- Rol kartları ---- */
+.lg-roles{ display:grid; gap:var(--sp-5); max-height:calc(var(--sp-17) * 6.6); overflow-y:auto; padding-right:var(--sp-3); }
+.lg-roles::-webkit-scrollbar{ width:var(--sp-2); }
+.lg-roles::-webkit-scrollbar-thumb{ background:var(--line-2); border-radius:var(--r-pill); }
+
+.lg-role{
+  display:flex; align-items:center; gap:var(--sp-6); width:100%; text-align:left;
+  padding:var(--sp-6) var(--sp-7); border:1px solid var(--line); border-radius:var(--r-md);
+  background:var(--paper); cursor:pointer;
+  transition:border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.lg-role:hover{ border-color:var(--acc); background:var(--acc-tint); box-shadow:var(--sh-sm); }
+.lg-role-ava{
+  width:var(--sp-14); height:var(--sp-14); flex:none; border-radius:var(--r-circle);
+  display:grid; place-items:center; background:var(--brand-night); color:var(--brand-mint);
+  font-size:var(--fs-md); font-weight:var(--fw-800);
+}
+/* İki satırlı etiket: alt öğeler blok olmalı, yoksa yan yana yapışır (lessons.md L-04) */
+.lg-role-body{ flex:1; min-width:0; display:block; }
+.lg-role-name{ display:block; font-size:var(--fs-md); font-weight:var(--fw-700); color:var(--ink); line-height:var(--lh-snug); }
+.lg-role-title{ display:block; font-size:var(--fs-sm); color:var(--muted); margin-top:var(--sp-2); line-height:var(--lh-snug); }
+.lg-role .ic{ color:var(--faint); flex:none; }
+.lg-role:hover .ic{ color:var(--acc-ink); }
+.lg-role-group{
+  font-size:var(--fs-2xs); font-weight:var(--fw-800); letter-spacing:var(--ls-caps);
+  text-transform:uppercase; color:var(--faint); padding:var(--sp-5) var(--sp-2) var(--sp-1);
+}
+.lg-role-group:first-child{ padding-top:0; }
+
+/* ---- Responsive ---- */
+@media (max-width:1100px){
+  .lg-wrap{ grid-template-columns:minmax(0,1fr); }
+  .lg-brand{ padding:var(--sp-14) var(--sp-12) var(--sp-13); }
+  .lg-brand h1{ font-size:var(--fs-4xl); }
+  .lg-points{ display:none; }
+  .lg-logo{ margin-bottom:var(--sp-10); }
+  .lg-foot{ display:none; }
+}
+@media (max-width:640px){
+  .lg-brand{ padding:var(--sp-12) var(--sp-8) var(--sp-11); }
+  .lg-brand h1{ font-size:var(--fs-3xl); }
+  .lg-brand > .lg-brand-inner > p{ font-size:var(--fs-md); margin-bottom:0; }
+  .lg-panel{ padding:var(--sp-11) var(--sp-8) var(--sp-14); }
+  .lg-roles{ max-height:none; }
+}
