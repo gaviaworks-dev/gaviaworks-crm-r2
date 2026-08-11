@@ -1130,7 +1130,10 @@ DB.approvals = [
     link:'app-rapor.html?r=nakit-tahsilat' },
   { kod:'ONY-2026-058', tur:'Timesheet onayı', kayit:'TSH-2026-030', baslik:'30. hafta zaman kayıtları — 6 personel',
     talepEden:'EMP-011', onaylayan:'EMP-003', tutar:null, tarih:'2026-08-01', durum:'Bekliyor',
-    aciliyet:'Orta', link:'app-zaman-onay.html' },
+    aciliyet:'Orta', /* `app-zaman-onay.html` AYRI EKRAN DEĞİLDİR (rota 91): `app-zaman.html`
+       Zaman yüzeyinin "Onay bekleyen" kayıtlı görünümüdür. Haftalık defter
+       satırın onay merciidir; onay oradan verilir. */
+    link:'app-zaman.html?t=onay' },
   { kod:'ONY-2026-059', tur:'Satın alma talebi', kayit:'SAT-2026-015', baslik:'Figma yıllık lisans yenileme',
     talepEden:'EMP-004', onaylayan:'EMP-012', tutar:42000, tarih:'2026-08-01', durum:'Bekliyor',
     aciliyet:'Orta', link:'app-satinalma.html?ac=SAT-2026-015' },
