@@ -2571,22 +2571,22 @@
         gecti:acikCr.length === 0, sayi:acikCr.length,
         detay:cr.length ? (acikCr.length + ' / ' + cr.length + ' talep karara bağlanmadı')
                         : 'Bu projede revizyon talebi yok',
-        href:'app-proje-degisiklik.html?t=tumu&q=' + K },
+        href:'app-proje-detay.html?id=' + K + '#degisiklik' },
       { anahtar:'teslim', etiket:'Teslimatlar tamamlandı', olculdu:tsl.length > 0,
         gecti:acikTsl.length === 0, sayi:acikTsl.length,
         detay:tsl.length ? (acikTsl.length + ' / ' + tsl.length + ' teslim onaylanmadı')
                          : 'Bu projede teslim kaydı yok — kontrol yapılamadı',
-        href:'app-proje-teslim.html?t=tumu&q=' + K },
+        href:'app-proje-detay.html?id=' + K + '#teslim' },
       { anahtar:'musteriOnay', etiket:'Müşteri onayı alındı', olculdu:tsl.length > 0,
         gecti:onaysiz.length === 0, sayi:onaysiz.length,
         detay:tsl.length ? (onaysiz.length + ' teslimde müşteri onayı yok')
                          : 'Onay ölçülecek teslim kaydı yok — kontrol yapılamadı',
-        href:'app-proje-teslim.html?t=tumu&q=' + K },
+        href:'app-proje-detay.html?id=' + K + '#teslim' },
       { anahtar:'dokuman', etiket:'Zorunlu dokümanlar tam', olculdu:zorunlu.length > 0,
         gecti:eksikDok.length === 0, sayi:eksikDok.length,
         detay:eksikDok.length ? ('eksik: ' + eksikDok.join(' · '))
                               : zorunlu.length + ' zorunlu tür de onaylı',
-        href:'app-dokuman.html?t=tumu&q=' + K },
+        href:'app-proje-detay.html?id=' + K + '#belge' },
       { anahtar:'finans', etiket:'Açık finansal işlem', olculdu:(fat.length + tak.length) > 0,
         gecti:acikFat.length === 0 && acikTak.length === 0, sayi:acikFat.length + acikTak.length,
         detay:(fat.length + tak.length)
@@ -2600,7 +2600,10 @@
         olculdu:pkt.length > 0, gecti:pkt.length > 0, sayi:pkt.length,
         detay:pkt.length ? (pkt.length + ' bakım paketi bu projeye bağlı')
                          : 'Bu projeye bağlı bakım paketi yok — kapanışta sorulur',
-        href:'app-destek-paket.html' }
+        /* Bakım paketi ayrı ekran değildir (ADR-R2-13): müşteri detayının
+           Destek sekmesinde yaşar. Eski `app-destek-paket.html` hedefi hiç
+           doğmadı; kapanış kontrolünün sekizinci maddesi oraya gidiyordu. */
+        href:p.musteri ? 'app-musteri-detay.html?id=' + p.musteri + '#destek' : null }
     ];
   };
 

@@ -1113,7 +1113,10 @@ DB.approvals = [
     aciliyet:'Yüksek', link:'app-gorev-detay.html?id=GRV-2026-113' },
   { kod:'ONY-2026-055', tur:'Değişiklik talebi', kayit:'DGS-2026-012', baslik:'Trakya randevu adım sırası',
     talepEden:'EMP-003', onaylayan:'EMP-001', tutar:38000, tarih:'2026-07-26', durum:'Bekliyor',
-    aciliyet:'Kritik', link:'app-proje-degisiklik.html?id=DGS-2026-012' },
+    /* Değişiklik talebi ayrı ekran değildir (rota 42-44): proje detayının
+       Değişiklik sekmesidir. `DGS-2026-012` → `PRJ-2026-006` (changeRequests
+       kaydından okundu, tahmin edilmedi). */
+    aciliyet:'Kritik', link:'app-proje-detay.html?id=PRJ-2026-006#degisiklik' },
   { kod:'ONY-2026-056', tur:'Ön analiz onayı', kayit:'ANL-2026-001', baslik:'Poyraz İnşaat ön analizi',
     talepEden:'EMP-003', onaylayan:'EMP-001', tutar:null, tarih:'2026-07-21', durum:'Bekliyor',
     aciliyet:'Orta', link:'app-onanaliz-detay.html?id=ANL-2026-001' },
