@@ -752,3 +752,116 @@ kilitlemez.
 İzin · Varlıklar**. Kapasite, performans, eğitim, işe giriş/çıkış, demirbaş,
 zimmet ve filo bu üçünün **bağlamsal görünümleridir** — ayrı ekran ailesi
 açılmaz. Kapasite "İş ve Kapasite" raporudur (yayında).
+
+---
+
+## ADR-R2-31 · Zimmet defteri kanoniktir; kaynağı olmayan iddia düşürülür
+
+**Karar (K-30 · V2-41).** Tutanak defteri (`DB.assignments`) kanoniktir,
+envanter ondan türer. Üç demirbaşın envanterdeki "zimmetli" iddiası
+yanlıştı; temizlenmesi doğrudur. **Eksik tutanak ÜRETİLMEDİ.**
+
+**Neden uydurulmadı.** Üç tutanak yazmak, envanterin iddiasını "doğrulanmış"
+gösterirdi — oysa doğrulayan hiçbir şey yok. Bir iddianın kaynağı yoksa
+kaynak uydurulmaz; iddia düşer ve **neden düştüğü yazılı kalır**.
+
+**Defter: `DB.assetClaimDrops`** (`assets/data/ops.js`). Her satırda iddianın
+kendisi, **ölçülmüş kaynağı** ve düşme sebebi durur:
+
+| Demirbaş | İddia | Ölçülen kaynak | Düşme sebebi |
+|---|---|---|---|
+| `DMB-2025-007` | `EMP-009` · 2025-04-05 | envanter alanı | tutanak yok |
+| `DMB-2026-013` | `EMP-011` · 2026-07-31 | envanter alanı **+ aktivite kaydı** (`work.js` · 2026-07-31T09:50 · EMP-011 · "Zimmet teslimi yapıldı") | tutanak yok; envanteri değiştiren olay tutanağın yazılması değil **kabulüdür** |
+| `DMB-2026-014` | `EMP-012` · 2026-07-31 | envanter alanı | tutanak yok |
+
+`DMB-2026-013` beklenmedik bulgudur: bu iddianın envanter dışında bir
+dayanağı daha vardı. Yine de düşürüldü — aktivite kaydı bir teslimin
+*anlatısıdır*, tutanağı değildir. Kayıt **silinmedi**, kaynak olarak yazıldı.
+
+**Sahte aktivite yazılmadı.** Düşürmenin zaman çizelgesinde görünmesi
+gerekiyordu ama veriye yeni bir aktivite satırı eklemek, olmayan bir aktörle
+olmayan bir olay uydurmak olurdu. Satır `GV.varlik.dusenIddiaSatiri(kod)` ile
+**görüntü anında defterden türetilir**.
+
+**Envanter literali defterle hizalandı.** `DMB-2025-004` de düzeltildi:
+tutanağı var (`ZMT-2026-007`) ama `personelOnay:'Bekliyor'`, yani türetilmiş
+hâli `Zimmet bekliyor`. Literal `Zimmetli` diyordu ve yükleyici bunu **her
+açılışta sessizce onarıyordu**. Ölçüldü: yükleme tazelemesinde değişen kayıt
+**4 → 0**. Bir onarımın her seferinde tekrar çalışması, onarılmamış demektir.
+
+---
+
+## ADR-R2-32 · Çıkış sürecinden dönüş kenarı — ve motorun üçüncü ekseni
+
+**Karar (K-31 · V2-42).** `Offboarding → Aktif` kenarı **eklendi**. Gerekçe
+zorunlu; yetki `ik · sahip · genelmudur`. Yanlışlıkla çıkış sürecine alınan
+personelin geri dönememesi kabul edilemez.
+
+**Eski gerekçe bir eksikliği iş kuralı gibi sunuyordu.** Tabloda "geri dönüş
+yolu yok — bilerek" yazıyordu ve sebebi şuydu: `kapi` ve `zorunlu` yalnız
+**kaynak** tarafa bağlanabiliyordu, dolayısıyla `Offboarding` üzerindeki
+zimmet kapısı ile çıkış evrakı zorunluluğu oradan çıkan **her** hedefe
+uygulanırdı. Yani geri dönmek için personele cihazı iade ettirmek ve çıkış
+tarihini doldurmak gerekiyordu — ayrılmadığını söylemek için ayrılış
+evrakını tamamlamak.
+
+**Motora `girisZorunlu` eklendi** — `kapi`/`girisKapi` ve
+`gerekce`/`girisGerekce` ayrımının **üçüncü ekseni**. `Flow.eksikAlanlar`
+artık hedefin kuralını da okur ve `Flow.adimlar` eksik alanı **hedef başına**
+hesaplar (eskiden tek liste bütün hedeflere basılıyordu).
+
+**Sonuç — iki yönlü ölçüldü.** Zimmet kapısı ve çıkış evrakı `Ayrıldı`
+hedefine taşındı; geri dönüş yalnız gerekçe ister. Aynı boş kayıtta ileri
+gitmek `cikisTarihi` + `cikisNedenKodu` isterken geri dönüş açık kaldı:
+**geri almak, ileri gitmekten ağır koşula bağlı değildir.**
+
+`Onboarding` üzerindeki `personelEvrak` kapısı **kaynakta bırakıldı** ve bu
+doğrudur: tek hedefi var, ayrıca `Aktif`e `İzinli` ve `Pasif` durumlarından
+da gelinir — kapıyı oraya taşımak izinden dönen personelden **işe giriş
+evrakı** istemek olurdu.
+
+---
+
+## ADR-R2-33 · Kapı kenara bağlanır; hedef her zaman yeterince dar değildir
+
+**Karar (K-32 · V2-45).** Dört kaynak taraflı kapının **dördü de** ileri
+hedefe taşındı. Taşımadan sonra her biri iki vakayla ölçüldü: engellemesi
+gereken kenarı hâlâ engelliyor mu, engellememesi gereken kenarı bıraktı mı.
+
+**Taşıma sırasında ölçülen yeni kusur.** `girisKapi` hedefe bağlanır ve o
+duruma giren **her** kenarı keser. Hedefe birden çok kenar giriyorsa bu da
+fazla keser — kaynak taraflı kapının aynası. Bu yüzden motora üçüncü ve en
+dar bağ eklendi: **`kenarKapi:{ hedef:{ kapi, istisnaRol } }`**, yalnız o
+kenarı bağlar. `Flow.kapiCoz` tek karar noktasıdır; öncelik
+**kenar → kaynak → hedef**.
+
+Seçim ölçülerek yapılır: **hedefe kaç kenar giriyor?**
+
+| # | Kapı | Eskiden kestiği yanlış kenar | Yeni bağ | Hedefe giren kenar |
+|---|---|---|---|---|
+| 1 | `projeTeslim` | `Test/Kabul → Aktif` — kritik hatalı proje geliştirmeye **geri alınamıyordu** | `kenarKapi` · `Test/Kabul→Teslim` | 2 (`Test/Kabul` · `Kapanış`) → hedef bağı yetmez |
+| 2 | `projeKapanis` | `Kapanış → Teslim` — eksiği tamamlamak için gereken yol kapalıydı | `girisKapi` · `Tamamlandı` | 1 |
+| 3 | `destekKota` | `Müşteri Onayı → Devam ediyor` — hiç kota harcamayan kenar kotaya takılıyordu | `kenarKapi` · `Müşteri Onayı→Kapandı` | 2 (`Müşteri Onayı` · `Yeni`) → hedef bağı yeni talebi de kotaya bağlardı |
+| 4 | `teslimKritikHata` | `İç Kontrol → Taslak` — hatayı düzeltmek için gereken yol kapının kendisi tarafından kapatılıyordu | `girisKapi` · `Müşteriye Gönderildi` | 1 |
+
+**Bonus: geçen turda "düzeltilmiş" iki kapı hâlâ fazla kesiyordu.** Ölçüm
+`girisKapi`li her hedefe giren kenarı saydı ve ikisini yakaladı:
+
+- `projeAktif` → `Aktif` hedefine **3 kenar** giriyor. `Beklemede → Aktif`
+  (beklemedeki proje devam ettirilemiyor) ve `Test/Kabul → Aktif` (1 no'lu
+  düzeltmenin açtığı kenar) kapıya takılıyordu. `Başlatma Onayı → Aktif`
+  kenarına indirildi — kapı yalnız **ilk aktivasyonu** ilgilendirir.
+- `sozlesmeAktif` → `Aktif` hedefine **3 kenar** giriyor. `Askıda → Aktif`
+  kenarı takılıyordu: bir kez aktive edilmiş sözleşme **askıdan
+  indirilemiyordu**. Kapı iki **ileri** kenara bağlandı (`İmza` ilk
+  aktivasyon · `Yenileme/Zeyil` zeyil yürürlüğü — ikisi de ödeme planını
+  değiştirir); askıdan dönüş serbest.
+
+**Ölü kapı ile çalışan kapı ayrımı.** `destekKota` bugünkü veride hiç
+ateşlenmiyor — kotayı aşan talep yok. "Ateşlenmiyor" ile "çalışmıyor" farkını
+ölçmek için koşul **enjekte edildi** (bellekte paket kalanı 0, harcanan 4);
+kapı engelledi, geri dönüş açık kaldı. Veri dosyası değişmedi.
+
+**Nöbetçi: `tasks/qa/kapi-yonu.js` · 48 kontrol / 6 eksen.** Yeni bir kapı
+kaynağa bağlanırsa ya da `girisKapi`nin hedefine ikinci bir kenar girerse
+kırmızı yanar.
