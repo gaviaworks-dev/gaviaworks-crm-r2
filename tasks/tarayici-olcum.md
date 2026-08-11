@@ -238,3 +238,59 @@ sessizce yalan söyler. Ölçüt gözlemlenebilir **sonuca** bağlanmalıdır.
 | `ops-akis.js` | 39 kuyruk satırı · ayırıcı %30–%50 kilidi · tercih saklama · boş gerekçe reddi | temiz |
 | `odeme-akis.js` | kart alanı yokluğu · süresi dolmuş link · beş sonuç ekranı ödeme yaratmıyor | temiz |
 | `not-izolasyon.js` | 4 negatif hüküm: statik referans · açılışta bellek · sahiplik süzgeci · çekmece yüklemesi | temiz |
+
+
+---
+
+## 8. Rapor yüzeyi eklendikten sonra — on ekran
+
+| | |
+|---|---:|
+| Ekran | **10** |
+| Genişlik | 6 |
+| Ölçüm | **60** |
+| **Yatay taşma** | **0** |
+| Konsol hatası (kendi kaynağımız) | **0** |
+| Düzeltme | **0** — düzeltilecek taşma çıkmadı |
+
+| Ekran | 1600 | 1440 | 1280 | 1024 | 768 | 390 |
+|---|---|---|---|---|---|---|
+| Raporlar | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+Önceki dokuz ekranın tamamı yeniden koşuldu ve temiz kaldı.
+
+### 8.1 Ayrı bir eksen: rapor tavanları
+
+Taşma ölçümü sayfanın **kaymadığını** söyler; §7.1 ve §7.3'ün tavanlarını
+söylemez. Onun için ayrı bir eksen yazıldı: `tasks/qa/rapor-tavan.js`.
+
+| Ölçtüğü | Sonuç |
+|---|---|
+| ≤4 KPI · ≤2 grafik · 1 tablo (6 rapor) | 4 · ≤2 · 1 — altısında da |
+| Tipografi (H1 · rapor · grafik · KPI · eksen) | 28 · 20 · 14 · 23 · 11 px |
+| Grafik yüksekliği 260–300 | 280 px |
+| `min-width:0` · `overflow:hidden` | ikisi de |
+| SVG `viewBox` + `preserveAspectRatio` | ikisi de yazılı |
+| ≥1200px iki kolon, altında tek | 1600/1440/1280 → 2 · 1024/768/390 → 1 |
+| Rapor içi sol menü | **0 düğüm** |
+| 105 tanımın eşlemesi + iki yönlü denetim | 84 eşlendi · 21 şablonsuz · yetim 0 |
+| Katalog yalnız yöneticiye | analist görmüyor · sahip görüyor |
+| **Ölçülen kontrol** | **74** |
+
+### 8.2 Eksenin kendisi sınandı — ve iki boşluk çıktı
+
+Temiz depoda 74 kontrol, 0 bulgu (**olumlu vaka**). Sonra depo dışında
+bozulmuş bir kopyaya **dokuz kusur** enjekte edildi (**olumsuz vaka**).
+
+İlk koşumda **ikisi kaçtı** ve ikisi de eksenin kendi kusuruydu:
+
+| Kaçan kusur | Sebep | Düzeltme |
+|---|---|---|
+| Beşinci KPI, üçüncü grafik | `GV.rapor` fazlasını çizimde **kesiyor**; DOM tavanı hiç aşmıyor, DOM'u sayan eksen ihlali göremiyor | Eksen artık kabuğun kırpma **uyarısını** okuyor — ihlalin tek izi odur |
+| Katalog standart kullanıcıya açık | Ölçüm `stajyer` rolüyle koşuyordu; o rol rapor alanını **hiç göremiyor**, 403 alıyordu. Katalog yoktu ama sebebi yetki kapısıydı, kararın kendisi değil | `analist` rolüne geçildi: rapor görür, yönetici değildir |
+
+Düzeltmeden sonra **dokuz kusurun dokuzu da yakalandı** (12 bulgu satırı —
+bazı kusurlar iki grafikte birden çıkıyor).
+
+**Ders:** bir tavan koda uygulanırsa, o tavanın ihlali sonuçta görünmez
+olur. Ölçüm o zaman sonucu değil, **kararın izini** aramalıdır.

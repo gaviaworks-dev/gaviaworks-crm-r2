@@ -24,6 +24,10 @@
 | ADR-R2-09 | Ödeme sağlayıcısı: TEST mock ile devam | ✅ | `odeme.js` · beş ödeme ekranı |
 | ADR-R2-10 | Ödeme linki `GV.flow`'un 16. varlığıdır | ✅ | `odeme.js` |
 | ADR-R2-11 | Teklif sürümleme ve İK ekranı sonraki dilim | ✅ | planlandı, bu dilimde yapılmadı |
+| ADR-R2-12 | Bütçe, proje detayının sekmesidir | ✅ | rota haritası |
+| ADR-R2-13 | Bakım paketi ve SLA, müşteri detayının Destek sekmesindedir | ✅ | rota haritası |
+| ADR-R2-14 | Departman talebi Operasyon kuyruğunun **altıncı** tipidir | ✅ | `kuyruk.js` · ekranda beyan |
+| ADR-R2-15 | İki geri almanın dili ayrılır | ✅ | `quicknote.js` sözlüğü |
 
 ---
 
@@ -269,3 +273,106 @@ yarım bırakma riskiydi.
 - **İK ekran tarafı:** `employee` 15. geçiş varlığı ve iki kapı R1'de hazır,
   ama `durum` alanı **hiçbir ekranda okunmuyor** ve `aktif` boolean'ı paralel
   duruyor. Ekranlar duruma geçirilmeli, sonra `aktif` kaldırılmalı.
+
+
+---
+
+## ADR-R2-12 · Bütçe, proje detayının sekmesidir
+
+**Karar (K-08).** `app-butce.html` ayrı ekran olarak açılmaz; proje
+detayının **Bütçe sekmesi** olur.
+
+**Gerekçe.** Bütçe bir projenin niteliğidir, bağımsız bir varlık değil.
+`GV.proje.maliyet` zaten proje detayında okunuyor ve dört kalemi
+(personel · dış kaynak · satın alma · diğer) oradan türetiyor. Ayrı bir
+ekran, aynı hesabı ikinci bir yüzeyde tekrarlayıp iki sayının ayrışma
+riskini doğururdu — R1'de `gerçeklesenMaliyet` alanının başına gelen tam
+olarak buydu ve alan bu yüzden kaldırılmıştı.
+
+**Sonuç.** Rota haritasında GÖMÜLÜYOR; hedef netleşti, varsayım kalktı.
+
+---
+
+## ADR-R2-13 · Bakım paketi ve SLA, müşteri detayının Destek sekmesindedir
+
+**Karar (K-09).** Ayrı bir sözleşme yüzeyi açılmaz. `app-destek-paket*.html`
+ve `app-destek-sla.html` müşteri detayının **Destek sekmesi** altına düşer.
+
+**Gerekçe.** §2'nin bağlamsal işlem ilkesi: *"Yetkili, iletişim, belge,
+teklif, destek ve ödeme gibi alt kayıtlar ilgili müşteri veya proje
+detayında açılmalı."* Bakım paketi bir müşteriye satılmış hizmet
+taahhüdüdür; SLA o taahhüdün ölçütüdür. İkisi de müşteri bağlamının
+dışında anlamsızdır.
+
+**Sonuç.** Rota haritasında GÖMÜLÜYOR; varsayım kalktı. SLA'nın rapor
+tarafı ayrıca "Hizmet ve Destek" şablonunda ölçülüyor.
+
+---
+
+## ADR-R2-14 · Departman talebi, Operasyon kuyruğunun ALTINCI tipidir
+
+**Karar (K-10).** Departman talepleri Operasyon kuyruğuna girer.
+**Bu, şartnameden bilinçli bir sapmadır.**
+
+### Sapmanın kendisi
+
+Şartname §6.2 kuyruk tiplerini **beş** olarak sayıyor:
+
+> "Kuyrukta **destek talepleri, görevler, bekleyen onaylar, takip zamanı
+> gelen müşteri aksiyonları ve geciken tahsilatlar** ortak tipte
+> gösterilebilir."
+
+Departman talebi bu listede **yok**. R2 onu yine de ekliyor. Sapma
+budur ve gizlenmiyor.
+
+### Gerekçe
+
+*"Eylem bekleyen iş tek kuyrukta toplanır."* Departman talebi tanımı
+gereği birinden bir şey bekleyen bir kayıttır; Operasyon ekranının varlık
+sebebi de (§6.1) "listeden kayda, kayıttan işleme geçerken yeni sekme ve
+sayfa açma ihtiyacını azaltmak"tır. Bekleyen bir iş türünü kuyruğun
+dışında bırakmak, kullanıcıyı o iş için ayrı bir ekrana göndermek
+demektir — yani ekranın kendi amacını deler.
+
+Şartnamenin beş tipi bir **liste** olarak yazılmış, bir **tavan** olarak
+değil; §6.2'nin cümlesi "gösterilebilir" diyor, "yalnız bunlar
+gösterilir" demiyor. Yine de sayı değiştiği için bu bir sapmadır ve
+sapma olarak kaydedilir.
+
+### Sapma nerede yazılı — üç yerde, sessiz değil
+
+1. `assets/js/kuyruk.js` — `TIPLER` tablosunda, altıncı satırın üstünde
+2. Bu ADR
+3. **Ekranda**: Operasyon panelinin altında `.ops-sapma` şeridi, kullanıcının
+   göreceği yerde
+
+### Ölçülen etki
+
+| | Önce | Sonra |
+|---|---:|---:|
+| Kuyruk tipi | 5 | **6** |
+| Kuyruk satırı | 39 | **43** |
+
+İkinci bir durum ekseni doğmadı: `request` zaten `GV.flow`'un varlığı
+olarak tanımlıydı, kuyruk onu çağırıyor.
+
+---
+
+## ADR-R2-15 · İki geri almanın DİLİ ayrılır
+
+**Karar (K-12).** İki geri alma süresi de kalır, ama aynı kelime iki yerde
+kullanılmaz.
+
+| Geri alınan | Süre | Arayüzdeki adı |
+|---|---|---|
+| Not **tamamlama** | 5 saniye | **"Geri al"** (tost şeridi) |
+| Not **silme** | 7 gün (ADR-14) | **"Çöp kutusu"** → "Geri yükle" |
+
+**Gerekçe.** İkisi ayrı eksendir ve ikisinin de yaşaması doğrudur: biri
+yanlış tıklamayı, diğeri pişmanlığı kurtarır. Sorun sürelerde değil
+**kelimede**ydi — tek bir "geri al" iki farklı süre vaat ederse kullanıcı
+hangisinin geçerli olduğunu bilemez.
+
+**Uygulama.** Dil sözlüğü `GV.quickNote.dil` içinde **tek yerde** durur.
+Silme yüzeyi henüz yazılmadı; yazıldığında kelimesini bu sözlükten
+okuyacak, kendisi uydurmayacak (R1 dersi L-40).

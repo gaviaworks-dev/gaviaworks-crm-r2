@@ -376,14 +376,14 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | R1 ekranı | Karar | Hedef |
 |---|---|---|---|
-| 126 | `app-rapor.html` | **KARŞILIĞI VAR** | Tek rapor yüzeyi — **içi baştan yazılır**. §7.1 sırası: başlık/çıktı → ortak filtre → yatay rapor seçimi → ≤4 KPI → ≤2 grafik → 1 tablo |
-| 127 | `app-rapor-musteri.html` | **YÖNLENDİRİLİYOR** | → `app-rapor.html?rapor=musteri-sagligi` (14 kayıt) |
-| 128 | `app-rapor-finans.html` | **YÖNLENDİRİLİYOR** | → `?rapor=nakit-tahsilat` + `?rapor=satis-ozeti` (18 kayıt ikiye bölünür) |
-| 129 | `app-rapor-proje.html` | **YÖNLENDİRİLİYOR** | → `?rapor=proje-teslimati` (12 kayıt) |
-| 130 | `app-rapor-gorev.html` | **YÖNLENDİRİLİYOR** | → `?rapor=is-kapasite` (19 kayıt) |
-| 131 | `app-rapor-personel.html` | **YÖNLENDİRİLİYOR** | → `?rapor=is-kapasite` (13 kayıt) |
-| 132 | `app-rapor-referans.html` | **YÖNLENDİRİLİYOR** | → `?rapor=satis-ozeti` (10 kayıt) |
-| 133 | `app-rapor-filo.html` | **YÖNLENDİRİLİYOR** ✔ | **ADR-R2-05:** yedinci şablon **açılmaz**, altı şablon korunur. → `app-rapor.html?rapor=ayrintili&kategori=filo`. 19 kayıt §7.1'in kendi çıkışıyla "Ayrıntılı analiz" kataloğunda kalır: silinmez, standart kullanıcıya gösterilmez. |
+| 126 | `app-rapor.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Tek yüzey, rapor içi sol menü yok. Altı rapor; ölçüldü: her birinde 4 KPI · ≤2 grafik · 1 tablo. Tipografi tavanları piksel olarak ölçülüyor (`tasks/qa/rapor-tavan.js`, 74 kontrol). |
+| 127 | `app-rapor-musteri.html` | **YÖNLENDİRİLİYOR** ✅ | → `app-rapor.html?r=musteri-sagligi`. 14 kaydın 6'sı bu şablona, 3'ü nakit, 2'si satış, 2'si hizmet, 1'i projeye eşlendi |
+| 128 | `app-rapor-finans.html` | **YÖNLENDİRİLİYOR** ✅ | → `?r=nakit-tahsilat` + `?r=satis-ozeti`. 18 kayıt ikiye bölündü: 10 nakit, 8 satış |
+| 129 | `app-rapor-proje.html` | **YÖNLENDİRİLİYOR** ✅ | → `?r=proje-teslimati`. 11 kayıt bu şablona, 1'i (bütçe) nakde eşlendi |
+| 130 | `app-rapor-gorev.html` | **YÖNLENDİRİLİYOR** ✅ | → `?r=is-kapasite`. 19 kaydın 19'u eşlendi |
+| 131 | `app-rapor-personel.html` | **YÖNLENDİRİLİYOR** ✅ | → `?r=is-kapasite`. 11 kayıt eşlendi; `zimmet` ve `arac` varlık raporudur, **şablonsuz** kaldı ve katalogda |
+| 132 | `app-rapor-referans.html` | **YÖNLENDİRİLİYOR** ✅ | → `?r=satis-ozeti` + `?r=nakit-tahsilat`. ADR-R2-04 gereği ikiye bölündü: 6 kanal → satış, 4 komisyon → nakit |
+| 133 | `app-rapor-filo.html` | **YÖNLENDİRİLİYOR** ✔ ✅ | **ADR-R2-05 uygulandı.** → `app-rapor.html` › Ayrıntılı analiz kataloğu. 19 kayıt şablonsuz kaldı, **silinmedi**, katalogda listeleniyor ve ölçüldü: standart kullanıcıda katalog YOK, yönetici rolde VAR. |
 
 ### 9.1 105 raporun ölçülmüş dağılımı
 
@@ -463,17 +463,16 @@ Satış Akışı kanban kartından bir yere tıklanacak — o hedef belirsiz.
 11 Ağustos kararlarıyla dokuz "KARAR BEKLİYOR" satırının **dokuzu da**
 kapandı (`tasks/kararlar.md`). Haritada karar bekleyen satır kalmadı.
 
-Ama iki ekranın **konumu** hâlâ bir varsayıma dayanıyor. Kaderleri kesin
-(ikisi de gömülüyor); belirsiz olan hangi kaydın sekmesi olacakları.
-Şartname ikisini de hiç anmıyor:
+**11 Ağustos ikinci turu:** kalan iki varsayım da karara bağlandı; haritada
+varsayıma dayanan satır kalmadı.
 
-| # | Ekran | Ne belirsiz | Bu turda ne varsayıldı |
+| # | Ekran | Karar | ADR |
 |---|---|---|---|
-| 79 | `app-butce.html` | Proje detayının Bütçe sekmesi mi, Nakit ve Tahsilat raporunun bir görünümü mü? | Proje detayı sekmesi — `GV.proje.maliyet` orada zaten okunuyor |
-| 58/59 | `app-destek-paket*.html` | Müşteri detayının Destek sekmesi mi, Satın Alma benzeri bir sözleşme yüzeyi mi? | Müşteri detayı › Destek sekmesi (§2 bağlamsal işlem ilkesi) |
+| 79 | `app-butce.html` | Proje detayının **Bütçe sekmesi** | ADR-R2-12 |
+| 57–59 | `app-destek-sla.html` · `app-destek-paket*.html` | Müşteri detayı › **Destek sekmesi** | ADR-R2-13 |
 
-Varsayımlar **uygulanmadı** — ikisi de henüz yazılmamış ekranlara ait.
-Beyar farklı düşünürse yalnız bu iki satır değişir.
+Her ikisi de rota haritasında zaten GÖMÜLÜYOR işaretliydi; değişen şey
+**hedefin varsayım olmaktan çıkması**.
 
 ### 13.1 Kapanan dokuz satır
 

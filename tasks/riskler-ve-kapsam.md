@@ -16,10 +16,15 @@
 
 | Kova | Madde | Pay | Önceki |
 |---|---:|---:|---:|
-| **YAPILABİLİR** (buildless prototipte) | **183** | %74,7 | 169 |
+| **YAPILABİLİR** (buildless prototipte) | **187** | %76,3 | 183 |
 | **BACKEND ŞART** (uygulanmaz, işaretlenir) | **58** | %23,7 | 58 |
-| **KARAR BEKLİYOR** (Beyar'a soruluyor) | **4** | %1,6 | 18 |
+| **KARAR BEKLİYOR** (Beyar'a soruluyor) | **0** | %0 | 4 |
 | **Toplam** | **245** | %100 | 245 |
+
+> **Karar bekleyen madde kalmadı.** K-08 · K-09 · K-10 · K-12 ikinci turda
+> karara bağlandı (ADR-R2-12…15) ve dördü de YAPILABİLİR kovasına geçti.
+> Kalan tek belirsizlik ürünün kendisinde değil, **ürünün dışındadır**:
+> ödeme sağlayıcısı hâlâ seçilmedi (ADR-R2-09 bunu TEST mock'la yönetiyor).
 
 ### 1.0 Ne değişti — 11 Ağustos kararları
 
@@ -133,14 +138,19 @@ aynı disiplinle işaretlenecek.
 | K-18 | İK ekran tarafı | R2'de yapılacak, bu dilimde değil | ADR-R2-11 |
 | R-02 | Ödeme linki motoru | `GV.flow`'un 16. varlığı | ADR-R2-10 |
 
-### 3.1 Hâlâ karar bekleyen dört madde
+### 3.1 Son dört madde de kapandı
 
-| # | Madde | Ne belirsiz |
-|---|---|---|
-| **K-08** | Bütçe ekranının yeri | Proje detayı sekmesi mi, Nakit raporu görünümü mü? Varsayım: proje detayı |
-| **K-09** | Bakım paketi ve SLA ekranlarının yeri | Müşteri detayı sekmesi mi, ayrı sözleşme yüzeyi mi? Varsayım: müşteri detayı |
-| **K-10** | Departman taleplerinin Operasyon kuyruğuna girmesi | §6.2 kuyruk tiplerinde adı geçmiyor. **Bu turda kuyruğa alınmadı** — beş tip şartnamede birebir yazılı olanlarla sınırlı tutuldu |
-| **K-12** | İki farklı geri alma süresi | ADR-14 silme için 7 gün, §4.2 tamamlama için 5 saniye. İkisi ayrı eksen ve ikisi de yaşıyor; kullanıcıya karışık gelir mi? |
+| # | Madde | Karar | ADR |
+|---|---|---|---|
+| K-08 | Bütçe ekranının yeri | Proje detayının Bütçe sekmesi | ADR-R2-12 |
+| K-09 | Bakım paketi ve SLA'nın yeri | Müşteri detayı › Destek sekmesi | ADR-R2-13 |
+| K-10 | Departman talebi kuyruğa girer mi | **Girer — altıncı tip.** Şartnameden bilinçli sapma | ADR-R2-14 |
+| K-12 | İki geri alma süresi | İkisi de kalır, **dilleri ayrılır** | ADR-R2-15 |
+
+⚠️ **K-10 bir SAPMADIR ve öyle kaydedilmiştir.** §6.2 beş tip sayıyor,
+R2'de altı tip var. Sapma üç yerde yazılı: `kuyruk.js` yorumunda, ADR-R2-14'te
+ve **kullanıcının göreceği ekranda** (`.ops-sapma` şeridi). Ölçülen etki:
+kuyruk 39 → 43 satır, 5 → 6 tip.
 
 ### 3.2 (eski) Şartnamenin kendi içindeki çelişkiler
 
@@ -224,7 +234,24 @@ Bunlar buildless statik prototipte **tam olarak** yapılabilir. Bugün
 | §8.4 durum makinesi | `odeme.js` | 12 durum · 31 kenar · yetim hedef yok |
 | §8.5 tutar kalan bakiyeyi aşamaz | form | fazla tutar reddediliyor, kayıt oluşmuyor |
 | §8.7 TEST mock adapter | `odeme.js` | gerçek kart formu taklit edilmedi |
-| §12 altı genişlikte taşma yok | tarama | 9 ekran × 6 genişlik = **54 ölçüm, 0 taşma** |
+| §12 altı genişlikte taşma yok | tarama | **10 ekran × 6 genişlik = 60 ölçüm, 0 taşma** |
+| §7.1 rapor içi sol menü yok | `app-rapor.html` | ölçüldü: 0 düğüm |
+| §7.1 sayfa sırası | `rapor.js` | başlık/çıktı → filtre → yatay seçim → KPI → grafik → tablo |
+| §7.1 ≤4 KPI · ≤2 grafik · 1 tablo | `rapor.js` `TAVAN` | altı raporun altısı: 4 · ≤2 · 1 |
+| §7.1 altı varsayılan rapor | `app-rapor.html` | altısı da gerçek veriden hesaplanıyor |
+| §7.1 105 tanım silinmez, eşlenir | `rapor-eslesme.js` | 84 eşlendi · 21 şablonsuz · yetim 0 |
+| §7.1 katalog yalnız yöneticiye | `app-rapor.html` | ölçüldü: analist görmüyor, sahip görüyor |
+| §7.2 nakit raporu birebir | `nakitTahsilat()` | 4 KPI · **tek** iki-serili grafik · aylık eksen · **tek** tablo |
+| §7.3 tipografi tavanları | `r2.css` | H1 28 · rapor 20 · grafik 14 · KPI 23 · eksen 11 — hepsi ölçüldü |
+| §7.3 grafik yüksekliği 260–300 | `r2.css` | ölçüldü: 280px |
+| §7.3 min-width:0 · overflow:hidden | `r2.css` | ölçüldü |
+| §7.3 viewBox + preserveAspectRatio | `rapor.js` | ölçüldü: ikisi de yazılı |
+| §7.3 ≥1200px iki kolon | `r2.css` | ölçüldü: 1600/1440/1280 → 2 · 1024/768/390 → 1 |
+| §7.3 boş veride boş durum | `rapor.js` | tablo yoksa açıklayıcı blok |
+| §7.4 PDF · Excel/CSV · Yazdır | `rapor.js` | üçü de var; CSV gerçek biçim, formül koruması taşındı |
+| §7.4 baskıda navigasyon yok | `r2.css` `@media print` | rail · menü · üstbar · filtre · buton gizli |
+| §7.4 çıktı künyesi | `rapor.js` | rapor adı · filtreler · tarih · kullanıcı · sayfa no |
+| §6.2 altıncı kuyruk tipi | `kuyruk.js` | 43 satır · 6 tip (sapma, ADR-R2-14) |
 
 ### 4.2 Sonraki fazlarda
 
@@ -352,6 +379,9 @@ gibi ayrı bir yükleme profili ister.
 | Y-11 | Ödeme linki adresi gerçek token taşımıyor; kayıt kodu kullanılıyor (B-03) | `odeme.js` |
 | Y-12 | QR üretimi yok — dış kütüphane gerektiriyor, buildless kısıtı gereği kurulmadı | `app-odeme-linki-form.html` |
 | Y-13 | ADR-R2-06'nın menü etkisi (doküman arşivi yönetim girdisi) henüz uygulanmadı | rota §14 |
+| Y-14 | `ui.js` içindeki `GV.report` ölü kod — rapor içi sol menü basıyor, R2'de hiçbir ekran çağırmıyor; `ui.js` değiştirilmeden taşındığı için silinmedi | `rapor.js` başlığı |
+| Y-15 | "Hizmet ve Destek" şablonuna yalnız **2** eski tanım eşlendi; R1'de destek rapor ekranı hiç yoktu. Şablon canlı veriden hesaplıyor ama drill-down kataloğu ince | `rapor-eslesme.js` |
+| Y-16 | Gerçek XLSX ve PDF biçimi yok (backend payı); CSV gerçek biçimdir | `rapor.js` |
 
 ---
 
