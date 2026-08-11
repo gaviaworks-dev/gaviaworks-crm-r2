@@ -1851,3 +1851,172 @@ kullanılamıyordu. `bosSub` verilirse o, verilmezse `sub` çağrılır.
 | V2-17 · V2-18 | `GV.form` `option disabled` ve `datalist` yuvası |
 | V2-19 | Detay ekranı tablo + mobil-ikiz yardımcısı |
 | V2-20 | Sarmalayan buton satırı sınıfı (`.gv-actrow`) |
+
+---
+
+## 20. Dilim 4 — Ekip ve Kaynaklar
+
+§1-§19 aynen geçerlidir. Her sayı ölçüldü.
+
+### 20.0 Ekranlar ve kabuk öznitelikleri
+
+| Dosya | `data-sec` | `data-screen` | mount |
+|---|---|---|---|
+| `app-personel.html` | `ekip` | `personel` | `rec` |
+| `app-personel-detay.html` | `ekip` | `personel` | `rec` |
+| `app-personel-form.html` | `ekip` | `personel` | `rec` |
+| `app-zaman.html` | `ekip` | `zaman` | `rec` |
+| `app-izin-detay.html` | `ekip` | `zaman` | `rec` |
+| `app-izin-form.html` | `ekip` | `zaman` | `rec` |
+| `app-varlik.html` | `ekip` | `varlik` | `rec` |
+
+**Veri dosyaları:** `org.js` · `crm.js` · `work.js` · `misc.js` · `ops.js` ·
+**`hr.js`** · `lifecycle.js`. `hr.js` bu dilimde **HER ekranda zorunludur** —
+`DB.employees` · `DB.leaves` · `DB.timelogs` · `DB.timesheets` · `DB.assets` ·
+`DB.assignments` · `DB.vehicles` · `DB.performance` · `DB.trainings` ·
+`DB.salaryHistory` · `DB.vehicleExpenses` hepsi orada.
+`firsat.js` ve `odeme.js` **yüklenmez**.
+
+### 20.1 ⚠️ KİŞİSEL VERİ KAPISI — ekrandan ÖNCE kurulur
+
+Personel kaydı üç ayrı hassasiyette alan taşır ve üçü aynı kapıdan geçmez:
+
+| Sınıf | Alanlar | Kapı |
+|---|---|---|
+| genel | `ad · ini · rol · dep · pozisyon · yonetici · girisTarihi · durum · lokasyon · uzmanlik · teknoloji · yetkinlik` | yok — herkes görür |
+| **özlük / sağlık** | `dogum · kanGrubu · acilKisi · tel · eposta · egitim · sertifika · sozlesme · calismaTuru` | **`GV.hr.ozlukGorebilir(e)`** |
+| **maaş** | `maas · saatlikUcret · DB.salaryHistory` | **`GV.hr.maasGorebilir()`** / `GV.perm.mask(v,'maas')` |
+
+```js
+GV.hr.ozlukGorebilir(e)   // kendi kaydı → her zaman true
+                          // permMatrix.personel === 'tum' → true
+                          // === 'departman' → yalnız kendi departmanı
+                          // 'proje' / 'yok' → false
+GV.hr.maasGorebilir()     // permMatrix.maas — 4 rol: sahip · genelmudur · ik · muhasebe
+GV.hr.ozluk(e, 'kanGrubu')// yetkisizde '••••••' döner, BOŞ DEĞİL
+```
+
+**Kapı olmadan alan basma.** Yetkisizde `0` ya da boş bırakmak yasaktır:
+boş "veri yok" demektir, oysa veri var ve görülemiyor — ikisi ayrı şeydir
+(UID-11). `••••••` basılır ve o hücre çıktıya da girmez.
+
+Ölçüldü: `ik`/`sahip` özlüğü görür, `muhasebe` maaşı görür ama özlüğü
+**görmez**, `depmudur` yalnız kendi departmanının özlüğünü görür, `frontend`
+yalnız kendi kaydını görür.
+
+### 20.2 `GV.hr` — personel yaşam döngüsü (K-18, bu turda yazıldı)
+
+```js
+GV.hr.kayit(e)          // kod da kayıt da kabul eder
+GV.hr.durum(e)          // DB.employeeStatuses değeri
+GV.hr.istihdamda(e)     // bordroda mı — Taslak ve Ayrıldı hariç hepsi
+GV.hr.atanabilir(e)     // YENİ iş verilebilir mi — yalnız 'Aktif'
+GV.hr.atanabilirler()   // hazır, ada göre sıralı atama listesi
+GV.hr.icMaliyet(kod, tarih) · GV.hr.kayitOrani(l) · GV.hr.disKaynak(kod)
+```
+
+⚠️ **`DB.employees[].aktif` TUZAKTIR — OKUNMAZ (K-18).** Alan 16/16 kayıtta
+`true` idi, yani hiçbir şey ayırt etmiyordu; yedi ekran onu okuyup
+`Offboarding` durumundaki `EMP-015`i atama listelerine koyuyordu. Okuyan
+`undefined` alır ve `DB.ikBayat.sayac` artar; `tasks/qa/ik-ekseni.js` tek bir
+okuma kalırsa kırmızı yanar.
+
+**`employee` geçiş tablosu (`DB.transitions.employee`, 7 durum):**
+```
+Taslak      → Onboarding            zorunlu: girisTarihi · dep · pozisyon
+Onboarding  → Aktif
+Aktif       → İzinli · Pasif · Offboarding
+İzinli      → Aktif · Pasif · Offboarding
+Pasif       → Aktif · Offboarding                    GİRİŞ GEREKÇESİ
+Offboarding → Ayrıldı              zorunlu: cikisTarihi · cikisNedenKodu · GİRİŞ GEREKÇESİ
+Ayrıldı     → (yok, TERMINAL)
+```
+Yetki **yedi geçişte de** `ik / sahip / genelmudur`. Çıkış neden kodları
+`DB.reasonCodes` içinde `tur:'cikis'` taşıyanlardır (6 kod: `ISTIFA` ·
+`SOZLESME_BITIS` · `KARSILIKLI` · `ISVEREN_FESIH` · `EMEKLILIK` ·
+`STAJ_BITIS` + `DIGER`). Geçiş **yalnız `GV.flow.gec('employee', …)`** ile
+yapılır; `e.durum = …` yasaktır.
+
+⚠️ `Offboarding → Aktif` kenarı **YOKTUR**: yanlışlıkla çıkış sürecine
+alınan personel geri döndürülemez. Ölçüldü ve Beyar'a soruldu — ekran bunu
+düğme olarak vaat etmez.
+
+### 20.3 `GV.varlik` — zimmet TEK KAYNAK (K-18 eki, bu turda yazıldı)
+
+```js
+GV.varlik.kayit(a) · .zimmetOf(demirbasKod) · .kabulEdildi(z)
+GV.varlik.zimmetliler(personelKod)     // kişinin üzerindeki açık zimmetler
+GV.varlik.kabulEt(zimmetKod)           // → { ok, zimmet, demirbas }
+GV.varlik.kabulGeriAl(zimmetKod, gerekce)   // gerekçe ZORUNLU
+GV.varlik.tazele(a) · .tazeleHepsi()
+GV.varlik.sonTazeleme                  // { olculen, degisen:[…] } — yükleme ölçümü
+```
+
+⚠️ **`DB.assets[].zimmetli` ve `[].durum` TÜRETİLMİŞ görünümdür; EKRAN
+YAZMAZ.** Otorite `DB.assignments`tir. Envanter zimmet TUTANAĞI YAZILDIĞI AN
+güncelleniyordu, personelin kabulü beklenmiyordu — `ZMT-2026-007` tutanağı
+"Bekliyor" derken envanter "EMP-006'da" diyordu.
+
+Kural: zimmet ancak **personel onayladığında** envanteri `Zimmetli` yapar.
+Onay beklerken demirbaş **`Zimmet bekliyor`** durumundadır.
+`DB.assetStatuses` = `['Depoda','Zimmet bekliyor','Zimmetli','Aktif','Hurda']`.
+
+**Yüklemede 4 kayıt düzeltildi** ve düzeltme `sonTazeleme.degisen` içinde
+saklanır — ekran "envanter EMP-009 diyordu, tutanak yok" diye gösterebilir.
+Üçünde (`DMB-2025-007` · `DMB-2026-013` · `DMB-2026-014`) envanter bir
+sahip yazıyordu ama **hiç zimmet kaydı yoktu**.
+
+### 20.4 Veri gerçekleri — ölçüldü
+
+| Koleksiyon | Adet | Not |
+|---|---:|---|
+| `DB.employees` | **16** | durum: `Aktif` 15 · `Offboarding` 1. `saatlikUcret` yalnız 1'inde (EMP-015, freelancer) |
+| `DB.leaves` | **7** | tür 4 çeşit · durum: `Onay bekliyor` · `Onaylandı` · `Reddedildi`. `vekil` 5/7, `ret` 1/7 |
+| `DB.timelogs` | **131** | `onay`: `Bekliyor` · `Onaylandı`. `gorev` 47/131, `proje` 120/131, `modul` 78/131 |
+| `DB.timesheets` | **6** | haftalık defter; yalnız `2026-W31` kapsamlı |
+| `DB.assets` | **15** | 8 kategori. `zimmetli` ve `durum` TÜRETİLİR |
+| `DB.assignments` | **7** | 6 `Aktif` · 1 `İade edildi`; `personelOnay` 6 `Onaylandı` · 1 `Bekliyor` |
+| `DB.vehicles` | **4** | durum `Aktif` (3) · `Serviste` (1). `proje` **4/4 boş** · `anaSurucu` 2/4 |
+| `DB.vehicleExpenses` | 8 | araca bağlı gider |
+| `DB.performance` | **5** | `Tamamlandı` 4 · `Açık` 1. Açık olanda 12 ölçüt alanı **boş** |
+| `DB.trainings` | **4** | `katilimci` dizi alanıdır |
+| `DB.salaryHistory` | **15** | `bitis` **0/15 dolu** — hepsi açık uçlu kayıt |
+| `DB.departments` | 21 | `ustDepartman` 19/21 |
+
+Sözlükler: `DB.employeeStatuses` (7) · `DB.leaveTypes` (6) ·
+`DB.leaveStatuses` (5) · `DB.assetStatuses` (5) · `DB.assetCategories` (20) ·
+`DB.workTypes` (5) · `DB.timeUnits` (4).
+⚠️ `vehicleStatuses` · `contractTypes` · `performanceStatuses` ·
+`trainingStatuses` sözlükleri **YOKTUR** — değerleri kayıtlardan türet ve
+nereden türettiğini ekranda yaz.
+
+### 20.5 Sekme ve kayıtlı görünüm sözleşmesi (şartname §3.1)
+
+Kapasite · performans · eğitim · işe giriş/çıkış · demirbaş · zimmet · filo
+**AYRI EKRAN AİLESİ AÇMAZ**; üç ana sayfanın bağlamsal görünümleridir.
+
+- **`app-personel-detay.html` SEKMELİDİR**: `ozet` · `performans` · `egitim` ·
+  `yasamdongusu` · `zaman` · `zimmet` · `aktivite`. Tembel çizim zorunlu
+  (`GV.on(document,'gv:tab',…)` + `GV.tabs`), `#hash` derin bağlantısı
+  sözleşmedir (§18.7 ile aynı desen).
+- **`app-zaman.html`** iki yüzey sekmesi taşır: **Zaman** (`DB.timelogs` +
+  `DB.timesheets`) ve **İzin** (`DB.leaves`). `app-zaman-onay.html` ayrı ekran
+  DEĞİLDİR — Zaman sekmesinin onay kayıtlı görünümüdür.
+- **`app-varlik.html`** üç yüzey sekmesi taşır: **Demirbaş** (`DB.assets`) ·
+  **Zimmet** (`DB.assignments`) · **Filo** (`DB.vehicles`).
+- **Kapasite** ayrı ekran değildir → "İş ve Kapasite" raporu
+  (`app-rapor.html?r=is-kapasite`, yayında).
+
+⚠️ Aynı sayfada birden çok `GV.list` varsa **yalnız BİRİ** `urlSync` tutar;
+kalanı `urlSync:false` bildirir (§18.9 · iki yönlüdür).
+
+### 20.6 Bu dilimde beyan edilecek backend payı
+
+| Kod | Madde | Nerede |
+|---|---|---|
+| `BE-P1` | Durum geçişi sunucuda yeniden doğrulanmaz | üçünde de |
+| `BE-P2` | Zaman kaydı gerçek bir timesheet servisine bağlı değil | zaman |
+| `BE-K1` | Kişisel veri kapısı yalnız arayüzdedir; gerçek sistemde özlük ve maaş alanları **sunucuda** yetkiye göre filtrelenmelidir — maskelenmiş alan istemciye hiç gitmemelidir | personel |
+| `BE-K2` | Zimmet tutanağı ıslak/e-imza taşımaz; kabul yalnız bir bayraktır | varlık |
+| `BE-S4` | Belge yükleme gerçek depoya yazmaz | personel · varlık |
+| `BE-S5` | Denetim izi kalıcı değildir | üçünde de |

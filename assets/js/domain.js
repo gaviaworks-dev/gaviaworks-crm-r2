@@ -2335,6 +2335,55 @@
       return k ? k.durum : null;
     },
 
+    /* ===================================================================
+       KİŞİSEL VERİ KAPISI — özlük · sağlık · maaş
+
+       Personel kaydı üç ayrı hassasiyette alan taşır ve üçü AYNI kapıdan
+       geçmez:
+         · genel   — ad, pozisyon, departman, rol · herkes görür
+         · özlük   — doğum tarihi, kan grubu, acil kişi, ev telefonu, adres
+         · maaş    — `maas`, `saatlikUcret`, `DB.salaryHistory`
+
+       Maaş kapısı zaten vardı (`permMatrix.maas`, 4 rol: sahip ·
+       genelmudur · ik · muhasebe) ve `GV.perm.mask` onu uyguluyor.
+       ÖZLÜK için kapı YOKTU — kan grubu ve acil kişi bilgisi hiçbir
+       kontrolden geçmeden basılabilirdi. Yeni bir matris anahtarı
+       AÇILMADI (uydurma yetki adı yok): var olan `personel` KAPSAMINDAN
+       türetilir.
+         `tum`       → herkesin özlüğü
+         `departman` → yalnız kendi departmanı
+         `proje`     → hayır (proje kapsamı özlük vermez)
+         yok/boş     → yalnız KENDİ kaydı
+       Kendi kaydını herkes görür — kişinin kendi kan grubunu görmesi bir
+       yetki sorunu değildir. */
+    ozlukGorebilir:function(e){
+      var k = Hr.kayit(e);
+      if(!k) return false;
+      var me = (GV.session && GV.session.emp) || null;
+      if(me && k.kod === me) return true;                     /* kendi kaydı */
+      var kapsam = (GV.perm && GV.perm.scope) ? GV.perm.scope('personel') : 'yok';
+      if(kapsam === 'tum') return true;
+      if(kapsam === 'departman'){
+        var benim = (GV.session && GV.session.dep) || null;
+        return !!benim && k.dep === benim;
+      }
+      return false;
+    },
+
+    /* Maaş kapısı — matris anahtarı üzerinden, ekran kendi kopyasını kurmaz. */
+    maasGorebilir:function(){
+      return !!(GV.perm && GV.perm.can && GV.perm.can('maas'));
+    },
+
+    /* Özlük alanının EKRANDA basılacak hâli. Yetkisizde `0` ya da boş
+       DEĞİL, maskelenmiş değer döner (UID-11): boş bırakmak "veri yok"
+       demektir, oysa veri var ve görülemiyor — ikisi ayrı şeydir. */
+    ozluk:function(e, alan){
+      var k = Hr.kayit(e);
+      if(!k) return null;
+      return Hr.ozlukGorebilir(k) ? k[alan] : '••••••';
+    },
+
     /* Atama listeleri için hazır küme — yedi ekran aynı süzgeci ayrı ayrı
        yazıyordu (L-40). Sıralama ada göre, çağıran yeniden sıralamaz. */
     atanabilirler:function(){
