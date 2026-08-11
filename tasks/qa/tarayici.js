@@ -46,6 +46,17 @@ const EKRANLAR = [
   { dosya: 'app-teklif.html',                        ad: 'Teklifler',      oturum: true },
   { dosya: 'app-teklif-detay.html?id=TKL-2026-014',  ad: 'Teklif Detayı',  oturum: true },
   { dosya: 'app-teklif-form.html',                   ad: 'Teklif Formu',   oturum: true },
+  /* ---- Dilim 2: Finans zinciri ----------------------------------
+     Kayıt seçimi ölçümden geldi: FTR-2026-025 zincirin 4 halkasını da
+     taşıyan fatura, THS-2026-041 tahsil EDİLMEMİŞ (nakit olayı yok) kayıt,
+     MS-004 faturası olmayan dört taksitten biri. */
+  { dosya: 'app-fatura.html',                        ad: 'Faturalar',      oturum: true },
+  { dosya: 'app-fatura-detay.html?id=FTR-2026-025',  ad: 'Fatura Detayı',  oturum: true },
+  { dosya: 'app-fatura-form.html?taksit=MS-004',     ad: 'Fatura Formu',   oturum: true },
+  { dosya: 'app-tahsilat.html',                      ad: 'Tahsilatlar',    oturum: true },
+  { dosya: 'app-tahsilat-form.html?id=THS-2026-041', ad: 'Tahsilat Formu', oturum: true },
+  { dosya: 'app-satinalma.html',                     ad: 'Satın Alma',     oturum: true },
+  { dosya: 'app-teklif-detay.html?id=TKL-2026-011',  ad: 'Teklif Sürümü',  oturum: true },
   { dosya: 'app-operasyon.html', ad: 'Operasyon',      oturum: true },
   { dosya: 'app-odeme-linki.html',       ad: 'Ödeme Linkleri', oturum: true },
   { dosya: 'app-odeme-linki-form.html',  ad: 'Yeni Link',      oturum: true },
