@@ -132,3 +132,23 @@ V2-09 · V2-10 · V2-13 · V2-14 · V2-15 · V2-16 — on üç madde.
 | **V2-36** | `slaDurum` için sözlük yok | `DB.slaStatuses` diye bir koleksiyon yok; üç değerin kuralı `ops.js` içinde düzyazı. İki ekran bunu kayıttaki değerlerden türetmek zorunda kaldı ve sebebini yazdı |
 | **V2-37** | `GV.fmt.dakika` yok | Dakika→saat okunurluk biçimi iki ekranda kopya (`app-destek-detay.html` + `app-destek-form.html`) |
 | **V2-38** | `DB.impacts` brief'te yazılı değildi | `work.js` içinde 4 değerlik gerçek sözlük; destek formu kural gereği kullanmadı ve `etki` seçeneklerini kayıtlardan türetti. Brief'e eklenmeli |
+
+## Dilim 4 açılışında KAPANAN borç
+
+| Borç | Kapatan karar | Ölçüm |
+|---|---|---|
+| **K-18** İK ekran tarafı / `aktif` paralel ekseni | ADR-R2-28 | `aktif` tuzağa çevrildi · 7 çağrı yeri `GV.hr.atanabilirler()`e geçti · `ik-ekseni.js` 39 kontrol |
+| **V2-35** bakım paketi seviyesi üç biçimde | K-27 · ADR-R2-26 | Kanon kısa biçim · 7 paket + 2 talep hizalandı · veri kaybı sıfır |
+| **V2-28** `firsatKazan` üç ölü hedef | K-28 · ADR-R2-27 | Üçü de müşteri detayı › Finans sekmesine bağlandı |
+| **zimmet kabulü çelişkisi** | ADR-R2-29 | Envanter zimmet defterinden türüyor · yüklemede 4 kayıt düzeltildi |
+
+## Dilim 4'te açılan yeni borç
+
+| # | Madde | Ölçüm |
+|---|---|---|
+| **V2-39** | `app-proje-form.html` yazılmadı ama `GV.sales.firsatKazan` "Proje oluştur" önerisi oraya bağlanıyor | Rota 32 `KARŞILIĞI VAR`. Kabuk `markWip` ile kilitliyor (sahte buton yok) ama hedef yazılmamış |
+| **V2-40** | `app-satinalma-form.html` yazılmadı ama `app-satinalma.html` "Yeni Talep" düğmesi oraya bağlanıyor | Rota 115 `KARŞILIĞI VAR`. Aynı sınıf |
+| **V2-41** | **VERİ BULGUSU — üç demirbaşta sahipsiz zimmet iddiası** | `DMB-2025-007` (EMP-009) · `DMB-2026-013` (EMP-011) · `DMB-2026-014` (EMP-012) envanterde zimmetli yazıyordu ama **hiç tutanak kaydı yok**. Tek kaynak kararı gereği envanter temizlendi; atılan iddia `GV.varlik.sonTazeleme.degisen` içinde saklı. Tutanak mı eksik, envanter mi yanlıştı — Beyar kararı |
+| **V2-42** | `Offboarding → Aktif` kenarı yok | Yanlışlıkla çıkış sürecine alınan personel geri döndürülemez. "Geri almak yapmaktan ağır olamaz" kuralına aykırı görünüyor; kenar EKLENMEDİ, karar Beyar'ın |
+| **V2-43** | Dört sözlük eksik | `vehicleStatuses` · `contractTypes` · `performanceStatuses` · `trainingStatuses` yok; ekranlar değerleri kayıtlardan türetmek ve kaynağını yazmak zorunda |
+| **V2-44** | `DB.salaryHistory[].bitis` 15/15 boş | Tüm maaş kayıtları açık uçlu; "şu an geçerli maaş" hangi satır olduğu tarihten türetiliyor, alandan değil |
