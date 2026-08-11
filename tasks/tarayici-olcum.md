@@ -1,0 +1,178 @@
+# Tarayıcı Ölçümü — üç ekran × altı genişlik
+
+> **Koşum:** `node tasks/qa/tarayici.js` · gerçek Chromium (Playwright 1.62.1,
+> headless) · yerel sunucu `127.0.0.1:8792` · her ölçüm temiz bağlamda.
+> **Taramalar seri koşuldu, paralel değil.** Repo dosyası tarama sırasında
+> değiştirilmedi.
+>
+> Şartname §12: *"1600, 1440, 1280, 1024, 768 ve 390 px genişliklerde sayfa
+> yatay taşmaz."*
+
+---
+
+## 1. Sonuç
+
+| | |
+|---|---:|
+| Ekran | 3 |
+| Genişlik | 6 |
+| Ölçüm | **18** |
+| **Yatay taşma** | **0** |
+| **Konsol hatası (kendi kaynağımız)** | **0** |
+| **Eksik sprite ikonu** | **0** |
+| **Odak tuzağı (0×0)** | **0** |
+| Dış kaynak isteği başarısız | 2 (Google Fonts CDN — depo kusuru değil) |
+
+**Düzeltilmesi gereken ürün bulgusu: 0.** Bu yüzden bu turda taşma düzeltme
+commit'i yok — düzeltilecek bir şey çıkmadı.
+
+---
+
+## 2. Ölçüm tablosu
+
+`sprite` sütunu: *çizilen ikon / gizli kapsayıcıdaki ikon*.
+`odak` sütunu: *Tab ile yürünen adım / render ağacındaki odaklanabilir düğüm*.
+
+| Ekran | Genişlik | Taşma | Sprite | Odak | Konsol |
+|---|---:|---|---|---|---|
+| Giriş | 1600 | yok | 8 / 21 | 8 / 8 | temiz |
+| Giriş | 1440 | yok | 8 / 21 | 8 / 8 | temiz |
+| Giriş | 1280 | yok | 8 / 21 | 8 / 8 | temiz |
+| Giriş | 1024 | yok | 3 / 26 | 8 / 8 | temiz |
+| Giriş | 768 | yok | 3 / 26 | 8 / 8 | temiz |
+| Giriş | 390 | yok | 3 / 26 | 8 / 8 | temiz |
+| Gündem | 1600 | yok | 33 / 2 | 12 / 21 | temiz |
+| Gündem | 1440 | yok | 33 / 2 | 12 / 21 | temiz |
+| Gündem | 1280 | yok | 33 / 2 | 12 / 21 | temiz |
+| Gündem | 1024 | yok | 33 / 2 | 12 / 21 | temiz |
+| Gündem | 768 | yok | 33 / 2 | 12 / 21 | temiz¹ |
+| Gündem | 390 | yok | 32 / 3 | 12 / 21 | temiz |
+| Müşteriler | 1600 | yok | 54 / 33 | 12 / 72 | temiz |
+| Müşteriler | 1440 | yok | 54 / 33 | 12 / 72 | temiz |
+| Müşteriler | 1280 | yok | 54 / 33 | 12 / 72 | temiz |
+| Müşteriler | 1024 | yok | 54 / 33 | 12 / 72 | temiz |
+| Müşteriler | 768 | yok | 55 / 32 | 12 / 73 | temiz |
+| Müşteriler | 390 | yok | 70 / 17 | 12 / 62 | temiz |
+
+¹ Bu ölçümde `fonts.gstatic.com` iki woff2 isteği 404 döndü. **Bu deponun
+kusuru değildir** — sayfalar Google Fonts'u CDN'den çekiyor ve ağ tarafında
+oluşan bir aksaklık. Ayrı kovada sayılır; aynı koşumun diğer 17 ölçümünde
+tekrarlamadı. Not: ağ engelli ortamda her sayfa bu hatayı verir ve tipografi
+sistem yazı tipine düşer. Kalıcı çözüm yazı tipini repoya gömmektir — borç
+olarak yazıldı (Y-09).
+
+---
+
+## 3. Eksen eksen ne ölçüldü
+
+### 3.1 Taşma
+
+`document.documentElement.scrollWidth > clientWidth + 1` ise taşma var
+sayılır. Taşma varsa **en içteki** suçlu düğüm raporlanır — taşan bir çocuk
+bütün atalarını da taşırır, hepsini yazmak bulgu sayısını şişirirdi.
+
+**Sonuç: 18 ölçümün 18'inde taşma yok.** En dar kırılımda (390px) bile
+üst çubuk, kart ızgarası ve liste kendi kapsayıcısında kalıyor.
+
+### 3.2 Sprite
+
+`#gvSprite` enjeksiyonu, her `<use href="#i-*">` hedefinin belgede
+bulunması ve ikonun gerçekten çizilmesi ölçülür.
+
+- `#gvSprite` **18 ölçümün 18'inde** enjekte edildi, **113 sembol** taşıyor
+- **Belgede karşılığı olmayan ikon: 0**
+- Görünür olduğu hâlde 0×0 çizilen ikon: **0**
+
+"Gizli kapsayıcıdaki ikon" sayısı kusur değildir: giriş ekranındaki rol
+sekmesi `[hidden]`, müşteri listesinde `GV.list` tablo + kart + mobil satırı
+birlikte basıp CSS ile birini gösteriyor. 390px'e inildikçe gizli sayısının
+düşmesi (33 → 17) mobil satırın devreye girmesidir — beklenen davranış.
+
+### 3.3 Odak
+
+Skip link, Tab zinciri ve 0×0 odak tuzağı ölçülür.
+
+- Her ölçümde ilk Tab **`.gv-skip` ("İçeriğe atla")** düğümüne düşüyor
+- Tab zinciri kesintisiz ilerliyor
+- **Çizilmiş olduğu hâlde 0×0 olan odaklanabilir düğüm: 0**
+
+⚠️ **Bu eksenin sınırı:** Tab zinciri **12 adımla** sınırlandı
+(`Math.min(12, …)`). Müşteri listesinde 72 odaklanabilir düğüm var; ilk
+12'si yürünüyor, kalan 60'ı **ölçülmedi**. Tablodaki `12 / 72` bunu söylüyor,
+"60 düğüm başarısız" demiyor. Tam zincir ölçümü ayrı bir borçtur (Y-10).
+
+Ayrıca ölçülmeyenler: odak halkasının görünürlüğü (kontrast), `aria-*`
+doğruluğu, ekran okuyucu duyurusu, WCAG 2.2 AA kontrast oranı.
+
+### 3.4 Konsol
+
+`console.error`, `pageerror`, başarısız istek ve 4xx/5xx yanıt yakalanır.
+Kendi kaynağımız ile üçüncü taraf **ayrı kovalarda** sayılır.
+
+**Kendi kaynağımızda 0 hata.**
+
+---
+
+## 4. Ölçüm katmanında bulunan iki kusur
+
+> R1'in L-17 / L-24 / L-26 ailesi bu turda da tekrarladı: *araç sessizce
+> yanlış yere bakabilir* — ve bu kez **fazla** saydı.
+
+İlk koşum **30 bulgu** bastı. Yirmi sekizi **yanlıştı** ve ikisi ölçüm
+betiğimin kusuruydu:
+
+| Kusur | Sonucu | Düzeltme |
+|---|---|---|
+| Sprite ekseni düğümün **kendi** `display`ine bakıyordu | `[hidden]` rol sekmesindeki 21 ikonu "çizilmedi" sanıyordu | ata zinciri taranıyor; `getClientRects().length` esas ölçüt |
+| Odak ekseni aynı hatayı yapıyordu | `.gv-cardlist{display:none}` içindeki bağlantıları "0×0 odak tuzağı" sanıyordu | aynı yordam (`CIZILDI_MI`) iki eksende de paylaşılıyor |
+
+Kalan iki bulgu (Google Fonts 404) gerçekti ama **bu deponun kusuru
+değildi**; ayrı kovaya alındı.
+
+### 4.1 Düzeltilmiş eksen bozulmuş kopyada sınandı (L-39)
+
+Sıfır bulgu, eksenin kör olduğu anlamına gelebilirdi. Bu yüzden depo
+dışında bozulmuş bir kopya kuruldu ve üç kusur enjekte edildi:
+
+| Enjekte edilen kusur | Yakalandı mı |
+|---|---|
+| 2400px genişliğinde blok (yatay taşma) | ✅ **altı genişliğin altısında** — suçlu düğüm doğru gösterildi |
+| Tanımsız değişken çağrısı (`pageerror`) | ✅ altı genişliğin altısında |
+| Olmayan ikon (`#i-BOZUK-YOK`) | ✅ altı genişliğin altısında |
+
+Bozulmuş kopya ölçümden sonra silindi; depo dosyaları hiç değişmedi.
+
+---
+
+## 5. Bu ölçümün SÖYLEMEDİĞİ
+
+Dürüstlük gereği — koşulmayan hiçbir kontrol "geçti" sayılmaz:
+
+- **Etkileşim akışı ölçülmedi.** Çekmeceler (takvim, onay, bildirim, Hızlı
+  Not) açılmadı; liste filtresi, sekme geçişi, sıralama ve sayfalama
+  tıklanmadı. Ölçülen şey **ilk yüklemedir**.
+- **Hızlı Not davranışı ölçülmedi** — Enter kaydı, Shift+Enter satırı,
+  checkbox tamamlaması, 5 saniyelik geri alma ve 24 saatlik gizlenme
+  tarayıcıda sınanmadı.
+- **Rol bazlı görünüm ölçülmedi.** Tarama yalnız `?role=sahip` ile koştu;
+  menü sayımı 27 rol için ayrıca `tasks/qa/kontrol.js` §5'te ölçülüyor ama
+  o **tarayıcısızdır**.
+- **Erişilebilirlik ölçülmedi** (WCAG 2.2 AA kontrast, ARIA, ekran okuyucu).
+- **Ekran görüntüsü alınmadı.**
+
+Bunların hepsi borç olarak `tasks/riskler-ve-kapsam.md` §6'da yazılı.
+
+---
+
+## 6. Yeniden koşum
+
+```bash
+cd ~/Developer/Projects/gaviaworks-crm-r2
+npm install --no-save playwright@1.62.1      # node_modules gitignored
+node tasks/qa/tarayici.js                     # çıkış 0 = temiz
+
+# Bozulmuş kopyada sınamak için:
+GV_ROOT=/yol/bozuk-kopya GV_PORT=8795 node tasks/qa/tarayici.js
+```
+
+Ayrıntılı çıktı `tasks/qa/tarayici-sonuc.json` dosyasına yazılır (gitignored).

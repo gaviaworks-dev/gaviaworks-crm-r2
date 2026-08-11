@@ -14,3 +14,6 @@ docs/screenshots/
 # Buildless proje; node_modules yalnız ileride QA için
 node_modules/
 package-lock.json
+
+# Tarayıcı ölçüm çıktısı — betik repoda, sonucu değil
+tasks/qa/tarayici-sonuc.json
