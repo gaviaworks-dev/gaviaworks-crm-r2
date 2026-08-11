@@ -553,6 +553,25 @@
       /* Departman talebi göreve dönüşünce görev bağı zorunlu (ADR-03) */
       if(tur === 'request' && hedef === 'Göreve Dönüştürüldü' && !rec.gorev)
         rec.gorevBekliyor = true;
+      /* Destek KAPANIŞ DAMGASI — motorun işi, ekranın değil (L-40).
+         İki ekran (`app-destek.html` · `app-destek-detay.html`) bu kuralı
+         `ek` kanalıyla ayrı ayrı yazıyordu ve İKİSİ AYNI DEĞİLDİ: biri
+         hedefi sözlükten türetiyor, diğeri `'Kapandı'` dizesini elle
+         yazıyordu. Sözlük değişse ikisi ayrışır ve biri sessizce damgasız
+         kapatırdı. Kural tek yere alındı; kapanış durumları
+         `DB.ticketClosedStatuses`ten okunur, sabit dize yazılmaz.
+
+         ⚠️ Var olan damga EZİLMEZ: kayıt zaten kapanmış ve yeniden açılıp
+         tekrar kapatılıyorsa ilk kapanış tarihi korunur — üzerine bugünü
+         yazmak gerçekleşmiş bir olayın tarihini değiştirmek olurdu. */
+      if(tur === 'ticket' && (DB.ticketClosedStatuses || []).indexOf(hedef) !== -1 && !rec.kapanisTarihi){
+        /* BİÇİM DEFTERDEN OKUNDU: yayındaki damga `2026-07-18T14:00`, yani
+           tarih + saat. Yalnız `DB.today` yazmak, aynı alana iki farklı
+           biçim koymak olurdu (brief §13.2 zaman damgası deseni). Gün sabit
+           `DB.today`tan, saat gerçek saatten gelir. */
+        rec.kapanisTarihi = DB.today + 'T' + new Date().toTimeString().slice(0, 5);
+      }
+
       /* Destek kapanışı → bakım kotası düşümü (ADR-10). Kapı aşımı engelledi. */
       if(tur === 'ticket' && hedef === 'Kapandı' && !rec.ucretli){
         var p = (GV.destek && GV.destek.paketOf) ? GV.destek.paketOf(rec) : null;

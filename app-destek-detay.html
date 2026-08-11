@@ -588,11 +588,6 @@ document.addEventListener('gv:ready', function(){
   /* ===================================================================
      15. EYLEMLER — tek mutasyon noktası GV.flow.gec
      =================================================================== */
-  function damga(){
-    /* "Bugün" DB.today'dir; `new Date()` ile gün alınmaz (brief §13.2). */
-    return DB.today + 'T' + new Date().toTimeString().slice(0,5);
-  }
-
   function eylemAdi(hedef){
     if(hedef === 'Yeniden Açıldı') return 'Yeniden Aç';
     if(hedef === 'Kapandı')        return 'Kapat';
@@ -607,12 +602,12 @@ document.addEventListener('gv:ready', function(){
     if(a.gerekce){ gerekceliGec(hedef, a); return; }
     if(formlaCozulur(a)){ cozumCekmecesi(hedef); return; }
 
-    /* Kapanış tarihi bir olay damgasıdır: kapanış geçişinin kendisiyle
-       yazılır ve geçişle birlikte motora verilir — ekran alana doğrudan
-       dokunmaz. Müşteri onayı yazılmaz: o müşterinin cevabıdır, türetilemez. */
-    var ek = (hedef === 'Kapandı' && !t.kapanisTarihi) ? { kapanisTarihi:damga() } : null;
-
-    var r = GV.flow.gec('ticket', t.kod, hedef, ek);
+    /* Kapanış tarihi bir olay damgasıdır ve MOTOR yazar
+       (`GV.flow.yanEtki`, ticket dalı; kapanış durumları
+       `DB.ticketClosedStatuses`ten okunur). Bu ekran eskiden 'Kapandı'
+       dizesini ELLE yazıyordu — sözlük değişse damgasız kapatırdı.
+       Müşteri onayı yazılmaz: o müşterinin cevabıdır, türetilemez. */
+    var r = GV.flow.gec('ticket', t.kod, hedef, null);
     if(r.ok === false){ GV.toast(GV.flowHata(r), 'danger'); return; }
     GV.toast(t.kod + ' → ' + hedef, 'ok');
     GV.refresh();
