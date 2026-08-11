@@ -33,10 +33,15 @@ DB.assets = [
     ozellik:'i7 · 32 GB RAM · 1 TB SSD', alisTarihi:'2024-06-11', alisFiyati:47000, tedarikci:'TDR-001',
     garantiBas:'2024-06-11', garantiBit:'2027-06-11', lokasyon:'Ofis · Ankara', dep:'DEP-07',
     durum:'Zimmetli', zimmetli:'EMP-006', zimmetTarihi:'2024-06-14', iadeTarihi:null, barkod:'GW-DMB-0003', siparis:null, aktif:true },
+  /* ZMT-2026-007 tutanağı yazıldı ama `personelOnay` HÂLÂ 'Bekliyor' —
+     envanterin türetilmiş hâli bu yüzden 'Zimmet bekliyor'dur. Literal
+     eskiden 'Zimmetli/EMP-006' diyordu ve yükleyici bunu her açılışta sessizce
+     düzeltiyordu; K-30 gereği defterin söylediği yazıldı. Cihaz ne depodadır
+     ne teslim edilmiştir — ara durum söylenir, yutulmaz. */
   { kod:'DMB-2025-004', kategori:'Monitör', altKategori:'27 inç', marka:'LG', model:'27UP850', seri:'LG27UP1234',
     ozellik:'4K · USB-C 90W', alisTarihi:'2025-02-20', alisFiyati:18500, tedarikci:'TDR-001',
     garantiBas:'2025-02-20', garantiBit:'2027-02-20', lokasyon:'Ofis · Ankara', dep:'DEP-07',
-    durum:'Zimmetli', zimmetli:'EMP-006', zimmetTarihi:'2025-02-24', iadeTarihi:null, barkod:'GW-DMB-0004', siparis:null, aktif:true },
+    durum:'Zimmet bekliyor', zimmetli:null, zimmetTarihi:'2025-02-24', iadeTarihi:null, barkod:'GW-DMB-0004', siparis:null, aktif:true },
   { kod:'DMB-2025-005', kategori:'Monitör', altKategori:'27 inç', marka:'Dell', model:'U2723QE', seri:'DLU27X8877',
     ozellik:'4K · USB-C hub', alisTarihi:'2025-02-20', alisFiyati:21000, tedarikci:'TDR-001',
     garantiBas:'2025-02-20', garantiBit:'2027-02-20', lokasyon:'Depo · Ankara', dep:'DEP-17',
@@ -48,7 +53,9 @@ DB.assets = [
   { kod:'DMB-2025-007', kategori:'Telefon', altKategori:'Test cihazı', marka:'Samsung', model:'Galaxy S24', seri:'SGS24AA1029',
     ozellik:'256 GB · Android 14', alisTarihi:'2025-04-02', alisFiyati:41000, tedarikci:'TDR-002',
     garantiBas:'2025-04-02', garantiBit:'2027-04-02', lokasyon:'Ofis · Ankara', dep:'DEP-11',
-    durum:'Zimmetli', zimmetli:'EMP-009', zimmetTarihi:'2025-04-05', iadeTarihi:null, barkod:'GW-DMB-0007', siparis:null, aktif:true },
+    /* K-30: "zimmetli EMP-009" iddiası DÜŞÜRÜLDÜ — karşılığı tutanak yok.
+       İddianın kaynağı ve düşme sebebi `DB.assetClaimDrops` içinde durur. */
+    durum:'Depoda', zimmetli:null, zimmetTarihi:null, iadeTarihi:null, barkod:'GW-DMB-0007', siparis:null, aktif:true },
   { kod:'DMB-2025-008', kategori:'Sunucu', altKategori:'NAS', marka:'Synology', model:'DS923+', seri:'SYN923X445',
     ozellik:'4 yuva · 32 TB', alisTarihi:'2025-08-14', alisFiyati:68000, tedarikci:'TDR-001',
     garantiBas:'2025-08-14', garantiBit:'2028-08-14', lokasyon:'Ofis · Sistem odası', dep:'DEP-12',
@@ -75,11 +82,14 @@ DB.assets = [
   { kod:'DMB-2026-013', kategori:'Ofis mobilyası', altKategori:'Çalışma sandalyesi', marka:'Ergohuman', model:'Enjoy Elite', seri:'ERG-EE-77101',
     ozellik:'Bel destekli · ayarlanabilir kolçak · file sırt', alisTarihi:'2026-07-30', alisFiyati:9500, tedarikci:'TDR-005',
     garantiBas:'2026-07-30', garantiBit:'2028-07-30', lokasyon:'Ofis · Ankara', dep:'DEP-17',
-    durum:'Zimmetli', zimmetli:'EMP-011', zimmetTarihi:'2026-07-31', iadeTarihi:null, barkod:'GW-DMB-0013', siparis:'SIP-2026-008', aktif:true },
+    /* K-30: "zimmetli EMP-011" iddiası DÜŞÜRÜLDÜ — bu kaydın bir de aktivite
+       dayanağı vardı (`work.js` · 2026-07-31T09:50), yine de tutanak yok. */
+    durum:'Depoda', zimmetli:null, zimmetTarihi:null, iadeTarihi:null, barkod:'GW-DMB-0013', siparis:'SIP-2026-008', aktif:true },
   { kod:'DMB-2026-014', kategori:'Ofis mobilyası', altKategori:'Çalışma sandalyesi', marka:'Ergohuman', model:'Enjoy Elite', seri:'ERG-EE-77102',
     ozellik:'Bel destekli · ayarlanabilir kolçak · file sırt', alisTarihi:'2026-07-30', alisFiyati:9500, tedarikci:'TDR-005',
     garantiBas:'2026-07-30', garantiBit:'2028-07-30', lokasyon:'Ofis · Ankara', dep:'DEP-17',
-    durum:'Zimmetli', zimmetli:'EMP-012', zimmetTarihi:'2026-07-31', iadeTarihi:null, barkod:'GW-DMB-0014', siparis:'SIP-2026-008', aktif:true },
+    /* K-30: "zimmetli EMP-012" iddiası DÜŞÜRÜLDÜ — karşılığı tutanak yok. */
+    durum:'Depoda', zimmetli:null, zimmetTarihi:null, iadeTarihi:null, barkod:'GW-DMB-0014', siparis:'SIP-2026-008', aktif:true },
   { kod:'DMB-2026-015', kategori:'Ofis mobilyası', altKategori:'Çalışma sandalyesi', marka:'Ergohuman', model:'Enjoy Elite', seri:'ERG-EE-77103',
     ozellik:'Bel destekli · ayarlanabilir kolçak · file sırt', alisTarihi:'2026-07-30', alisFiyati:9500, tedarikci:'TDR-005',
     garantiBas:'2026-07-30', garantiBit:'2028-07-30', lokasyon:'Depo · Ankara', dep:'DEP-17',
@@ -115,6 +125,36 @@ DB.assignments = [
     durum:'Aktif', tutanak:'zimmet-2026-006.pdf', personelOnay:'Onaylandı', onayTarihi:'2026-01-18', hasar:null, aktif:true },
   { kod:'ZMT-2026-007', demirbas:'DMB-2025-004', personel:'EMP-006', teslimTarihi:'2025-02-24', iadeTarihi:null,
     durum:'Aktif', tutanak:'zimmet-2026-007.pdf', personelOnay:'Bekliyor', onayTarihi:null, hasar:null, aktif:true }
+];
+
+/* ---- DÜŞÜRÜLEN ZİMMET İDDİALARI (K-30 · V2-41) --------------------------
+   Envanterde üç demirbaş "zimmetli" yazıyordu ama zimmet defterinde
+   (`DB.assignments`) karşılık gelen TEK BİR TUTANAK YOKTU. Defter kanoniktir,
+   envanter ondan türer — bu yüzden iddia düşürüldü.
+
+   ⚠️ Eksik tutanak ÜRETİLMEDİ. Bir iddianın kaynağı yoksa kaynak uydurulmaz;
+   iddia düşer ve neden düştüğü yazılı kalır. Kayıt burada durur ki "envanter
+   bir zamanlar başka bir şey söylüyordu" bilgisi kaybolmasın — ekranda
+   demirbaşın zaman çizelgesinde bu satırdan TÜRETİLEREK gösterilir, sahte
+   bir aktivite kaydı olarak veriye yazılmaz.
+
+   `kaynak` alanı ölçülmüştür, tahmin değildir: her üçünde envanter alanının
+   kendisi, DMB-2026-013'te ek olarak bir aktivite kaydı. */
+DB.assetClaimDrops = [
+  { demirbas:'DMB-2025-007', iddiaPersonel:'EMP-009', iddiaTarihi:'2025-04-05',
+    iddiaDurum:'Zimmetli', dusurulme:DB.today, karar:'K-30',
+    kaynak:['envanter alanı: zimmetli/zimmetTarihi'],
+    neden:'DB.assignments içinde bu demirbaşa ait tutanak yok' },
+  { demirbas:'DMB-2026-013', iddiaPersonel:'EMP-011', iddiaTarihi:'2026-07-31',
+    iddiaDurum:'Zimmetli', dusurulme:DB.today, karar:'K-30',
+    kaynak:['envanter alanı: zimmetli/zimmetTarihi',
+            'aktivite kaydı: 2026-07-31T09:50 · EMP-011 · "Zimmet teslimi yapıldı" (Depoda→Zimmetli)'],
+    neden:'Aktivite dayanağı var ama tutanak yok; envanteri değiştiren olay ' +
+          'tutanağın yazılması değil personelin KABULÜDÜR (K-18 eki)' },
+  { demirbas:'DMB-2026-014', iddiaPersonel:'EMP-012', iddiaTarihi:'2026-07-31',
+    iddiaDurum:'Zimmetli', dusurulme:DB.today, karar:'K-30',
+    kaynak:['envanter alanı: zimmetli/zimmetTarihi'],
+    neden:'DB.assignments içinde bu demirbaşa ait tutanak yok' }
 ];
 
 /* ---- Araçlar (PROMPT.md §16 — ayrı filo modülü) -------------------------
