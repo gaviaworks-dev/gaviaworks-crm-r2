@@ -189,7 +189,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 |---|---|---|---|
 | 48 | `app-gorev.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Tek liste, 8 sekme kayıtlı görünüm. 26 görev · `urlSync` açık, eski `?t=` bağlantı biçimi çalışıyor |
 | 49 | `app-gorev-detay.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Operasyon kuyruğunun **23 satırı** bu ekrana bağlandı ve açılıyor |
-| 50 | `app-gorev-form.html` | **KARŞILIĞI VAR** | — |
+| 50 | `app-gorev-form.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** 4 sekme · 25 alan · tek `required` (`baslik`). Kayıt `GV.task.olustur` ile: sorumlulu → **Atandı**, sorumlusuz → **Havuzda**; atama GEÇİŞTEN geçer. `durum` forma KONMADI, salt okunur. `faturalanabilir` SAAT alanıdır, sorulmuyor |
 
 ### 4.4 Departman talepleri
 
@@ -205,7 +205,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 |---|---|---|---|
 | 54 | `app-destek.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Kuyrukla **aynı satır modeli** (`GV.kuyruk.tipler.destek`); kaynak `DB.tickets` çünkü kuyruk yalnız açık 4 talebi taşıyor, liste 7'sini de gösterir. 4 talebin 13 alanı kuyrukla karşılaştırıldı: **0 fark** |
 | 55 | `app-destek-detay.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Kuyruğun **4 satırı** bu ekrana bağlandı. SLA bir SÜRE taahhüdüdür, tarihe çevrilmedi |
-| 56 | `app-destek-form.html` | **KARŞILIĞI VAR** | — |
+| 56 | `app-destek-form.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** 2 sekme · 12 alan · 2 `required` (`baslik` · `musteri`). Kayıt `GV.destek.olustur` ile; `sla` politikadan TÜRETİLİR (20 kombinasyonun 19'unda politika var, 1'inde yok ve boş bırakılıyor), `slaDurum` `null` kalır (BE-D1) |
 | 57 | `app-destek-sla.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — destek listesinin "SLA riskli/ihlal" kayıtlı görünümü (3 satır). SLA bir SÜRE taahhüdüdür, tarihe çevrilmedi |
 | 58 | `app-destek-paket.html` | **GÖMÜLÜYOR** ✅ | → müşteri detayı › Destek sekmesi — **çalışıyor** (ADR-R2-13) |
 | 59 | `app-destek-paket-form.html` | **GÖMÜLÜYOR** ✅ | → aynı sekmede paket kartı |

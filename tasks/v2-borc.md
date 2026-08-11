@@ -119,3 +119,16 @@ V2-09 · V2-10 · V2-13 · V2-14 · V2-15 · V2-16 — on üç madde.
 | **V2-28** | `GV.sales.firsatKazan` önerileri yazılmamış üç ekrana bağlanıyor | `domain.js` `app-sozlesme-detay.html` · `app-odemeplani-detay.html` · `app-sozlesme-form.html` hedefleri üretiyor. Üçü de rota haritasında **GÖMÜLÜYOR** (müşteri detayı › Finans sekmesi) — hedefler oraya çevrilmeli. Kabuk bugün `markWip` ile kilitliyor, yani sahte buton yok ama hedef de yanlış |
 | **V2-29** | `DB.supportPackages[].proje` 7/7 boş ve türetilemez | Tek dolaylı zincir (`paket.sozlesme → contract.proje`) hiçe çıkıyor. Bağı kullanıcı kurar (`GV.proje.bakimBagla`); prototipte hiçbir paket bir projeye bağlı **değil**, o yüzden proje detayının bakım bloğu 14 projenin 14'ünde boş |
 | **V2-30** | Kalite sekmesi tek projede dolu | `DB.testCases` 5 kaydın 5'i `PRJ-2026-001`de. Kalan 13 projede test defteri **yok** — eksiklik değil ölçüm, ama tek projeyle sınanan bir sekme kapsamlı sınanmamış sayılır |
+
+## Dilim 3 kapanışında açılan borç
+
+| # | Madde | Ölçüm |
+|---|---|---|
+| **V2-31** | `GV.list` `filters[]` sözleşmesinde `perm` kapısı yok | Proje listesi para süzgecini kendi `if(canFinans)` kapısıyla kurmak zorunda kaldı |
+| **V2-32** | `GV.form` `select` dalında çoklu seçim yok | `multiple` yalnız `type:'file'` dalında; `read()` tek düğüm okuyor. Görev formunda `yardimci`/`izleyiciler` çok kişilik alanlar — mevcut kayıtlarda iki kişilik listeler var. Tek seçimlik alan onları sessizce silerdi → düzenlemede **salt okunur** bilgi olarak gösterildi |
+| **V2-33** | `GV.destek.guncelle` yok | Yalnız `olustur` var; destek formu düzenleme kipinde alanları doğrudan yazıyor ve kategori/öncelik değişince `sla`yı yeniden türetiyor. `pol.etiket → sla` yazımı artık iki yerde (`domain.js` + form) |
+| **V2-34** | Görev tarafında atama/öncelik GERİ ALMA yordamı yok | `GV.task.ata` `emp` zorunlu; sorumluyu boşaltmak mümkün değil. Form reddediyor ve sebebini söylüyor. Aynı sınıf: öncelik silme |
+| **V2-35** | **VERİ ÇELİŞKİSİ — bakım paketi seviyesi üç ayrı biçimde** | Ölçüldü: `DB.supportPackageTypes` = `['Standart Bakım','Kurumsal Bakım']` · `DB.supportPackages[].ad` = aynı uzun biçim · `DB.supportPackages[].tip` = **7/7 `'Bakım'`** (hizmetin cinsi, seviye değil) · `DB.tickets[].bakimPaketi` = **kısa biçim** (`'Standart'`/`'Kurumsal'`). `GV.destek.paketOf` `tip` ile karşılaştırıyordu ve **hiç tutmuyordu** — bu turda `ad` önekiyle düzeltildi (5/5 talep artık doğru pakete bağlanıyor), ama sözlük ile veri hâlâ iki biçimde |
+| **V2-36** | `slaDurum` için sözlük yok | `DB.slaStatuses` diye bir koleksiyon yok; üç değerin kuralı `ops.js` içinde düzyazı. İki ekran bunu kayıttaki değerlerden türetmek zorunda kaldı ve sebebini yazdı |
+| **V2-37** | `GV.fmt.dakika` yok | Dakika→saat okunurluk biçimi iki ekranda kopya (`app-destek-detay.html` + `app-destek-form.html`) |
+| **V2-38** | `DB.impacts` brief'te yazılı değildi | `work.js` içinde 4 değerlik gerçek sözlük; destek formu kural gereği kullanmadı ve `etki` seçeneklerini kayıtlardan türetti. Brief'e eklenmeli |
