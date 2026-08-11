@@ -239,8 +239,17 @@ const OLC_ODAK_HAZIRLIK = new Function(`
         (disMi(r.url()) ? disKaynak : konsol).push(m);
       });
 
-      const url = base + '/' + ek.dosya +
-        (ek.oturum ? (ek.dosya.indexOf('?') === -1 ? '?role=sahip' : '&role=sahip') : '');
+      /* ⚠️ `role=sahip` SORGUYA girer, HASH'E değil. Eski yazım parametreyi
+         dizenin SONUNA ekliyordu; `…?id=X#test` gibi bir hedefte sonuç
+         `…?id=X#test&role=sahip` oluyordu. İki şey birden bozuluyordu:
+         kabuk `role`u okuyamadığı için sayfa 403 basıyor, sekme anahtarı da
+         `test&role=sahip` olduğu için hiçbir sekmeye uymuyordu. Yani ölçüm
+         ekranı değil hata sayfasını ölçüyor ve YEŞİL yanıyordu — sahte
+         temizlik. Sorgu ile hash ayrı ayrı kurulur. */
+      const [yol, parca] = ek.dosya.split('#');
+      const url = base + '/' + yol +
+        (ek.oturum ? (yol.indexOf('?') === -1 ? '?role=sahip' : '&role=sahip') : '') +
+        (parca ? '#' + parca : '');
       await page.goto(url, { waitUntil: 'networkidle' });
       /* Kabuk sprite'ı fetch ile enjekte ediyor ve gv:ready ondan sonra
          atılıyor; networkidle yetmeyebilir. İskeletin doğmasını bekle. */
