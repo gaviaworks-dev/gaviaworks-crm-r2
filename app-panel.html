@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Gündem — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="gundem" data-screen="panel">
+<!-- Shell iskeleti `buildSkeleton()` tarafından kurulur; sayfa yalnız
+     içeriğini yazar (rail/menü/üstbar/breadcrumb tekrarlanmaz). -->
+<div id="panelMount"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/hr.js"></script>
+<script src="assets/data/notes.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   GÜNDEM — şartname §4.1
+   Yerleşim doğrudan şartnameden:
+     1. Üst satır  : bugünkü iş · geciken iş · bekleyen onay · beklenen tahsilat
+     2. Sol kolon  : günün ajandası + öncelikli iş kuyruğu
+     3. Sağ kolon  : Hızlı Notlar + son bildirimler
+     4. Alt satır  : rol bazlı İKİ özet
+   "Her kullanıcı panelde en fazla ALTI kart görmelidir." → tam altı kart:
+   ajanda · iş kuyruğu · hızlı notlar · bildirimler + iki rol özeti.
+   KPI şeridi kart sayılmaz (kart değil, sayaç satırıdır).
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F  = GV.fmt;
+  var me = GV.session.emp;
+  var t  = DB.today;
+
+  GV.pageHead({
+    eyebrow:'Bugün',
+    title:'Gündem',
+    sub:'Bugün ne yapmalıyım? · ' + F.date(t)
+  });
+
+  var mount = document.getElementById('panelMount');
+  if(!mount) return;
+
+  /* ---- Veri türetmeleri — hepsi DB'den, sabit yok ------------------ */
+  function acikGorev(){
+    return (DB.tasks || []).filter(function(x){
+      return x.sorumlu === me &&
+             ['Tamamlandı','İptal edildi','Arşivlendi'].indexOf(x.durum) === -1;
+    });
+  }
+  var bugunku  = acikGorev().filter(function(x){ return x.termin === t; });
+  var geciken  = acikGorev().filter(function(x){ return x.termin < t; });
+  var onaylar  = (DB.approvals || []).filter(function(x){ return x.durum === 'Bekliyor'; });
+  /* Beklenen tahsilat: tahsil edilmemiş kayıtların toplamı. `tahsilEdildi`
+     alanı veride yazılı — türetilebilen sayaç veriye YAZILMAZ (L-08), burada
+     okunan gerçek alandır. */
+  var acikTahsilat = (DB.payments || []).filter(function(p){ return !p.tahsilEdildi; });
+  var beklenen = acikTahsilat.reduce(function(s,p){ return s + (p.tutar || 0); }, 0);
+  var canFinans = GV.perm.can('finans');
+
+  /* ---- 1. ÜST SATIR — dört sayaç ---------------------------------- */
+  function kpiHtml(){
+    var kpis = [
+      { ic:'i-sun',    lbl:'Bugünkü iş',       num:bugunku.length, tone:'' },
+      { ic:'i-alert',  lbl:'Geciken iş',       num:geciken.length, tone:geciken.length ? 'danger' : '' },
+      { ic:'i-stamp',  lbl:'Bekleyen onay',    num:onaylar.length, tone:onaylar.length ? 'warn' : '' },
+      { ic:'i-wallet', lbl:'Beklenen tahsilat',
+        num:canFinans ? F.money(beklenen) : '••••••', tone:'', masked:!canFinans }
+    ];
+    return '<div class="kpi-grid">' + kpis.map(function(k){
+      return '<div class="kpi' + (k.tone ? ' is-' + k.tone : '') + '">' +
+        '<div class="kpi-ico">' + GV.ico(k.ic,'ic-lg') + '</div>' +
+        '<div class="kpi-body">' +
+          '<div class="kpi-num' + (k.masked ? ' is-masked' : '') + '">' + k.num + '</div>' +
+          '<div class="kpi-lbl">' + GV.esc(k.lbl) + '</div>' +
+        '</div></div>';
+    }).join('') + '</div>';
+  }
+
+  /* ---- 2a. KART — Günün ajandası ---------------------------------- */
+  function ajandaHtml(){
+    var toplanti = (DB.meetings || []).filter(function(m){
+      return String(m.tarih || '').slice(0,10) === t &&
+             (m.katilimci || []).indexOf(me) !== -1;
+    }).sort(function(a,b){ return String(a.tarih).localeCompare(String(b.tarih)); });
+
+    var body;
+    if(!toplanti.length){
+      body = GV.empty({ icon:'i-calendar', title:'Bugün toplantınız yok',
+                        desc:'Katılımcısı olduğunuz bir toplantı bulunmuyor.' });
+    }else{
+      body = '<ul class="pn-list">' + toplanti.map(function(m){
+        var saat = String(m.tarih).slice(11,16);
+        return '<li class="pn-row">' +
+          '<span class="pn-time">' + GV.esc(saat) + '</span>' +
+          '<span class="pn-main"><b>' + GV.esc(m.ad) + '</b>' +
+            '<span class="pn-sub">' + GV.esc(m.tur) + ' · ' + GV.esc(m.yer || '—') +
+            ' · ' + GV.esc(String(m.sure || 0)) + ' dk</span></span>' +
+          GV.badge(m.durum) +
+        '</li>';
+      }).join('') + '</ul>';
+    }
+    return kart('Günün ajandası', 'i-calendar', toplanti.length + ' toplantı', body);
+  }
+
+  /* ---- 2b. KART — Öncelikli iş kuyruğu ---------------------------- */
+  function kuyrukHtml(){
+    /* Sıra: önce gecikenler (en eski termin başta), sonra bugünkü işler.
+       Sıralama ölçütü VERİDEDİR (termin + öncelik), uydurma skor yok. */
+    var oncelikSira = { 'Kritik':0, 'Yüksek':1, 'Orta':2, 'Düşük':3 };
+    var kuyruk = geciken.concat(bugunku).sort(function(a,b){
+      var ta = a.termin < t ? 0 : 1, tb = b.termin < t ? 0 : 1;
+      if(ta !== tb) return ta - tb;
+      var oa = oncelikSira[a.oncelik] != null ? oncelikSira[a.oncelik] : 9;
+      var ob = oncelikSira[b.oncelik] != null ? oncelikSira[b.oncelik] : 9;
+      if(oa !== ob) return oa - ob;
+      return String(a.termin).localeCompare(String(b.termin));
+    }).slice(0, 6);
+
+    var body;
+    if(!kuyruk.length){
+      body = GV.empty({ icon:'i-check-circle', title:'Kuyruk temiz',
+                        desc:'Bugün terminli ya da gecikmiş işiniz yok.' });
+    }else{
+      body = '<ul class="pn-list">' + kuyruk.map(function(g){
+        var gec = g.termin < t;
+        return '<li class="pn-row' + (gec ? ' is-late' : '') + '">' +
+          '<span class="pn-main"><b>' + GV.esc(g.baslik) + '</b>' +
+            '<span class="pn-sub">' + GV.esc(g.kod) + ' · ' + GV.esc(g.durum) +
+            (g.proje ? ' · ' + GV.esc(g.proje) : '') + '</span></span>' +
+          '<span class="pn-right">' + GV.pri(g.oncelik) +
+            '<span class="cell-date' + (gec ? ' u-danger' : '') + '">' + F.dateShort(g.termin) + '</span>' +
+          '</span>' +
+        '</li>';
+      }).join('') + '</ul>';
+    }
+    var alt = geciken.length ? geciken.length + ' geciken · ' + bugunku.length + ' bugün'
+                             : bugunku.length + ' iş';
+    return kart('Öncelikli iş kuyruğu', 'i-tasks', alt, body);
+  }
+
+  /* ---- 3a. KART — Hızlı Notlar (§4.2) ----------------------------- */
+  function notHtml(){
+    if(!GV.quickNote || !GV.notes || !GV.notes.sahip()){
+      return kart('Hızlı Notlar', 'i-file', '—',
+        GV.empty({ icon:'i-file', title:'Hızlı Not kullanılamıyor',
+                   desc:'Bu oturumda kişisel not alanı yok.' }));
+    }
+    /* Liste tanımı TEK yerde: quicknote.js. Panel kendi süzgecini yazmaz (L-40). */
+    var g = GV.quickNote.gorunenler('');
+    var body;
+    if(!g.acik.length && !g.tamam.length){
+      body = '<div class="pn-pad">' + GV.empty({ icon:'i-file', title:'Henüz notunuz yok',
+              desc:'Sağ üstteki Not Al düğmesinden ekleyebilirsiniz.' }) + '</div>';
+    }else{
+      body = '<ul class="pn-list">' + g.acik.concat(g.tamam).slice(0, 7).map(function(n){
+        var tamam = n.durum === 'Tamamlandı';
+        var baslik = n.baslik || GV.quickNote.basligiCikar(n.body) || '(boş not)';
+        return '<li class="pn-row' + (tamam ? ' is-done' : '') + '">' +
+          '<span class="pn-main"><b>' + GV.esc(baslik) + '</b>' +
+          (n.bitis ? '<span class="pn-sub">' + F.date(n.bitis) + '</span>' : '') + '</span>' +
+        '</li>';
+      }).join('') + '</ul>';
+    }
+    body += '<div class="pn-foot"><button type="button" class="btn btn-line btn-sm" id="pnNoteOpen">' +
+            GV.ico('i-file','ic-sm') + ' Not Al</button>' +
+            '<span class="pn-hint">' + GV.esc(GV.quickNote.backendNotu) + '</span></div>';
+    return kart('Hızlı Notlar', 'i-file', g.acik.length + ' açık not', body);
+  }
+
+  /* ---- 3b. KART — Son bildirimler --------------------------------- */
+  function bildirimHtml(){
+    var son = (DB.notifications || []).filter(function(n){ return !n.okundu; })
+                .sort(function(a,b){ return String(b.tarih).localeCompare(String(a.tarih)); })
+                .slice(0, 5);
+    var body;
+    if(!son.length){
+      body = GV.empty({ icon:'i-bell', title:'Okunmamış bildirim yok', desc:'' });
+    }else{
+      body = '<ul class="pn-list">' + son.map(function(n){
+        return '<li class="pn-row">' +
+          '<span class="pn-main"><b>' + GV.esc(n.baslik) + '</b>' +
+            '<span class="pn-sub">' + GV.esc(n.ozet || n.tur) + '</span></span>' +
+          '<span class="cell-date">' + F.dateShort(String(n.tarih).slice(0,10)) + '</span>' +
+        '</li>';
+      }).join('') + '</ul>';
+    }
+    return kart('Son bildirimler', 'i-bell', son.length + ' okunmamış', body);
+  }
+
+  /* ---- 4. ALT SATIR — rol bazlı İKİ özet -------------------------- */
+  /* §4.1: "Rol bazlı iki özet; örneğin satış kullanıcısında fırsat,
+     finans kullanıcısında nakit özeti." Rol → özet eşlemesi TEK yerde. */
+  function firsatOzet(){
+    var acik = (DB.opportunities || []).filter(function(o){
+      return ['Kazanıldı','Kaybedildi'].indexOf(o.asama) === -1;
+    });
+    var toplam = acik.reduce(function(s,o){ return s + (o.butce || 0); }, 0);
+    var sicak = acik.filter(function(o){ return o.sicaklik === 'Sıcak'; }).length;
+    var body = '<div class="pn-stats">' +
+      stat('Açık fırsat', acik.length) +
+      stat('Sıcak fırsat', sicak) +
+      stat('Toplam bütçe', canFinans ? F.moneyK(toplam) : '••••') +
+    '</div>';
+    if(acik.length){
+      body += '<ul class="pn-list">' + acik.slice(0,3).map(function(o){
+        return '<li class="pn-row"><span class="pn-main"><b>' + GV.esc(o.baslik) + '</b>' +
+          '<span class="pn-sub">' + GV.esc(o.asama) + ' · ' + GV.esc(o.hizmet || '—') + '</span></span>' +
+          '<span class="cell-money">' + (canFinans ? F.moneyK(o.butce || 0) : '••••') + '</span></li>';
+      }).join('') + '</ul>';
+    }
+    return kart('Fırsat özeti', 'i-funnel', acik.length + ' açık', body);
+  }
+
+  function nakitOzet(){
+    var geciktiler = acikTahsilat.filter(function(p){ return (p.gecikmeGun || 0) > 0; });
+    var gecikenTutar = geciktiler.reduce(function(s,p){ return s + (p.tutar || 0); }, 0);
+    var body = '<div class="pn-stats">' +
+      stat('Açık tahsilat', acikTahsilat.length) +
+      stat('Geciken', geciktiler.length) +
+      stat('Geciken tutar', canFinans ? F.moneyK(gecikenTutar) : '••••') +
+    '</div>';
+    if(geciktiler.length){
+      body += '<ul class="pn-list">' + geciktiler.slice(0,3).map(function(p){
+        return '<li class="pn-row is-late"><span class="pn-main"><b>' + GV.esc(p.musteriAd || p.musteri) + '</b>' +
+          '<span class="pn-sub">' + GV.esc(p.kod) + ' · ' + p.gecikmeGun + ' gün gecikti</span></span>' +
+          '<span class="cell-money u-danger">' + (canFinans ? F.moneyK(p.tutar) : '••••') + '</span></li>';
+      }).join('') + '</ul>';
+    }
+    return kart('Nakit özeti', 'i-wallet', acikTahsilat.length + ' açık kayıt', body);
+  }
+
+  function ekipOzet(){
+    var izin = (DB.leaves || []).filter(function(l){ return l.durum === 'Onay bekliyor'; });
+    var aktifPersonel = (DB.employees || []).filter(function(e){ return e.aktif !== false; });
+    var body = '<div class="pn-stats">' +
+      stat('Aktif personel', aktifPersonel.length) +
+      stat('Onay bekleyen izin', izin.length) +
+    '</div>';
+    if(izin.length){
+      body += '<ul class="pn-list">' + izin.slice(0,3).map(function(l){
+        return '<li class="pn-row"><span class="pn-main"><b>' + GV.esc(DB.empName(l.personel)) + '</b>' +
+          '<span class="pn-sub">' + GV.esc(l.tur || 'İzin') + ' · ' + GV.esc(l.baslangic || '') + '</span></span>' +
+          '<span class="cell-date">' + GV.esc(String(l.gun || '')) + ' gün</span></li>';
+      }).join('') + '</ul>';
+    }
+    return kart('Ekip özeti', 'i-users', aktifPersonel.length + ' kişi', body);
+  }
+
+  function projeOzet(){
+    var acik = (GV.proje && GV.proje.acik)
+      ? (DB.projects || []).filter(function(p){ return GV.proje.acik(p); })
+      : (DB.projects || []).filter(function(p){ return !p.arsiv; });
+    var gec = (GV.proje && GV.proje.geciken)
+      ? acik.filter(function(p){ return GV.proje.geciken(p); }) : [];
+    var body = '<div class="pn-stats">' +
+      stat('Açık proje', acik.length) +
+      stat('Geciken', gec.length) +
+    '</div>';
+    if(acik.length){
+      body += '<ul class="pn-list">' + acik.slice(0,3).map(function(p){
+        var gecikti = gec.indexOf(p) !== -1;
+        return '<li class="pn-row' + (gecikti ? ' is-late' : '') + '">' +
+          '<span class="pn-main"><b>' + GV.esc(p.ad) + '</b>' +
+            '<span class="pn-sub">' + GV.esc(p.kod) + ' · ' + GV.esc(p.durum) + '</span></span>' +
+          '<span class="cell-date' + (gecikti ? ' u-danger' : '') + '">' +
+            (p.planlananBitis ? F.dateShort(p.planlananBitis) : '—') + '</span></li>';
+      }).join('') + '</ul>';
+    }
+    return kart('Proje özeti', 'i-briefcase', acik.length + ' açık', body);
+  }
+
+  /* Rol → iki özet. Eşleme tek tabloda; rol yoksa varsayılan ikili gelir. */
+  var OZET_BY_ROLE = {
+    satismudur:   ['firsat','nakit'],
+    satistemsilci:['firsat','proje'],
+    musteritems:  ['firsat','proje'],
+    muhasebe:     ['nakit','firsat'],
+    sahip:        ['firsat','nakit'],
+    genelmudur:   ['firsat','nakit'],
+    pm:           ['proje','ekip'],
+    depmudur:     ['proje','ekip'],
+    takimlideri:  ['proje','ekip'],
+    ik:           ['ekip','proje'],
+    idari:        ['ekip','nakit'],
+    satinalma:    ['nakit','proje']
+  };
+  var OZET_FN = { firsat:firsatOzet, nakit:nakitOzet, ekip:ekipOzet, proje:projeOzet };
+
+  function rolOzetleri(){
+    var secim = OZET_BY_ROLE[GV.session.rol] || ['proje','ekip'];
+    /* Finans yetkisi yoksa nakit özeti gösterilmez — maskeli kart basmak
+       yerine role uygun olanla değiştirilir (§2 "yetkisiz öğe menüden
+       kaldırılmalı" ilkesinin kart tarafındaki karşılığı). */
+    secim = secim.map(function(k){ return (k === 'nakit' && !canFinans) ? 'proje' : k; });
+    if(secim[0] === secim[1]) secim[1] = secim[0] === 'proje' ? 'ekip' : 'proje';
+    return secim.map(function(k){ return (OZET_FN[k] || projeOzet)(); }).join('');
+  }
+
+  /* ---- Kart ve istatistik yardımcıları ---------------------------- */
+  function kart(baslik, ikon, alt, govde){
+    return '<section class="gv-card pn-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + GV.ico(ikon) + GV.esc(baslik) + '</h3>' +
+      '<span class="gc-meta">' + GV.esc(alt) + '</span></div>' +
+      '<div class="pn-body">' + govde + '</div></section>';
+  }
+  function stat(lbl, val){
+    return '<div class="pn-stat"><div class="pn-stat-num">' + val + '</div>' +
+           '<div class="pn-stat-lbl">' + GV.esc(lbl) + '</div></div>';
+  }
+
+  /* ---- Çizim ------------------------------------------------------ */
+  function ciz(){
+    mount.innerHTML =
+      kpiHtml() +
+      '<div class="gv-grid gv-grid-main pn-grid">' +
+        '<div class="pn-col">' + ajandaHtml() + kuyrukHtml() + '</div>' +
+        '<div class="pn-col">' + notHtml() + bildirimHtml() + '</div>' +
+      '</div>' +
+      '<div class="gv-grid gv-grid-2 pn-grid">' + rolOzetleri() + '</div>';
+
+    var btn = document.getElementById('pnNoteOpen');
+    if(btn) btn.addEventListener('click', function(){ GV.quickNote.ac(); });
+  }
+
+  ciz();
+});
+</script>
+</body>
+</html>
