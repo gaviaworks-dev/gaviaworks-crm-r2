@@ -172,6 +172,47 @@ console.log('\n[S3] Kazanma kapısı — eksik müşteri bilgisi REDDEDİLİR');
   else ok('adimlar hedefin `girisGerekce` bayrağını bildiriyor');
 }
 
+/* ---- S3b — teklif kapısı da hedefe bağlı mı -------------------------
+   Aynı kusur sınıfı İKİ tabloda birden vardı (`opportunity` ve `quote`) ve
+   ikincisini ekran ajanı buldu, eksen değil. Enjeksiyon turunda ölçüldü:
+   teklif kapısı kaynağa geri taşındığında eksen SESSİZ kalıyordu — yani
+   düzeltilmiş bir kusurun nöbetçisi yoktu. Nöbetçi burada. */
+console.log('\n[S3b] Teklif ön analiz kapısı — yalnız `İç Onay` hedefinde');
+{
+  olc();
+  const { DB, GV } = kur();
+  /* Ön analizi ONAYSIZ olan taslak teklif: kapının ısırması gereken kayıt. */
+  const q = DB.quotes.filter(x => x.durum === 'Taslak' && x.musteri && x.analiz)[0];
+  if(!q){ de('hazırlık düştü — onaysız analizli taslak teklif yok'); }
+  else {
+    const iptal = GV.flow.gec('quote', q.kod, 'İptal Edildi', null,
+                              { neden:'BUTCE', not:'eksen — kapı yeri' });
+    if(!iptal.ok && iptal.why === 'kapi')
+      de('KAPI YANLIŞ YERDE — ön analiz kapısı taslak İPTALİNİ de engelliyor');
+    else if(!iptal.ok) de('iptal başka nedenle düştü: ' + (iptal.mesaj || iptal.why));
+    else ok('taslak iptali serbest — kapı yalnız `İç Onay` hedefinde');
+  }
+
+  olc();
+  const { DB:DB2, GV:GV2 } = kur();
+  const q2 = DB2.quotes.filter(x => x.durum === 'Taslak' && x.musteri && x.analiz)[0];
+  const ic = q2 ? GV2.flow.gec('quote', q2.kod, 'İç Onay') : { ok:true };
+  if(ic.ok) de('OLUMSUZ VAKA GEÇTİ — onaylanmamış ön analizle teklif iç onaya gitti');
+  else if(ic.why !== 'kapi') de('kapı yerine başka nedenle düştü: ' + ic.why);
+  else ok('olumsuz vaka reddedildi — ' + String(ic.mesaj).slice(0, 55) + '…');
+
+  olc();
+  /* İSTİSNA YOLU ÇALIŞIYOR MU — vaat edilen yolun gerçekten sonuç vermesi
+     gerekir; sonuç vermeyen istisna, basılabilen ölü düğmedir (L-23). */
+  const { DB:DB3, GV:GV3 } = kur();
+  const q3 = DB3.quotes.filter(x => x.durum === 'Taslak' && x.musteri && x.analiz)[0];
+  GV3.perm.role = () => 'sahip';
+  const istisna = q3 ? GV3.flow.gec('quote', q3.kod, 'İç Onay', null,
+                        { istisna:true, neden:'YONETICI_IST', not:'eksen' }) : { ok:false };
+  if(!istisna.ok) de('vaat edilen yönetici istisnası SONUÇ VERMİYOR: ' + (istisna.mesaj || istisna.why));
+  else ok('yönetici istisnası gerekçeyle geçiyor — vaat edilen yol gerçek');
+}
+
 /* ---- S4 — yaşam evresi tablosu -------------------------------------- */
 console.log('\n[S4] Yaşam evresi §5.1 tablosunun dışına çıkamaz');
 {
