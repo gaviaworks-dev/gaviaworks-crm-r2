@@ -148,8 +148,8 @@ V2-09 · V2-10 · V2-13 · V2-14 · V2-15 · V2-16 — on üç madde.
 |---|---|---|
 | **V2-39** | `app-proje-form.html` yazılmadı ama `GV.sales.firsatKazan` "Proje oluştur" önerisi oraya bağlanıyor | Rota 32 `KARŞILIĞI VAR`. Kabuk `markWip` ile kilitliyor (sahte buton yok) ama hedef yazılmamış |
 | **V2-40** | `app-satinalma-form.html` yazılmadı ama `app-satinalma.html` "Yeni Talep" düğmesi oraya bağlanıyor | Rota 115 `KARŞILIĞI VAR`. Aynı sınıf |
-| **V2-41** | **VERİ BULGUSU — üç demirbaşta sahipsiz zimmet iddiası** | `DMB-2025-007` (EMP-009) · `DMB-2026-013` (EMP-011) · `DMB-2026-014` (EMP-012) envanterde zimmetli yazıyordu ama **hiç tutanak kaydı yok**. Tek kaynak kararı gereği envanter temizlendi; atılan iddia `GV.varlik.sonTazeleme.degisen` içinde saklı. Tutanak mı eksik, envanter mi yanlıştı — Beyar kararı |
-| **V2-42** | `Offboarding → Aktif` kenarı yok | Yanlışlıkla çıkış sürecine alınan personel geri döndürülemez. "Geri almak yapmaktan ağır olamaz" kuralına aykırı görünüyor; kenar EKLENMEDİ, karar Beyar'ın |
+| **V2-41 ✅ KAPANDI (K-30 · ADR-R2-31)** | **VERİ BULGUSU — üç demirbaşta sahipsiz zimmet iddiası** | `DMB-2025-007` (EMP-009) · `DMB-2026-013` (EMP-011) · `DMB-2026-014` (EMP-012) envanterde zimmetli yazıyordu ama **hiç tutanak kaydı yok**. Tek kaynak kararı gereği envanter temizlendi; atılan iddia `GV.varlik.sonTazeleme.degisen` içinde saklı. Tutanak mı eksik, envanter mi yanlıştı — Beyar kararı |
+| **V2-42 ✅ KAPANDI (K-31 · ADR-R2-32)** | `Offboarding → Aktif` kenarı yok**tu** | Yanlışlıkla çıkış sürecine alınan personel geri döndürülemez. "Geri almak yapmaktan ağır olamaz" kuralına aykırı görünüyor; kenar EKLENMEDİ, karar Beyar'ın |
 | **V2-43** | Dört sözlük eksik | `vehicleStatuses` · `contractTypes` · `performanceStatuses` · `trainingStatuses` yok; ekranlar değerleri kayıtlardan türetmek ve kaynağını yazmak zorunda |
 | **V2-44** | `DB.salaryHistory[].bitis` 15/15 boş | Tüm maaş kayıtları açık uçlu; "şu an geçerli maaş" hangi satır olduğu tarihten türetiliyor, alandan değil |
 
@@ -157,12 +157,22 @@ V2-09 · V2-10 · V2-13 · V2-14 · V2-15 · V2-16 — on üç madde.
 
 | # | Madde | Ölçüm |
 |---|---|---|
-| **V2-45** | **Kaynak taraflı kapı — dört tabloda daha** | `ik-ekseni.js` genel taraması: `project.Test/Kabul` (`projeTeslim`) · `project.Kapanış` (`projeKapanis`) · `ticket.Müşteri Onayı` (`destekKota`) · `delivery.İç Kontrol` (`teslimKritikHata`). Dördü de yalnız GERİ DÖNÜŞ hedefini engelliyor (iptal/ret engellenmiyor), o yüzden kusur ilan edilmedi — ama "ileri gidemiyorsan geri de gidemezsin" bir iş kuralı tercihidir ve Beyar kararı bekliyor. Eksen her koşumda listeliyor, sessiz istisna yok |
+| **V2-45 ✅ KAPANDI (K-32 · ADR-R2-33)** | **Kaynak taraflı kapı — dört tabloda daha** | `ik-ekseni.js` genel taraması: `project.Test/Kabul` (`projeTeslim`) · `project.Kapanış` (`projeKapanis`) · `ticket.Müşteri Onayı` (`destekKota`) · `delivery.İç Kontrol` (`teslimKritikHata`). Dördü de yalnız GERİ DÖNÜŞ hedefini engelliyor (iptal/ret engellenmiyor), o yüzden kusur ilan edilmedi — ama "ileri gidemiyorsan geri de gidemezsin" bir iş kuralı tercihidir ve Beyar kararı bekliyor. Eksen her koşumda listeliyor, sessiz istisna yok |
 | **V2-46** | `ui.js` ton sözlüğünde 4 personel durumu yok | `Onboarding · İzinli · Offboarding · Ayrıldı` → 7 durumun 4'ü nötr rozet basıyor, yani rozet hiçbir şey söylemiyor (`GV.pri` sorununun ikizi) |
 | **V2-47** | `Gates.personelEvrak` fiilen hiç kapanmıyor | Yordam `adim.zorunlu && adim.durum !== 'Tamamlandı'` okuyor; `DB.onboarding[].adimlar` yalnız `{ad, tamam, sorumlu}` taşıyor. `Onboarding → Aktif` her zaman geçiyor — L-31 "uygulanmayan kural" |
-| **V2-48** | `GV.varlik.zimmetliler` ile `Gates.personelZimmet` farklı küme ölçüyor | Biri `durum !== 'İade edildi' && aktif !== false`, diğeri `durum === 'Aktif' && !iadeTarihi`. Bugün aynı sonucu veriyorlar, er geç ayrışırlar |
+| **V2-48** | `GV.varlik.zimmetliler` ile `Gates.personelZimmet` farklı küme ölçüyor | Biri `durum !== 'İade edildi'` (K-33'te `aktif` okuması kaldırıldı), diğeri `durum === 'Aktif' && !iadeTarihi`. Bugün aynı sonucu veriyorlar, er geç ayrışırlar |
 | **V2-49** | Kabuk 403 sayfasında sprite enjekte edilmiyor | Yetkisiz rolde 22-24 `<use>` hedefi boş çiziliyor. Ekrana özgü değil, tüm ekranlarda |
 | **V2-50** | `mevcut()` / seçenek türetme yardımcısı üç ekranda kopya | `app-proje` · `app-gorev` · `app-personel`. `GV.list` `filters[].optionsFromData` gibi bir yuvaya ait (L-40) |
 | **V2-51** | `timelogStatuses` / `timesheetStatuses` sözlükleri yok | `DB.timelogs[].onay` ve `DB.timesheets[].durum` değerleri kayıtlardan türetilmek zorunda |
 | **V2-52** | `GV.notice` `actions[]` yalnız `href` üretiyor | Çekmece açan aksiyon verilemiyor; zaman ekranı o düğümü elle kurdu |
 | **V2-53** | Brief boşluğu: `GV.zaman.*` · `GV.fmt.hours/pct/days` imzasız | Beşi de gerçek; brief §9.5 / §4.3'e eklenmeli |
+
+## Dilim 4 — Varlıklar turunda doğan borç
+
+| # | Madde | Ölçüm |
+|---|---|---|
+| **V2-54** | `sozlesmeAktif` kapısı `Yenileme/Zeyil → Aktif` kenarına da bağlandı — **doğrulanmadı** | K-32 taşımasında `Aktif` hedefine üç kenar girdiği ölçüldü. `Askıda → Aktif` (geri alma) serbest bırakıldı, `İmza → Aktif` (ilk aktivasyon) kapıya bağlı kaldı. Üçüncüsü — zeylin yürürlüğe girmesi — **ödeme planını değiştirdiği için** kapıya bağlandı, ama bu bir varsayımdır: şartname [8.1.6] yalnız *aktivasyondan* söz ediyor. Zeyil onayı ayrı bir kapı mı istiyor, Beyar kararı |
+| **V2-55** | `destekKota` kapısı bugünkü veriyle **hiç ateşlenmiyor** | Kotayı aşan tek talep yok. Kapı çalışıyor (enjekte edilmiş koşulla ölçüldü, `kapi-yonu.js`) ama gerçek veride hiçbir şeyi engellemiyor — yani ekranda görünmeyen bir kural. Kotayı aşan bir örnek kayıt istenirse veri genişletilmeli |
+| **V2-56** | `aktif` alanı 39 koleksiyonda **veri dosyalarında hâlâ yazılı** | K-33 alanı yüklemede tuzağa çeviriyor, ama literaller `aktif:true` taşımaya devam ediyor (298 kayıt + employees). Zararsız — tuzak her açılışta kapatıyor — ama veri dosyasını okuyan biri alanın canlı olduğunu sanabilir. Literalden temizlemek 300+ satır dokunuşu demek; kapsam donduruldu |
+| **V2-57** | `GV.arsivli`'nin `passive` listesi **çağrı yerinde** yaşıyor | Hangi durumun "pasif" saydığı varlığa göre değişiyor (`Hurda` demirbaşta emeklilik, `Pasif` personelde değil), o yüzden liste `cfg.passive` ile ekrandan veriliyor. Doğru ama dağınık: aynı koleksiyonu listeleyen iki ekran iki farklı liste verebilir ve kimse fark etmez. Koleksiyon başına tek tablo daha iyi olurdu; kayıt kendi koleksiyonunu bilmediği için yazılmadı |
+| **V2-58** | `girisZorunlu` ve `kenarKapi` yalnız `employee` · `project` · `contract` · `ticket` tablolarında kullanıldı | Motor üç bağlama noktasını da destekliyor (`kenar → kaynak → hedef`), ama kalan 7 geçiş varlığı hiç taranmadı: orada da kaynak taraflı `zorunlu` yanlış kenarı kesiyor olabilir. `kapi-yonu.js` kapıyı ölçüyor, **`zorunlu`yu ölçmüyor** |
