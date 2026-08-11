@@ -825,6 +825,15 @@
 
     /* ---- URL senkronu ---- */
     function readURL(){
+      /* `urlSync:false` İKİ YÖNLÜDÜR. Eskiden yalnız YAZMA susturuluyordu,
+         okuma her listede koşuyordu — tek listeli sayfada fark etmezdi.
+         K-24 aynı sayfaya dört liste koydu ve kusur görünür oldu: ana
+         listenin `?t=onay` adresi (rota 113'ün eski bağlantısı) üç alt
+         listeye de sızıyor, hiçbirinde `onay` diye bir sekme olmadığı için
+         üçü de sekmesiz açılıyordu. Susturulmuş bir liste adresi yazmıyorsa
+         okumamalı da: yazmadığı bir durumu geri yüklemek başkasının
+         durumunu kendine mal etmektir. */
+      if(cfg.urlSync === false) return;
       var q = new URLSearchParams(location.search);
       if(q.get('t')) state.tab = q.get('t');
       if(q.get('q')) state.q = q.get('q');
@@ -1400,6 +1409,8 @@
     /* ---- olay bağlama ---- */
     function reset(){ state.page = 1; state.selected = []; }
 
+    var rowOpenBagli = false;   /* `cfg.rowOpen` dinleyicisi bir kez bağlanır */
+
     function wire(){
       var q = function(s){ return mount.querySelector(s); };
       var qa = function(s){ return Array.prototype.slice.call(mount.querySelectorAll(s)); };
@@ -1531,6 +1542,30 @@
           if(a && a.run) a.run(rec, render);
         });
       });
+
+      /* ---- SATIR AÇMA — `cfg.rowOpen(kayit, render)` (K-23) -------------
+         "Satıra tıklayınca kaydın çekmecesi açılsın" isteği bu bileşende
+         yoktu ve iki ekran bunu kendi `addEventListener`'ıyla kurmak üzereydi.
+         Satır işaretlemesi (`data-id`) tablo satırında, mobil satırda, kartta
+         ve kanban kartında zaten var; tek delege dinleyici dördünü de karşılar.
+
+         ⚠️ Satırın İÇİNDEKİ etkileşimli düğüm tıklandığında AÇMA ÇALIŞMAZ:
+         aksi hâlde satır aksiyonu, toplu işlem kutusu ya da hücredeki
+         bağlantı her tıklandığında çekmece de açılırdı — kullanıcı bir şey
+         seçmek isterken ikinci bir pencere alırdı. */
+      if(typeof cfg.rowOpen === 'function' && !rowOpenBagli){
+        /* `wire()` HER render'da koşar ama `mount` yerinde kalır — dinleyici
+           bir kez bağlanır, yoksa her çizimde bir kopya daha birikir ve
+           çekmece dört kez üst üste açılırdı (L-16'nın liste içi hâli). */
+        rowOpenBagli = true;
+        mount.addEventListener('click', function(ev){
+          if(ev.target.closest('a, button, input, select, textarea, label')) return;
+          var kap = ev.target.closest('[data-id]');
+          if(!kap || !mount.contains(kap)) return;
+          var rec = kaynak().filter(function(r){ return String(r[cfg.key]) === String(kap.dataset.id); })[0];
+          if(rec) cfg.rowOpen(rec, render);
+        });
+      }
 
       var rt = q('[data-retry]');
       if(rt) rt.addEventListener('click', function(){ state.error = false; state.loading = true; render(); load(); });
