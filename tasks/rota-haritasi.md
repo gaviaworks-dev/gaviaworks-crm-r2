@@ -246,7 +246,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | 68 | `app-fatura-detay.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Zincir denetimi ekranda: 17 faturanın 9'unda 4/4 halka ölçülebiliyor, 1 fatura sözleşmesiz ve halka çizilmiyor. Tahsis defteri + ödeme linki sekmesi (§8.5) var; tahsil edilmemiş tahsilat seçilemiyor. |
 | 69 | `app-fatura-form.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Dört kip: serbest · sözleşmeden · taksitten · düzenleme. 19 taksitin 15'inin faturası var, 4'ü listeleniyor. Tahsisli faturada tutar düşürme REDDEDİLİYOR. |
 | 70 | `app-tahsilat.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** "Tahsilat kaydı ≠ para geldi" iki ayrı kolon: nakit olayı ve dağıtım. 17 kaydın 10'u tahsil edilmiş, 7'si edilmemiş; dağıtılmamış ₺1.172.200. |
-| 71 | `app-tahsilat-detay.html` | **KARŞILIĞI VAR** | — |
+| 71 | `app-tahsilat-detay.html` | **GÖMÜLÜYOR** ✅ | **K-23 · ADR-R2-22 — karar DEĞİŞTİ.** Ayrı ekran yazılmadı ve yazılmayacak: tahsilat listesinde satıra tıklanınca tahsis defteri ve geçmiş çekmece olarak açılır. Operasyon kuyruğunun iki satırı `app-tahsilat.html?ac=<kod>` hedefine bağlandı. |
 | 72 | `app-tahsilat-form.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Alacak kaydı ve nakit olayı İKİ AYRI ADIM: form bayrağı yazmaz, `GV.fin.tahsilEt` çağırır. Ölçüldü: nakit olayı faturayı KAPATMIYOR (bakiye 18.000 → 18.000) — dağıtım ayrı eksen. |
 | 73 | `app-sozlesme.html` | **GÖMÜLÜYOR** ✅ | → müşteri detayı › Finans sekmesi — **çalışıyor** |
 | 74 | `app-sozlesme-detay.html` | **GÖMÜLÜYOR** ✅ | → aynı sekme |
@@ -341,14 +341,14 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | # | R1 ekranı | Karar | Hedef |
 |---|---|---|---|
 | 113 | `app-satinalma.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** R1'in ayrı "Onay Bekleyenler" girdisi sekmeye indi. 7 talebin 7'sinde onay zinciri var (16 adım); adım sayacı `GV.approval.adim`den TÜRETİLİR, `onayAdim` alanı hiçbir yerde okunmuyor. |
-| 114 | `app-satinalma-detay.html` | **KARŞILIĞI VAR** | — |
+| 114 | `app-satinalma-detay.html` | **GÖMÜLÜYOR** ✅ | **Karar DEĞİŞTİ.** Talep detayı zaten çekmeceydi; artık `app-satinalma.html?ac=<kod>` ile derin bağlantı da alıyor. Kuyruğun iki satın alma onayı buraya geliyor. |
 | 115 | `app-satinalma-form.html` | **KARŞILIĞI VAR** | — |
-| 116 | `app-satinalma-teklif.html` | **GÖMÜLÜYOR** | satın alma detayı › Teklif Toplama sekmesi |
-| 117 | `app-siparis.html` | **GÖMÜLÜYOR** | §3.1 "tedarik/sipariş akışları" → Satın Alma › Siparişler |
-| 118 | `app-siparis-detay.html` | **GÖMÜLÜYOR** | aynı sekme |
+| 116 | `app-satinalma-teklif.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** (K-24). Satın Alma › Teklif Toplama sekmesi · 9 satır · iki puan ekseni ayrı etiketli |
+| 117 | `app-siparis.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** (K-24). Satın Alma › Siparişler sekmesi · 4 satır · net/KDV/brüt üç kolon |
+| 118 | `app-siparis-detay.html` | **GÖMÜLÜYOR** ✅ | aynı sekmede satır görünümü; `teslimTarihi` çift anlamı (planlanan/gerçekleşen) hücrede yazılı |
 | 119 | `app-siparis-form.html` | **GÖMÜLÜYOR** | drawer |
-| 120 | `app-tedarikci.html` | **GÖMÜLÜYOR** | §3.1 aynı hüküm → Satın Alma › Tedarikçiler |
-| 121 | `app-tedarikci-detay.html` | **GÖMÜLÜYOR** | aynı sekme |
+| 120 | `app-tedarikci.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** (K-24). Satın Alma › Tedarikçiler sekmesi · 7 satır · ömür boyu sayaç kart değeri ile sistemden hesaplanan AYRI satırda |
+| 121 | `app-tedarikci-detay.html` | **GÖMÜLÜYOR** ✅ | aynı sekmede satır görünümü |
 | 122 | `app-tedarikci-form.html` | **GÖMÜLÜYOR** | drawer |
 
 ---
