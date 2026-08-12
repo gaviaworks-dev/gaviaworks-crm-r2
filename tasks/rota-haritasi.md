@@ -39,8 +39,8 @@
 | KARAR BEKLİYOR | **0** | %0,0 | 0 |
 | **Toplam** | **148** | %100 | 148 |
 | YENİ yazılacak | **8** — altısı (Y1–Y6) **yayında**, ikisi kaldı | — | 8 |
-| **Bugün R2'de yayında** | **102** | %68,9 | 97 |
-| **Kalan** | **46** | %31,1 | 51 |
+| **Bugün R2'de yayında** | **103** | %69,6 | 97 |
+| **Kalan** | **45** | %30,4 | 51 |
 
 > **12 Ağustos · Dilim 6 — iki satır karar DEĞİŞTİRDİ, dokuzu yazılıyor.**
 > `KARŞILIĞI VAR` 43 → 41: rota **123** ve **124** (`app-dokuman.html` ve
@@ -308,7 +308,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 |---|---|---|---|
 | 80 | `app-personel.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** 5 sekme, hepsi geçiş tablosundan ve `GV.hr.*`ten TÜRETİLDİ. **K-18 kapandı**: `aktif` tuzağa çevrildi, `DB.ikBayat.sayac` her rolde 0. Kişisel veri kapısı SATIRA bakar (`GV.hr.ozlukGorebilir`), role değil — `muhasebe` maaşı görür özlüğü görmez |
 | 81 | `app-personel-detay.html` | **KARŞILIĞI VAR** | Performans · eğitim · yaşam döngüsü sekmeleri buraya gelir |
-| 82 | `app-personel-form.html` | **KARŞILIĞI VAR** | — |
+| 82 | `app-personel-form.html` | **KARŞILIĞI VAR** ✅ | Doğum durumu `Taslak`. `maas` XOR `saatlikUcret` radio + `showIf` ile; kapı kapalıysa alan HİÇ ÇİZİLMEZ (maskelenmiş input gerçek değeri ezer). K-39 öz-erişim iki yönde ölçüldü. **Çalışıyor.** |
 | 83 | `app-personel-giris.html` | **GÖMÜLÜYOR** | §3.1 "işe giriş/çıkış" birleştirilen içerik → personel detayı › Yaşam Döngüsü (`employee` 15. geçiş varlığı `domain.js`'te hazır) |
 | 84 | `app-performans.html` | **GÖMÜLÜYOR** | §3.1 aynı hüküm → personel detayı › Performans |
 | 85 | `app-performans-form.html` | **GÖMÜLÜYOR** | drawer |

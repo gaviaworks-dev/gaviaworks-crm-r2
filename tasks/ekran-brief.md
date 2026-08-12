@@ -1872,7 +1872,10 @@ kullanılamıyordu. `bosSub` verilirse o, verilmezse `sub` çağrılır.
 
 **Veri dosyaları:** `org.js` · `crm.js` · `work.js` · `misc.js` · `ops.js` ·
 **`hr.js`** · `lifecycle.js`. `hr.js` bu dilimde **HER ekranda zorunludur** —
-`DB.employees` · `DB.leaves` · `DB.timelogs` · `DB.timesheets` · `DB.assets` ·
+⚠️ **düzeltme: `DB.employees` `hr.js`te DEĞİL, `org.js:245`tedir** (§1.2 doğru
+yazıyor; bu satır yanlıştı). `hr.js` personel tarafında yalnız `aktif`
+tuzağını kurar. `hr.js`te olanlar:
+`DB.leaves` · `DB.timelogs` · `DB.timesheets` · `DB.assets` ·
 `DB.assignments` · `DB.vehicles` · `DB.performance` · `DB.trainings` ·
 `DB.salaryHistory` · `DB.vehicleExpenses` hepsi orada.
 `firsat.js` ve `odeme.js` **yüklenmez**.
@@ -1947,10 +1950,24 @@ Offboarding → Ayrıldı · **Aktif**   ÇIKIŞ GEREKÇESİ (iki yön de)
 Ayrıldı     → (yok, TERMINAL)       girisZorunlu: cikisTarihi · cikisNedenKodu
                                     girisKapi: personelZimmet
 ```
-Yetki **yedi geçişte de** `ik / sahip / genelmudur`. Çıkış neden kodları
-`DB.reasonCodes` içinde `tur:'cikis'` taşıyanlardır (6 kod: `ISTIFA` ·
-`SOZLESME_BITIS` · `KARSILIKLI` · `ISVEREN_FESIH` · `EMEKLILIK` ·
-`STAJ_BITIS` + `DIGER`). Geçiş **yalnız `GV.flow.gec('employee', …)`** ile
+Yetki **yedi geçişte de** `ik / sahip / genelmudur`.
+
+⚠️ **DÜZELTME — `DB.reasonCodes[].tur` BİR DİZİDİR.** Bu satır önce
+"`tur:'cikis'` taşıyanlar" diyordu ve o okuma **SIFIR kod bulur**: alan
+`['iade','revizyon']` gibi bir dizidir, bir kod birden çok türe hizmet eder.
+Ölçüldü — `c.tur === 'cikis'` **0**, `c.tur.indexOf('cikis') !== -1` **7**:
+
+```js
+var CIKIS = (DB.reasonCodes || []).filter(function(c){
+  return (c.tur || []).indexOf('cikis') !== -1;      /* dizi — === YAZMA */
+});
+/* 7 kod: ISTIFA · SOZLESME_BITIS · KARSILIKLI · ISVEREN_FESIH ·
+          EMEKLILIK · STAJ_BITIS · DIGER */
+```
+Yayındaki iki tüketici bunu **doğru** yapıyor (`app-ayar-sirket.html:331`
+`indexOf('istisna')`); yanlış olan brief'in kendisiydi. Bu okumayı `===` ile
+yazan bir ekran `Ayrıldı` geçişinde **boş bir neden kodu listesi** basar ve
+geçiş hiç tamamlanamaz. Geçiş **yalnız `GV.flow.gec('employee', …)`** ile
 yapılır; `e.durum = …` yasaktır.
 
 ✅ **`Offboarding → Aktif` kenarı VARDIR (K-31).** Yanlışlıkla çıkış
@@ -2936,6 +2953,55 @@ okuyarak öğrenmek aynı kuralın ikinci okuyucusunu doğurur.
 **7 · `GV.fmt` — §21.11 listesinde olmayan üç yordam:**
 `GV.fmt.dateShort(iso)` · `GV.fmt.dateLong(iso)` · `GV.fmt.initials(ad)`.
 
+### 22.1e DÖRDÜNCÜ AJANIN brief'te BULAMADIĞI imzalar
+
+**1 · `GV.form` `radio` DALININ SÖZLEŞMESİ.** §5.2 `radio`yu tip listesinde
+anıyor ama nasıl çalıştığını yazmıyordu — XOR mekanizmasının tamamı buna
+dayanıyor:
+```js
+{ key:'ucretEkseni', label:'Ücret ekseni', type:'radio',
+  options:[{ value:'aylik', label:'Aylık brüt maaş' },
+           { value:'saatlik', label:'Saatlik ücret' }] }
+//  `read()` seçili düğmeyi `[name="<key>"]:checked` ile çözer;
+//  hiçbiri seçili değilse '' döner (yani `required` çalışır).
+//  `showIf` başka alanları bu değere bağlar (§5.2) ve görünmeyen alan
+//  DOĞRULANMAZ + `read()`te BOŞ döner — XOR'un mekanizması budur.
+```
+
+**2 · KAYIT BAZLI DÜZENLEME KAPSAMI YORDAMI YOK.** `permMatrix.duzenle`
+`'tum'`/`'departman'`/`'proje'`/`'kendi'`/`'yok'` değerlerini taşıyor, ama
+bunu BİR KAYIT üstünde ölçen bir yordam **yoktur**: `GV.guardRecord` yalnız
+müşteri oturumuna karşı kayıt kapısıdır, `GV.list` `scopeField` yalnız liste
+süzgecidir. Yani "bu kullanıcı BU kaydı düzenleyebilir mi" sorusunun ortak
+bir cevabı yok. **Ekran kendi kuralını UYDURMAZ** — `GV.perm.can('duzenle')`
+ile yetiniyor ve kapsam eksiğini backend payında **beyan ediyor**
+(borç **V2-85**). `GV.hr.ozlukGorebilir` bu deseni özlük için kuruyor
+(`personel` kapsamından türetiyor); `duzenle` için karşılığı yazılmamış.
+
+**3 · `GV.gates.personelEvrak` BUGÜNKÜ VERİDE ULAŞILAMAZ ama ÖLÜ DEĞİL.**
+16 personelin durumu: `Aktif` 15 · `Offboarding` 1 — **hiç kimse
+`Onboarding` durumunda değil**, yani kapının çalıştığı kenar
+(`Onboarding → Aktif`) bugün hiçbir kayıtta görünmüyor. Ayrıca V2-47: yordam
+`adim.zorunlu && adim.durum` okuyor, ÖRNEK adımları bu iki alanı taşımıyor
+(yalnız ŞABLON adımları `zorunlu` taşır — §22.4), yani kapı **hiç
+kapanmıyor**. Ekran ikisini birden beyan eder: kenar ulaşılamaz **ve** kapı
+uygulanmıyor. İkisini karıştırmak "kapı çalışıyor" izlenimi verirdi.
+
+**4 · `ini` · `depAd` · `roller` TÜRETİLEBİLİR ve türetimleri ÖLÇÜLDÜ.**
+Üçü de kayıtta yazılı ama üçü de başka alanlardan türer; formun onları
+kullanıcıya sorması gereksiz, sessizce ezmesi ise veri kaybıdır:
+- `ini` = `ad`ın ilk ve son kelimesinin baş harfi, `tr` büyük. **16/16 kayıt**
+  bu türetimle birebir. Kullanıcı elle yazdıysa **onun değeri korunur**.
+- `depAd` = `DB.departments[].ad`. **16/16** eşit.
+- `roller` birincil `rol`ü **içerir** (16/16). Düzenlemede yalnız **eksikse
+  eklenir**, hiçbir değer **silinmez** — dizi alanı tek seçimlik bir alandan
+  yazmak listeyi budardı (V2-32 ile aynı gerekçe).
+
+**5 · `rol` seçeneklerinde `musteri` BASILMAZ.** 27 rolün 26'sı listelenir:
+müşteri kimliği bir personel kaydı değil bir **kontak kaydıdır**
+(`DB.contacts` · `GV.session.kontak` — §2.2). Bir personele `musteri` rolü
+vermek, oturum modelinin iki tarafını karıştırmaktır.
+
 ### 22.2 KOD ÜRETİMİ — sıra GLOBAL, yıl damgası kayıt yılıdır
 
 ⚠️ Ölçüldü ve §13.2'deki desen **bu koleksiyonlarda yetersizdir.** `domain.js`
@@ -3203,7 +3269,14 @@ ve sebebi söylenir ("uyar ama geçir" yasak — §14.12).
 `<input>` kaydettiğinde gerçek değerin üstüne `••••••` yazar. Kural:
 
 ```js
-var maasAcik  = GV.hr.maasGorebilir(rec || {});      /* yeni kayıtta rec yok */
+/* ⚠️ DÜZELTME — burada `maasGorebilir(rec || {})` yazılıydı ve YANLIŞTI.
+   Boş nesne bir kayıt değildir: yordam onu bir kayıt gibi ölçüyor ve
+   `maasKapi({}).neden` "Bu kayıt sizin değil" diyordu — var olmayan bir
+   kaydın sahipliği hakkında hüküm. `Hr.kayit` bu turda sertleştirildi
+   (K-42: `kod` alanı olmayan nesne kayıt DEĞİLDİR), ama doğru çağrı
+   biçimi de ayrıca yazılıyor: YENİ kayıtta soru KÜME sorusudur. */
+var maasAcik  = rec ? GV.hr.maasGorebilir(rec) : GV.hr.maasGorebilir();
+var maasKapi  = rec ? GV.hr.maasKapi(rec) : GV.hr.maasKapi(null);
 var ozlukAcik = rec ? GV.hr.ozlukGorebilir(rec) : GV.perm.can('ekle');
 ```
 - `maasAcik === false` → ücret bölümü **hiç çizilmez**; yerine
