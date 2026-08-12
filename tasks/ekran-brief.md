@@ -528,11 +528,49 @@ düşer, kaybolmaz (`ui.js:2111-2127`). `aside` her alan değişiminde yeniden
   required:true,             // ya da function(veri){ return …; }
   readonly:true,             // türetilmiş alan — [3.1.11]
   hint:'…', placeholder:'…',
-  min:0, max:100, rows:4, options:[…], multiple:true,
-  currency:'₺', onLabel:'Aktif', checkLabel:'…',
+  min:0, max:100, rows:4, currency:'₺', onLabel:'Aktif', checkLabel:'…',
   showIf:function(veri){ return veri.tip === 'Kurumsal'; },
-  validate:function(deger, veri){ return 'hata mesajı' || ''; } }
+  validate:function(deger, veri){ return 'hata mesajı' || ''; },
+
+  /* ---- YETKİ KAPISI (K-44 · ADR-R2-44) ---- */
+  perm:'maas',               // yetki yoksa alan ÇİKAR (maskelenmez!)
+  mask:function(rec){ … },   // true → alan çıkar · `perm`den ÖNCE gelir
+  maskSebep:'başkasının kaydı',   // `kapaliAlanlar()`ta basılacak sebep
+
+  /* ---- SEÇENEK VE ÖNERİ ---- */
+  options:['Havale', { value:'MS-004', label:'…', disabled:true }],
+                             // karışık dizi geçerli · `disabled` GÖSTERİR, seçtirmez
+  multiple:true,             // type:'select' → çoklu seçim · read() DİZİ döner
+  list:['Havale','EFT'] }    // <datalist> — alan SERBEST METİN kalır
 ```
+
+`sections[]` de `perm` ve `mask(rec)` taşır. Bir bölümün bütün alanları
+düşerse **bölüm** düşer; bir sekmenin bütün bölümleri düşerse **sekme** düşer
+(`cfg.tabs` filtrelenir; `form.tab(key)` anahtarla çalıştığı için çağıran
+etkilenmez).
+
+#### ⚠️ FORMDA KAPI MASKELEMEZ, ÇIKARIR — ve `showIf` BİR KAPI DEĞİLDİR
+
+`GV.list` `columns[].perm` hücreyi `••••••` **maskeler**. `GV.form`
+`fields[].perm` alanı **çıkarır** ve sebebi ölçülmüştür: maskelenmiş bir
+`<input>` kaydedildiğinde gerçek değerin üstüne `••••••` yazar — formda
+maskeleme bir gizleme değil **veri kaybıdır**.
+
+Kapı üç şeyi birden yapar: alan **çizilmez** · **doğrulanmaz** ·
+`read()` çıktısında **anahtar olarak BULUNMAZ**.
+
+Üçüncüsü `showIf`ten ayrıdır ve fark **ölçüldü** (gerçek Chromium):
+
+| | kapı AÇIK | kapı KAPALI | `showIf` ile gizli |
+|---|---|---|---|
+| `<input>` | var | **yok** | yok |
+| `read()` anahtarı | var | **yok** | **var · değeri `''`** |
+| `Object.assign(rec, read())` sonrası | `91000` | **88000 — KORUNDU** | **`''` — YOK OLDU** |
+
+**Bu yüzden `showIf` bir yetki kapısı olarak KULLANILAMAZ** (§14 madde 15):
+görülemeyen bir alanı `showIf` ile gizleyen ekran, kullanıcı kaydettiğinde o
+değeri **siler**. `showIf` "kullanıcı bu alanı bilinçli olarak boş bıraktı"
+demektir; `perm`/`mask` "bu alan bu oturumun işi değil" demektir.
 
 `type` değerleri (`ui.js:2000-2056`):
 `text` (varsayılan) · `textarea` · `select` · `switch` · `checkbox` · `radio` ·
@@ -555,6 +593,16 @@ form.aside()       // sağ paneli yeniden çiz
 form.tab('ek')     // sekme değiştir
 form.isDirty() / form.setDirty(false)
 form.el            // mount düğümü
+
+form.setValue('gun', 5)      // TÜRETİLMİŞ alanın DEĞERİNİ yaz (K-44)
+//  checkbox/radio/select/çoklu seçim ayrımını kendisi bilir
+//  ⚠️ `dirty` İŞARETLEMEZ — türetilmiş yazma kullanıcı düzenlemesi değildir
+//  ardından `showIf` ve `aside` yeniden koşar
+//  → false dönerse alan kapıyla DÜŞMÜŞ ya da hiç yok
+
+form.kapaliAlanlar()         // → [{ key, label, bolum, sebep }]
+//  Kapıyla düşen alanlar. Ekran "bu alan neden yok" sorusunu UYDURMADAN
+//  cevaplasın diye (§10.1). Boş dizi = hiçbir alan düşmedi.
 ```
 
 Kaydetmeden çıkışta `beforeunload` uyarısı bileşende (`ui.js:2332-2337`),
@@ -1150,6 +1198,11 @@ bütün ekranlar onu esas alır (`ui.js:756`, `ui.js:1203`).
 12. "Uyar ama engelleme" duruşu: kapı **REDDEDER**. Şartname bunu emrediyor.
 13. `GV.sales.kazanildi` (R1 zinciri) — §5.3'e aykırı, yeni müşteri kopyası üretir.
 14. `<img>` ile kare görsel.
+15. **`showIf`i yetki kapısı olarak kullanmak.** Kapı `perm`/`mask`tır.
+    `showIf` ile gizlenen alan `read()`te `''` döner ve kaydetmede gerçek
+    değeri **siler** — ölçüldü (§5.2 tablosu).
+16. **Kapının arkasındaki alanı maskeli bir `<input>` olarak basmak.**
+    Kaydedildiğinde gerçek değerin üstüne `••••••` yazar.
 
 ---
 

@@ -2140,6 +2140,73 @@
     var rec = cfg.record || {};
     var dirty = false;
 
+    /* ===================================================================
+       YETKİ KAPISI — `fields[].perm` / `.mask(rec)` · `sections[].perm` / `.mask`
+       (K-44 · ADR-R2-44)
+       -------------------------------------------------------------------
+       Ölçülen kusur: `GV.list` `columns[]` ve `kpis[]` yetki kapısı taşıyor,
+       `GV.form` `fields[]` TAŞIMIYORDU. Sonuç, altı dilimde on üç form
+       ekranında aynı yamanın tekrarı: ekran kapıyı üç yerde birden kurmak
+       zorunda kalıyordu — alan listesinde, sekme/bölüm listesinde ve
+       KAYDETME listesinde. Proje formu `canFinans`ı dört yerde, personel
+       formu `maasAcik`/`ozlukAcik`ı dört yerde kurmuştu.
+
+       ⚠️ FORMDA KAPI **MASKELEMEZ, ÇIKARIR** — listeden ayrıldığımız yer
+       burasıdır ve sebebi ölçülmüştür: maskelenmiş bir `<input>`
+       kaydedildiğinde gerçek değerin üstüne `••••••` yazar. Yani formda
+       maskeleme bir gizleme değil, VERİ KAYBIdır.
+
+       Kapı üç şeyi birden yapar ve üçü tek filtreden geçer:
+         1. alan/bölüm ÇİZİLMEZ,
+         2. DOĞRULANMAZ (görünmeyen alan formu kilitlemez),
+         3. `read()` çıktısında ANAHTAR OLARAK BULUNMAZ.
+
+       ⚠️ (3) `showIf`ten AYRIDIR ve fark kritiktir: `showIf` ile gizlenen
+       alan `read()`te **`''` döner** (kullanıcı o alanı bilinçli olarak
+       boşalttı sayılır), kapıyla düşen alan ise **hiç yoktur** — çağıran
+       `Object.assign(rec, v)` yazsa bile mevcut değer korunur. Bir kapı
+       alanına `''` yazmak, görülemeyen bir değeri silmek olurdu.
+
+       `mask` `perm`den ÖNCE gelir: satır bazlı kapı (kendi kaydı) rol bazlı
+       kapıyı gevşetebilir (K-39 öz-erişimi tam bu desendir).
+       =================================================================== */
+    function kapiSebep(o){
+      if(typeof o.mask === 'function')
+        return o.mask(rec) ? (o.maskSebep || 'kayıt bazlı kapı kapalı') : null;
+      if(o.perm)
+        return (GV.perm && GV.perm.can && GV.perm.can(o.perm))
+          ? null : ('`' + o.perm + '` yetkisi bu oturumda kapalı');
+      return null;
+    }
+    /* Düşen her alan/bölüm SEBEBİYLE saklanır: ekran "bu alan neden yok"
+       sorusunu uydurmadan cevaplayabilsin (§10.1 — boş ≠ yok ≠ görülemez). */
+    var KAPALI = [];
+    var SEC = (cfg.sections || []).map(function(s){
+      var sSebep = kapiSebep(s);
+      if(sSebep){
+        (s.fields || []).forEach(function(f){
+          KAPALI.push({ key:f.key, label:f.label, bolum:s.title || null, sebep:sSebep }); });
+        return null;
+      }
+      var alanlar = (s.fields || []).filter(function(f){
+        var fSebep = kapiSebep(f);
+        if(fSebep){ KAPALI.push({ key:f.key, label:f.label, bolum:s.title || null, sebep:fSebep }); return false; }
+        return true;
+      });
+      /* Alanı kalmayan bölüm de düşer — başlığı olan boş bir kart, olmayan
+         bir şeyi varmış gibi gösterir. */
+      if(!alanlar.length) return null;
+      var kopya = {}; for(var k in s) if(s.hasOwnProperty(k)) kopya[k] = s[k];
+      kopya.fields = alanlar;
+      return kopya;
+    }).filter(Boolean);
+
+    /* Bütün bölümleri düşen sekme de düşer; `cfg.tabs` indeksleri kayar ama
+       `form.tab(key)` anahtarla çalıştığı için çağıran etkilenmez. */
+    var TABS = (cfg.tabs || []).filter(function(t){
+      return SEC.some(function(s){ return s.tab === t.key; });
+    });
+
     function fieldHtml(f){
       var v = rec[f.key] != null ? rec[f.key] : (f.value != null ? f.value : '');
       var id = 'f_' + f.key;
@@ -2176,14 +2243,30 @@
           inner = '<input type="hidden" name="' + f.key + '" value="' + esc(v) + '">' +
                   '<input type="text" id="' + id + '" class="inp is-readonly" readonly aria-readonly="true" ' +
                   'tabindex="-1" value="' + esc(etiket || '—') + '">';
-        }else
-        inner = '<select id="' + id + '" name="' + f.key + '"' + (reqSabit ? ' required' : '') + '>' +
-          '<option value="">' + esc(f.placeholder || 'Seçiniz') + '</option>' +
+        }else{
+        /* ÇOKLU SEÇİM (V2-32) — `multiple:true`. Dizi alanları (`roller` ·
+           `ekip` · `teknoloji` · `katilimci`) altı dilim boyunca SALT OKUNUR
+           basılmak zorundaydı: tek seçimlik bir alan mevcut listeyi sessizce
+           BUDARDI. `read()` bu dalda DİZİ döndürür.
+           SEÇENEK DEVRE DIŞI (V2-17) — `{value, label, disabled:true}`.
+           "Göster ama seçtirme" deseni: fatura formu faturalı taksiti
+           listeden ÇIKARMAK zorunda kalıyordu, oysa kullanıcının o taksitin
+           VAR olduğunu ve neden seçilemediğini görmesi gerekiyor. */
+        var cok = f.type === 'select' && !!f.multiple;
+        var secili = cok ? (Array.isArray(v) ? v.map(String) : (v === '' || v == null ? [] : [String(v)])) : null;
+        inner = '<select id="' + id + '" name="' + f.key + '"' +
+          (cok ? ' multiple size="' + (f.size || Math.min(6, Math.max(3, (f.options || []).length))) + '"' : '') +
+          (reqSabit ? ' required' : '') + '>' +
+          (cok ? '' : '<option value="">' + esc(f.placeholder || 'Seçiniz') + '</option>') +
           (f.options || []).map(function(o){
             var ov = typeof o === 'string' ? o : o.value;
             var ol = typeof o === 'string' ? o : o.label;
-            return '<option value="' + esc(ov) + '"' + (String(v) === String(ov) ? ' selected' : '') + '>' + esc(ol) + '</option>';
+            var kapali = typeof o !== 'string' && !!o.disabled;
+            var isar = cok ? secili.indexOf(String(ov)) !== -1 : String(v) === String(ov);
+            return '<option value="' + esc(ov) + '"' + (isar ? ' selected' : '') +
+                   (kapali ? ' disabled' : '') + '>' + esc(ol) + '</option>';
           }).join('') + '</select>';
+        }
       }else if(f.type === 'switch'){
         inner = '<label class="f-switch"><input type="checkbox" id="' + id + '" name="' + f.key + '"' +
                 (v ? ' checked' : '') + '><span class="sw"></span><span>' + esc(f.onLabel || 'Aktif') + '</span></label>';
@@ -2223,11 +2306,25 @@
       }else{
         var t = f.type === 'date' ? 'date' : f.type === 'number' ? 'number' : f.type === 'email' ? 'email' :
                 f.type === 'tel' ? 'tel' : f.type === 'url' ? 'url' : 'text';
+        /* ÖNERİ LİSTESİ (V2-18) — `list:['Havale','EFT']`. Sözlüğü OLMAYAN
+           alanın değerleri defterden ölçülür; onları kullanıcıdan gizlemek
+           bilgi yutmak, `select`e çevirmek ise olmayan bir sözlük uydurmak
+           olurdu. Alan SERBEST METİN kalır, liste yalnız önerir — doğrulama
+           değişmez. Tahsilat formu bunu çizimden SONRA DOM'a iliştirmek,
+           satın alma formu `select` + `showIf` metin ÇİFTİ kurmak zorunda
+           kalmıştı. */
+        var dl = '';
+        if(f.list && f.list.length){
+          dl = '<datalist id="dl_' + id + '">' + f.list.map(function(o){
+            return '<option value="' + esc(typeof o === 'string' ? o : o.value) + '"></option>';
+          }).join('') + '</datalist>';
+        }
         inner = '<input type="' + t + '" class="inp' + (salt ? ' is-readonly' : '') + '" id="' + id +
                 '" name="' + f.key + '" value="' + esc(v) + '"' +
                 (reqSabit ? ' required' : '') + (salt ? ' readonly aria-readonly="true"' : '') +
+                (dl ? ' list="dl_' + id + '" autocomplete="off"' : '') +
                 (f.placeholder ? ' placeholder="' + esc(f.placeholder) + '"' : '') +
-                (f.min != null ? ' min="' + f.min + '"' : '') + (f.max != null ? ' max="' + f.max + '"' : '') + '>';
+                (f.min != null ? ' min="' + f.min + '"' : '') + (f.max != null ? ' max="' + f.max + '"' : '') + '>' + dl;
       }
 
       return '<div class="field f-col-' + (f.cols || 6) + '" data-field="' + f.key + '"' +
@@ -2255,7 +2352,7 @@
        cfg.tabs  = [{ key, label, icon }]  · section.tab = <key>
        cfg.aside = function(record){ return html; }  → canlı sağ panel
        =================================================================== */
-    var sekmeli = !!(cfg.tabs && cfg.tabs.length);
+    var sekmeli = !!(TABS && TABS.length);
     var yanPanel = typeof cfg.aside === 'function';
 
     function sectionHtml(s){
@@ -2271,9 +2368,16 @@
       '<div><b>Form gönderilemedi.</b><ul></ul></div></div>';
 
     if(sekmeli){
-      /* Sekme şeridi — `GV.tabs` ile aynı işaretleme ve aynı ARIA sözleşmesi.
-         Detay ekranlarındakiyle birebir aynı dil; ikinci bir sekme dili yok. */
-      html += '<div class="gv-tabs" role="tablist">' + cfg.tabs.map(function(t, i){
+      /* Sekme şeridi — `GV.tabs` ile aynı ARIA sözleşmesi ama ⚠️ AYNI DİL
+         DEĞİL, ve bu bilinçlidir. Bu yorum önce "birebir aynı dil; ikinci bir
+         sekme dili yok" diyordu ve YANLIŞTI (V2-88): buradaki tetikleyici
+         `data-ftab`, paneli `id="fpanel_<key>"`; `GV.tabs` ise `data-tab` ve
+         `data-panel` kullanıyor. Fark ZORUNLU çünkü `GV.tabs` panelleri
+         BELGE GENELİNDE arıyor (`ui.js` `GV.tabs`) — aynı dil konuşulsaydı
+         bir detay sekmesi bir form panelini gizlerdi. Yorumun yanlış olması
+         bedelsiz değildi: bir ölçüm betiği ona göre yazıldı ve "her alan
+         gizli" ölçtü. */
+      html += '<div class="gv-tabs" role="tablist">' + TABS.map(function(t, i){
         return '<button type="button" class="gv-tab' + (i === 0 ? ' is-active' : '') + '"' +
           ' role="tab" id="ftab_' + esc(t.key) + '"' +
           ' aria-selected="' + (i === 0 ? 'true' : 'false') + '"' +
@@ -2292,8 +2396,8 @@
          dördü de her bölüme `tab` verdi; yani kural yazılıydı ama hiç
          çalışmamıştı (ders L-31'in aynı sınıfı). Artık panel içeriği tek yerde,
          dize oyunu olmadan kuruluyor. */
-      cfg.tabs.forEach(function(t, i){
-        var icerik = (cfg.sections || []).filter(function(s){
+      TABS.forEach(function(t, i){
+        var icerik = SEC.filter(function(s){
           return s.tab === t.key || (i === 0 && !s.tab);
         });
         html += '<div class="gv-tabpanel" role="tabpanel" id="fpanel_' + esc(t.key) + '"' +
@@ -2301,7 +2405,7 @@
           icerik.map(sectionHtml).join('') + '</div>';
       });
     }else{
-      (cfg.sections || []).forEach(function(s){ html += sectionHtml(s); });
+      SEC.forEach(function(s){ html += sectionHtml(s); });
     }
 
     html += '</form>';
@@ -2353,8 +2457,24 @@
       });
     }
 
-    form.addEventListener('input', function(){ dirty = true; syncShowIf(); cizAside(); });
-    form.addEventListener('change', function(){ dirty = true; syncShowIf(); cizAside(); });
+    /* ⚠️ ALAN HATASI DEĞER DEĞİŞİNCE TEMİZLENİR (V2-87). Ölçülen kusur:
+       hata mesajı yeni bir `submit()`e kadar alanda kalıyordu — kural doğru
+       çalışıyor (kayıt doğru doğuyor) ama GÖRÜNEN DURUM bir an için yalan
+       söylüyor: "bu alan hatalı" derken alan artık geçerli. Burada tüm formu
+       yeniden doğrulamıyoruz (kullanıcı henüz doldurmadığı alanlar için hata
+       görmemeli — form açılışta kırmızı yanmaz); yalnız DOKUNULAN alanın
+       kendi işareti kalkar. Hükmü bir sonraki `submit()` yeniden verir. */
+    function alanHatasiniTemizle(el){
+      var wrap = el && el.closest && el.closest('[data-field]');
+      if(!wrap || !wrap.classList.contains('is-invalid')) return;
+      wrap.classList.remove('is-invalid');
+      var sp = wrap.querySelector('.f-err span');
+      if(sp) sp.textContent = '';
+    }
+    form.addEventListener('input', function(e){
+      alanHatasiniTemizle(e.target); dirty = true; syncShowIf(); cizAside(); });
+    form.addEventListener('change', function(e){
+      alanHatasiniTemizle(e.target); dirty = true; syncShowIf(); cizAside(); });
 
     /* dosya alanı */
     Array.prototype.forEach.call(mount.querySelectorAll('[data-upload]'), function(u){
@@ -2383,7 +2503,7 @@
     });
 
     function allFields(){
-      return (cfg.sections || []).reduce(function(a, s){ return a.concat(s.fields || []); }, []);
+      return SEC.reduce(function(a, s){ return a.concat(s.fields || []); }, []);
     }
 
     /* KOŞULLU ALAN (`showIf`) — bir alanın varlığı başka bir alanın değerine
@@ -2422,11 +2542,15 @@
         var val = el.type === 'checkbox' ? el.checked
                 : el.type === 'radio'
                     ? ((wrap.querySelector('input[type=radio]:checked') || {}).value || '')
-                    : el.value;
+                    : el.multiple
+                        ? Array.prototype.map.call(el.selectedOptions, function(o){ return o.value; })
+                        : el.value;
         var msg = '';
 
         var zorunlu = typeof f.required === 'function' ? !!f.required(read()) : !!f.required;
-        if(zorunlu && (val === '' || val == null || val === false)) msg = f.label + ' zorunlu alandır.';
+        /* Çoklu seçimde "boş" bir DİZİDİR; `[] === ''` tutmaz. */
+        var bos = Array.isArray(val) ? !val.length : (val === '' || val == null || val === false);
+        if(zorunlu && bos) msg = f.label + ' zorunlu alandır.';
         else if(val && f.type === 'email' && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val)) msg = 'Geçerli bir e-posta adresi girin.';
         else if(val && f.type === 'tel' && String(val).replace(/\D/g,'').length < 10) msg = 'Telefon numarası en az 10 haneli olmalıdır.';
         /* ⚠️ ŞEMASIZ ADRES KABUL EDİLİR. Eski kural `http(s)://` dayatıyordu
@@ -2459,11 +2583,11 @@
          sekmedeyse kullanıcı listeyi okur ama alanı GÖREMEZ; hangi sekmede
          olduğu yazılır ve sekme rozeti sayıyı gösterir. */
       var alanTab = {};
-      if(sekmeli) (cfg.sections || []).forEach(function(sec){
+      if(sekmeli) SEC.forEach(function(sec){
         (sec.fields || []).forEach(function(f){ alanTab[f.key] = sec.tab || null; });
       });
       var tabAd = {};
-      (cfg.tabs || []).forEach(function(t){ tabAd[t.key] = t.label; });
+      TABS.forEach(function(t){ tabAd[t.key] = t.label; });
       var tabSayi = {};
       errs.forEach(function(e){ var k = alanTab[e.key]; if(k) tabSayi[k] = (tabSayi[k] || 0) + 1; });
 
@@ -2500,9 +2624,15 @@
         var el = mount.querySelector('[name="' + f.key + '"]');
         if(!el) return;
         var wrap = el.closest('[data-field]');
-        if(wrap && wrap.hidden){ out[f.key] = el.type === 'checkbox' ? false : ''; return; }
+        if(wrap && wrap.hidden){
+          out[f.key] = el.type === 'checkbox' ? false : (el.multiple ? [] : '');
+          return;
+        }
         if(el.type === 'checkbox') out[f.key] = el.checked;
         else if(el.type === 'radio') { var c = mount.querySelector('[name="' + f.key + '"]:checked'); out[f.key] = c ? c.value : ''; }
+        /* Çoklu seçim DİZİ döner (V2-32). Boş seçim `[]`dir, `''` DEĞİL:
+           kayıttaki dizi alanının şekli korunur. */
+        else if(el.multiple) out[f.key] = Array.prototype.map.call(el.selectedOptions, function(o){ return o.value; });
         else out[f.key] = el.value;
       });
       return out;
@@ -2535,6 +2665,39 @@
         return read();
       },
       setDirty:function(v){ dirty = v; },
+
+      /* TÜRETİLMİŞ ALANIN DEĞERİNİ YAZ (V2-83) — bileşen alan değişiminde
+         yalnız `aside`ı yeniden çiziyordu; `sync()` da sadece `showIf`i
+         değerlendiriyor. Bir alanın DEĞERİ türetilmişse (izin formunda `gun`
+         = `GV.calendar.isGunu`) o değer bayat kalıyordu ve ekran alanın DOM
+         sözleşmesine elle dokunmak zorunda kalıyordu.
+         ⚠️ `dirty` İŞARETLEMEZ: türetilmiş bir yazma kullanıcı düzenlemesi
+         değildir; işaretlemek "kaydetmeden çıkıyorsun" uyarısını kullanıcının
+         hiç dokunmadığı bir formda tetiklerdi. Çağıran isterse `setDirty(true)`
+         der. Dönüş: yazıldı mı (alan kapıyla düşmüş olabilir). */
+      setValue:function(key, deger){
+        var el = mount.querySelector('[name="' + key + '"]');
+        if(!el) return false;                        /* kapıyla düşmüş ya da yok */
+        if(el.type === 'checkbox') el.checked = !!deger;
+        else if(el.type === 'radio'){
+          var r = mount.querySelector('[name="' + key + '"][value="' + String(deger) + '"]');
+          if(r) r.checked = true;
+        }else if(el.multiple){
+          var kume = (Array.isArray(deger) ? deger : [deger]).map(String);
+          Array.prototype.forEach.call(el.options, function(o){
+            o.selected = kume.indexOf(String(o.value)) !== -1; });
+        }else{
+          el.value = (deger == null ? '' : deger);
+        }
+        alanHatasiniTemizle(el);
+        syncShowIf(); cizAside();
+        return true;
+      },
+
+      /* KAPIYLA DÜŞEN ALANLAR — ekran "bu alan neden yok" sorusunu
+         uydurmadan cevaplasın diye (§10.1). `[{ key, label, bolum, sebep }]`.
+         Boş dizi "hiçbir alan düşmedi" demektir. */
+      kapaliAlanlar:function(){ return KAPALI.slice(); },
       /* Sekmeli formda dışarıdan sekme değiştirme */
       tab:function(key){ if(sekmeli) sekmeGec(key); },
       /* Sağ paneli elle tazeleme — ekran alanı dışarıdan yazdıysa */
