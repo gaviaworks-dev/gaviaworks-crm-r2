@@ -114,8 +114,12 @@ console.log('\n[B2] Brief\'te geçen `GV.<ad>` adları');
      oturumdur çağırıyor. Eksenin kendi kapsamı eksikti: DOM isteyen her
      ortak katman dosyası burada sayılmalı, yoksa doğrulayıcı gerçek bir
      imzayı hayalet ilan eder ve brief'i yanlış yere düzelttirir. */
+  /* ⚠️ AYNI TUZAK İKİNCİ KEZ: `assets/js/rapor.js` de bu listede YOKTU ve
+     `GV.rapor` brief'e girince eksen onu "kodda yok" ilan etti — oysa yordam
+     `rapor.js:43`te tanımlı ve `app-rapor.html` beş oturumdur çağırıyor.
+     Ders aynı: DOM isteyen HER ortak katman dosyası burada sayılır. */
   for(const f of ['assets/js/ui.js','assets/js/shell.js','assets/js/quicknote.js',
-                  'assets/js/kuyruk.js'])
+                  'assets/js/kuyruk.js','assets/js/rapor.js'])
     for(const a of metindenGV(f)) tanimli.add(a);
   /* Alt yordamlar: GV.list dönüş yüzeyi, GV.shell.*, GV.cell.*, GV.cols.* … */
   const altYuzey = new Set([

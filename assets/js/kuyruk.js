@@ -156,7 +156,14 @@
       var gec = d.termin && d.termin < t;
       return satir({
         tip:'istalebi', kod:d.kod, baslik:d.baslik || d.konu || d.kod,
-        iliski:d.hedefDep || d.dep || null,
+        /* ⚠️ ÖLÇÜLEN KUSUR (rota 51-52 kapanırken bulundu): burada
+           `d.hedefDep || d.dep` yazıyordu ve `DB.deptRequests` bu iki alanın
+           HİÇBİRİNİ taşımıyor (gerçek alanlar `talepEdenDep`·`talepEdilenDep`).
+           Altı talebin altısında `iliski` null kalıyordu. Ortak satır modeli
+           bu alanı "müşteri / proje bağı" diye tanımlıyor ve diğer beş tip
+           öyle dolduruyor — departman kodu buraya KONMADI, o bir başka
+           birimdir ve tek kolona iki birim yazmak ölçümü bozar. */
+        iliski:d.proje || d.musteri || null,
         durum:d.durum, sorumlu:d.sorumlu || d.atanan || null,
         sonTarih:d.termin || null,
         /* Rota 51-52: departman talebi GÖMÜLÜYOR — tam kaydı bu panelin
