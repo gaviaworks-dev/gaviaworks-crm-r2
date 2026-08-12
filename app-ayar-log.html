@@ -505,6 +505,37 @@ document.addEventListener('gv:ready', function(){
             ? '<span class="cell-main">' + GV.esc(d.klasor) + '</span>' : GV.cell.faint('—'); } }
       ],
 
+      /* ===================================================================
+         ROTA 125 — `app-dokuman-sure.html` GÖMÜLÜYOR (ADR-R2-06 rev. · V2-68)
+
+         Satırın hedefi "Süresi Dolanlar **kayıtlı görünümü**"ydü. Ölçüldü:
+         bu listede "süresi geçmiş" bugün YALNIZ BİR KPI SAYACI olarak vardı
+         ve gelişmiş süzgeç çekmecesinde bir seçenekti — ikisi de kayıtlı
+         görünüm DEĞİLDİR. Bir sayaç kaç belgenin süresinin geçtiğini söyler
+         ama HANGİLERİ olduğunu göstermez; süzgeç gösterir ama iki tıklama
+         ve bir çekmece arkasındadır. Kayıtlı görünüm, o soruyu şeritte
+         tek tıkla açık tutan yüzeydir.
+
+         ⚠️ EŞİK UYDURULMADI: `kalanGun` kayıtta yazılı bir alandır
+         (`DB.documents[].kalanGun`), bu ekran onu hesaplamıyor. 30 günlük
+         ikinci görünüm var olan `sure` süzgecinin eşiğiyle BİREBİR aynıdır —
+         aynı soru iki farklı eşikle iki yerde sorulmuyor (L-40).
+
+         ⚠️ `kalanGun == null` olan belge (son kullanma tarihi YOK) hiçbir
+         süre görünümüne girmez ve bu bir eksiklik değil ölçümdür: "süresiz"
+         ile "süresi dolmamış" aynı cümle değildir. Bu yüzden üçüncü görünüm
+         onları AYRI basar, ikisinden birine gizlice katmaz.
+         =================================================================== */
+      tabs:[
+        { key:'tumu', label:'Tüm belgeler', icon:'i-list', filter:null },
+        { key:'gecti', label:'Süresi dolanlar', icon:'i-alert',
+          filter:function(d){ return d.kalanGun != null && d.kalanGun < 0; } },
+        { key:'yakin', label:'30 günde dolacak', icon:'i-hourglass',
+          filter:function(d){ return d.kalanGun != null && d.kalanGun >= 0 && d.kalanGun <= 30; } },
+        { key:'suresiz', label:'Son kullanma tarihi yok', icon:'i-file',
+          filter:function(d){ return d.kalanGun == null; } }
+      ],
+
       filters:[
         /* Belge türü sözlüğü YOKTUR (`contractTypes` bu depoda tanımlı değil);
            on tür mevcut 11 kayıttan türetildi. */

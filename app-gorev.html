@@ -234,6 +234,19 @@ document.addEventListener('gv:ready', function(){
       parcalar.push(geciken.length + ' görevin termini ' + F.date(DB.today) +
         ' tarihini geçmiş (' + geciken.map(function(t){ return t.kod; }).join(', ') + ').');
 
+    /* ROTA 65 — kapsamı SEKME AKTİFKEN yazar. Cümle sekmenin kendi
+       ölçümünden türer (`KARAR_GOREV` kenar sayısı), elle yazılmaz:
+       bağ sayısı değiştiği gün cümle kendiliğinden düzelir. */
+    var aktifChip = document.querySelector('#grvListe .chip[aria-selected="true"]');
+    if(aktifChip && aktifChip.dataset.tab === 'karar'){
+      var toplamKarar = ((window.DB && DB.decisions) || []).length;
+      parcalar.push('TOPLANTI KARARI görünümü: ' + toplamKarar + ' kararın ' + KARAR_SAYI +
+        '’ü bir göreve bağlı (DB.decisions[].gorev) ve yalnız onlar burada görünür. ' +
+        'Kalan ' + (toplamKarar - KARAR_SAYI) + ' karar EKSİK KAYIT DEĞİLDİR: kararı göreve ' +
+        'çeviren yordam yazılmamıştır, bu yüzden "karardan görev üret" düğmesi de basılmadı. ' +
+        'Bağ tek yönlü okunur — görev kaydında karara işaret eden bir alan yoktur.');
+    }
+
     if(TABLOSUZ.length)
       parcalar.push('Sözlükte olup geçiş tablosunda karşılığı olmayan durum: ' + TABLOSUZ.join(', ') + '.');
     if(SOZLUKSUZ.length)
@@ -671,6 +684,36 @@ document.addEventListener('gv:ready', function(){
     { key:'kapanan', label:'Kapanan', icon:'i-check-circle',
       filter:function(t){ return icinde(KAPANAN, t.durum); } }
   );
+
+  /* =================================================================
+     ROTA 65 — `app-toplanti-karar.html` GÖMÜLÜYOR
+
+     Kararlar göreve bağlanır ve AYRI EKRAN AÇILMAZ. Görev listesi TEK
+     LİSTEDİR (brief §18.8): bu yüzden buraya yeni bir KAYIT TİPİ değil,
+     onuncu bir KAYITLI GÖRÜNÜM eklendi. Görünüm `DB.decisions[].gorev`
+     kenarını okuyup `DB.tasks` içinde süzer — ikinci bir kaynak yok.
+
+     ⚠️ ÖLÇÜLDÜ VE EKRANDA YAZILI: 12 kararın YALNIZ 3'ü bir göreve bağlı
+     (KRR-2026-094 · 096 · 103 → GRV-2026-108 · 104 · 106; üçünün de görev
+     kaydı ve toplantısı defterde çözülüyor). Kalan 9 karar bu görünümde
+     GÖRÜNMEZ ve bu bir eksiklik DEĞİL ölçümdür: kararı göreve çeviren
+     yordam yazılmamıştır (`DB.decisions[].gorev`e yazan yordam YOK —
+     v2-borc V2-99 sınıfı). "Karardan görev üret" düğmesi bu yüzden
+     BASILMADI; yapılamayan iş düğme olarak vaat edilmez (§14.6).
+
+     Bağ TEK YÖNLÜ okunur: karardan göreve. Görev kaydında karara işaret
+     eden bir alan YOKTUR (ölçüldü) ve uydurulmadı. */
+  var KARAR_GOREV = (function(){
+    var out = {};
+    ((window.DB && DB.decisions) || []).forEach(function(d){
+      if(d.gorev) out[d.gorev] = d;
+    });
+    return out;
+  })();
+  var KARAR_SAYI = Object.keys(KARAR_GOREV).length;
+
+  sekmeler.push({ key:'karar', label:'Toplantı kararı', icon:'i-stamp',
+    filter:function(t){ return !!KARAR_GOREV[t.kod]; } });
 
   /* =================================================================
      6. LİSTE
