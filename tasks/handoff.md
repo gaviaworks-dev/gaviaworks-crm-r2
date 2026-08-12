@@ -17,11 +17,11 @@
 |---|---|
 | HEAD | `ac1dc30` · **182 commit** (bu oturumda **14**) |
 | Ekran | **48 + index** (BUILT 49 = diskteki 49, birebir) |
-| Rota | **108/148 yayında · kalan 40** |
+| Rota | **117/148 yayında · kalan 31** |
 | Dağılım | KARŞILIĞI VAR **41** · GÖMÜLÜYOR **94** · YÖNLENDİRİLİYOR **12** · KAPSAM DIŞI **1** |
 | **Kendi ekranını almış olup yazılmamış satır** | **SIFIR** (dilim 6 açılışında 11, geçen turda 1) |
 | Eksen | **14 eksen TEMİZ** + tarayıcı ekseni TEMİZ |
-| Tarayıcı koşumu | **93 girdi × 6 genişlik = 558 ölçüm · 0 bulgu · 161,8 sn** |
+| Tarayıcı koşumu | **93 girdi × 6 genişlik = 558 ölçüm · 0 bulgu · 165,0 sn** (kapanış koşumu) |
 | v2-borç | V2-47 ve V2-92 kapandı · V2-77 satırı düzeltildi · V2-96 açıldı |
 
 ---
@@ -248,3 +248,61 @@ node tasks/qa/tarayici.js    # 93 girdi · 558 ölçüm · ~2,7 dakika (eskiden 
 ```
 Sonra: `sed -n '/^### 22.13/,/^### 22.14/p' tasks/ekran-brief.md` — araç
 detayının ölçülmüş sözleşmesi ve düzeltilmiş yakıt satırı.
+
+---
+
+## 9. BEYAR'IN ÜÇ KARARI UYGULANDI (13 Ağustos, ikinci yarı)
+
+**1 · V2-96 — kapsam donduruldu ama SESSİZ GEÇİLMEDİ.** `app-personel-detay`
+artık ölçüp basıyor: defterde kaç etkin `ek` giriş şablonu var, kaçı BU kişiye
+uyuyor, kaçı sürece uygulanmış (bugün 3 / 0 / 0). Kapının yalnız `temel`
+şablonu ölçtüğü ve ek şablonun zorunlu adımını arayamadığı ekranda yazılı.
+
+**2 · EMP-016 tohum verisi DÜZELTİLMEDİ.** Kayıt `Aktif`, kapı reddediyor
+(Ekipman zimmeti · Oryantasyon eğitimi). Kartta "EKSİK EVRAK bulundu" +
+şartname atfı [4.2.3] + "ÇELİŞKİ, BİLEREK DURUYOR" gerekçesi basılıyor.
+Ölçüldü: `EMP-016` reddediliyor, `EMP-014` geçiyor.
+⚠️ Bu blok BİR TUR BAYAT KALDI ve dersi handoff'a giriyor: kapı onarılınca
+ekrandaki "kapı UYGULANMIYOR" cümlesi kendiliğinden yanlışa döndü.
+**Kapının hâlini anlatan cümle kapının KENDİSİNDEN türetilmeli.**
+
+**3 · `DB.fuelLogs[].depoDoldu` EKLENDİ** — varsayım ölçüme döndü.
+`true` tam depo · `false` kısmi · **`null` BİLİNMİYOR** (ve `null` "kısmi"
+değildir). **Beş kaydın beşi de `null`, çünkü defterde doluluğu söyleyen
+hiçbir işaret yok** — ne kayıtta not, ne künyede depo hacmi.
+Sonucu açıkça kabul edildi: bugün hiçbir araçta tüketim hesaplanmıyor ve
+`ARC-001`in 7,08 L/100km değeri de basılmıyor; o sayı ölçüm değil VARSAYIMDI.
+Üç yönlü ölçüldü (`ops.js` isteği yakalanıp değiştirilerek): `null` → sayı yok ·
+`true` → 7,08 geri geliyor · `false` → sayı yok. **KPI, alan doldurulduğu an
+kendiliğinden canlanıyor.**
+
+---
+
+## 10. GÖMME DİLİMİ — GRUPLANDI, DOKUZ SATIR KAPANDI, YÜRÜTME BAŞLAMADI
+
+Gruplama ve dalga sırası: **`tasks/gomme-plani.md`** (8 grup, 5 dalga,
+çakışmalar önceden işaretli).
+
+**Ekran yazmadan kapanan dokuz satır** (117 yayında · kalan 31): ölçüldü ki
+hedef yüzeyleri zaten yayındaydı — araç detayının altı defteri
+(101·103·105·107·109·111) ve personel detayının üç sekmesi (83·84·86).
+Her biri gerçek Chromium'da DOLU kayıtla açılıp doğrulandı
+(`ARC-003#kaza` 181 düğüm · `EMP-016#yasamdongusu` 187 düğüm ·
+`EMP-002#performans` §10.1'e uygun boş durum).
+
+### Sonraki oturumun ilk kararları — plan dosyasında gerekçeleriyle
+
+- ⛔ **ALTI SATIR BLOKE** (102·104·106·108·110·112, araç alt defter formları):
+  o defterlere kayıt EKLEYEN yordam YOK (§22.16.7). Kaydetmesi olmayan drawer
+  basmak "sahte buton" yasağının form ölçeğidir. **Önce ortak katman.**
+  Aynı soru GRUP 3'ün beş drawer'ı için de ajan açılmadan ÖNCE sorulmalı.
+- ⚠️ **GRUP 6 ile GRUP 7 ÇAKIŞIR** (ikisi de panele yazar) ve GRUP 7 üç ayrı
+  hedefe dokunur → paralel koşamazlar.
+- ⚠️ **Satır 125'in hedefi BAYAT**: `app-dokuman.html` V2-68 ile kendisi
+  gömüldü. En savunulabilir yorum uygulandı ve yazıldı
+  (`app-ayar-log.html › Belge Arşivi › Süresi Dolanlar`), Beyar onayına açık.
+
+**Menü tavanı:** bu turda HİÇ menü girdisi eklenmedi — kapanan dokuz satırın
+hepsi var olan ekranların içindeki sekme/blok. Ölçülen görünür girdi:
+`frontend`/`stajyer`/`tasarimci` 6 · `musteri` 5 · `satistemsilci` 9 ·
+`sahip` 20. `ayar-ekseni` [A9] ve menü/adres kapısı ekseni TEMİZ.
