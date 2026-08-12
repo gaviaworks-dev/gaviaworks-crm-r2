@@ -553,11 +553,14 @@ document.addEventListener('gv:ready', function(){
   /* =================================================================
      FORM TASLAĞI
      ================================================================= */
-  /* Bütçe kodu iki alanla sorulur: sözlük YOK, seçenek defterden türer,
-     listede olmayan kod serbest metinle yazılır. `GV.form` `datalist`
-     yuvası taşımıyor (V2-18) — o borç yerine iki alan + `showIf` kurulur;
-     gizli alan doğrulanmaz ve `read()`te boş döner (brief §5.2). */
-  var recButceListede = !!(rec && rec.butceKodu && BUTCE_KODLARI.indexOf(rec.butceKodu) !== -1);
+  /* ⚠️ İKİ ALAN + `showIf` YAMASI KALKTI (K-44 · V2-18). Bütçe kodu
+     `butceKoduSecim` (select) + `butceKoduSerbest` (showIf'li serbest metin)
+     diye İKİ alanla soruluyordu, çünkü öneri yuvası yoktu. Yuva geldi:
+     `fields[].list` alanı serbest metin bırakır ve defterden türeyen
+     kodları öneri olarak basar — tek alan, tek anahtar, tek kural.
+     Yamanın bedeli yalnız fazlalık değildi: `showIf` ile gizlenen alan
+     `read()`te BOŞ döner (brief §5.2 tablosu) ve iki alanın sırası
+     kaydetmede elle korunmak zorundaydı. */
 
   var formKayit = {
     urun:            rec ? (rec.urun || '') : '',
@@ -569,8 +572,7 @@ document.addEventListener('gv:ready', function(){
     gerekce:         rec ? (rec.gerekce || '') : '',
     aciklama:        rec ? (rec.aciklama || '') : '',
     ozellik:         rec ? (rec.ozellik || '') : '',
-    butceKoduSecim:  recButceListede ? rec.butceKodu : '',
-    butceKoduSerbest:(rec && rec.butceKodu && !recButceListede) ? rec.butceKodu : '',
+    butceKodu:       rec ? (rec.butceKodu || '') : '',
     dep:             rec ? (rec.dep || '') : ((GV.session && GV.session.dep) || ''),
     proje:           rec ? (rec.proje || '') : (onProje ? onProje.kod : ''),
     /* Görüntü alanı — adı `*Bilgi`: kayda yazılmaz, yalnız gösterilir. */
@@ -582,11 +584,15 @@ document.addEventListener('gv:ready', function(){
      kaydedildiğinde gerçek değeri ezer — brief §22.17 madde 6). */
   if(tutarKapali) delete formKayit.tahminiMaliyet;
 
-  function butceSerbestGorunur(v){ return !v.butceKoduSecim; }
-
   var tutarAlani = {
     key:'tahminiMaliyet', label:'Tahmini maliyet (NET)', type:'money', cols:6,
     required:true, currency:PARA,
+    /* K-44 — kapı alanın kendi tanımında. `mask` düzenlemede kapatır: yeni
+       kayıtta tutarı yazan kişi zaten talebi açan kişidir ve `tutarKapali`
+       eski yamada da yalnız `rec` varken doğruydu. */
+    mask:function(){ return !!rec && !GV.perm.can('finans'); },
+    maskSebep:'tahmini maliyet finans yetkisi olmayan rolde düzenlenemez — ' +
+              'maskelenmiş bir girdi kaydedilseydi gerçek tutarı ezerdi',
     hint:'Onay zincirinin okuduğu alan budur: eşikler bu tutara bakar ve sağ panelde kaç ' +
          'adımın çalışacağı canlı türetilir. "' + esc(ILK_DURUM) + '" durumundan çıkmak için ' +
          'geçiş tablosunda zorunlu iki alandan biri (' + esc(CIKIS_ZORUNLU.join(' · ') || '—') + ').',
@@ -632,7 +638,13 @@ document.addEventListener('gv:ready', function(){
   ];
 
   /* Tutar alanı yalnız kapı açıkken forma girer. */
-  if(!tutarKapali) temelAlanlar.splice(2, 0, tutarAlani);
+  /* ⚠️ ELLE ÇIKARMA YAMASI KALKTI (K-44). Alan `tutarKapali` dalıyla
+     listeye HİÇ eklenmiyordu; kapı artık alanın kendi tanımında
+     (`perm:'finans'`) ve bileşen alanı çizmez, doğrulamaz, `read()`e
+     koymaz — kaydetme döngüsündeki `if(!tutarKapali)` koruması bu yüzden
+     yerinde kalıyor ama artık İKİNCİ bir kapı değil, aynı kararın sonucu.
+     Kapının kendisi TEK yerde: alan tanımında. */
+  temelAlanlar.splice(2, 0, tutarAlani);
 
   var form = GV.form({
     mount:'#satForm',
@@ -679,16 +691,12 @@ document.addEventListener('gv:ready', function(){
         desc:'Bütçe kodunun sözlüğü YOK: seçenekler defterden türetilir, listede olmayan kod ' +
              'serbest metinle yazılır. Talep eden alanı oturumdan gelir ve düzenlenemez.',
         fields:[
-          { key:'butceKoduSecim', label:'Bütçe kodu', type:'select', cols:6,
-            placeholder:'Listede yok — elle yazacağım',
-            options:BUTCE_KODLARI,
-            hint:'Sözlüğü YOK. ' + BUTCE_KODLARI.length + ' seçenek satın alma defterindeki ' +
-                 'bütçe kodlarından türetildi. Boş bırakırsanız yandaki serbest alan açılır.' },
-
-          { key:'butceKoduSerbest', label:'Bütçe kodu (elle)', type:'text', cols:6,
-            showIf:butceSerbestGorunur,
+          { key:'butceKodu', label:'Bütçe kodu', type:'text', cols:6,
             placeholder:'Örn. BTC-DONANIM-2026',
-            hint:'Defterdeki ' + BUTCE_KODLARI.length + ' kodun hepsi BTC-<AD>-<YIL> ' +
+            list:BUTCE_KODLARI,
+            hint:'Sözlüğü YOK — alan SERBEST METİNDİR. ' + BUTCE_KODLARI.length +
+                 ' öneri satın alma defterindeki bütçe kodlarından türetildi; listede ' +
+                 'olmayan bir kod da yazılabilir. Defterdeki kodların hepsi BTC-<AD>-<YIL> ' +
                  'biçiminde; bu bir GÖZLEMDİR, doğrulanan bir kural değil — form biçimi ' +
                  'zorlamaz. Boş bırakılırsa kayda bütçe kodu yazılmaz.' },
 
@@ -735,9 +743,9 @@ document.addEventListener('gv:ready', function(){
     var v = form.submit();
     if(!v) return false;      /* doğrulama düştü; bileşen zaten söyledi */
 
-    /* Bütçe kodu: seçim varsa o, yoksa serbest metin. Gizli alan
-       `read()`te boş döner, bu yüzden ikisinin sırası tek kuraldır. */
-    var butceKodu = bosNull(v.butceKoduSecim) || bosNull(v.butceKoduSerbest);
+    /* Tek alan, tek anahtar (K-44) — iki alanın sırasını korumak artık
+       kaydetmenin işi değil. */
+    var butceKodu = bosNull(v.butceKodu);
 
     var miktar = sayi(v.miktar);
     var hedefKod;
