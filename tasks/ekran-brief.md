@@ -1936,7 +1936,7 @@ düşürür ve koleksiyon sessizce kaybolur.
 | Dosya | Bu dilimde kullanılan koleksiyonlar |
 |---|---|
 | `org.js` | **`DB.employees`** · **`DB.salaryHistory`** · `DB.departments` · `DB.roles` · `DB.permMatrix` · `DB.reasonCodes` · `DB.transitions` · `DB.flowEntities` · `DB.approvalTypes` · `DB.approvalFlows` · `DB.holidays` · `DB.workTypes` · `DB.employeeStatuses` · `DB.leaveStatuses` · `DB.purchaseStatuses` |
-| `hr.js` | `DB.leaves` · `DB.timelogs` · `DB.timesheets` · `DB.performance` · `DB.trainings` · `DB.capacity` · `DB.onboarding` · `DB.onboardingTemplates` · `DB.leaveTypes` **(+ `aktif` tuzağını kurar)** |
+| `hr.js` | `DB.leaves` · `DB.timelogs` · `DB.timesheets` · `DB.performance` · `DB.trainings` · `DB.capacity` · `DB.onboarding` · `DB.onboardingTemplates` · `DB.leaveTypes` · **`DB.assetStatuses`** (⚠️ demirbaş sözlüğü ama `hr.js`te — iki ajan aradı) **(+ `aktif` tuzağını kurar)** |
 | `ops.js` | **`DB.assets`** · **`DB.assignments`** · **`DB.assetClaimDrops`** · **`DB.assetCategories`** · **`DB.assetStatuses`** · **`DB.vehicles`** · **`DB.maintenance`** · **`DB.policies`** · **`DB.fuelLogs`** · **`DB.fines`** · **`DB.inspections`** · **`DB.accidents`** · **`DB.vehicleExpenses`** · **`DB.suppliers`** · **`DB.orders`** · `DB.purchases` · `DB.purchaseApprovals` · `DB.tickets` · `DB.approvals` |
 | `work.js` | `DB.projects` · `DB.tasks` · `DB.activities` · `DB.milestones` · `DB.bugs` · `DB.projectStatuses` · `DB.projectSources` · `DB.projectPhases` · `DB.priorities` · `DB.healthLevels` |
 | `misc.js` | `DB.contracts` · `DB.invoices` · `DB.documents` · `DB.notifications` · `DB.logs` |
@@ -3159,6 +3159,31 @@ ve çağıran onu kayda yazarsa yazılır. Sessiz tuzak: **"salt okunur" ile
 **6 · `DB.orders` — 4 kayıt, 14 alan:** `kod · talep · tedarikci · tarih ·
 teslimTarihi · tutar · vergi · toplam · doviz · durum · fatura · irsaliye ·
 teslimKontrol · kismiTeslimTarihi`. Demirbaşın `siparis` alanı buna bağlanır.
+
+### 22.1h YEDİNCİ AJANIN brief'te BULAMADIĞI imzalar
+
+Detay ekranı imzaları — hepsi DÖNÜŞ ŞEKLİ boşluğu:
+
+```js
+GV.varlik.tazele(a)
+//  → { demirbas, zimmet, degisti, eskiDurum, eskiZimmetli }
+GV.varlik.dusenIddia(kod)
+//  → { demirbas, iddiaPersonel, iddiaTarihi, iddiaDurum, dusurulme,
+//      kaynak:[…], neden, karar }        ← §20.3 yalnız dördünü yazıyordu
+GV.varlik.dusenIddiaSatiri(kod)
+//  → { kayit, tarih, kisi, tone, icon, eski, yeni, turetilmis, metin }
+//    ⚠️ `GV.activity` öğesiyle AYNI şekil — zaman çizelgesine karıştırılabilir
+GV.badge(deger, extra)      // ikinci argüman TONU ZORLAR: GV.badge('Türetilmiş','is-warn')
+GV.confirm({ title, text, tone, okLabel })   // → Promise
+```
+
+⚠️ **`GV.audit.oku(kod, n)` YENİDEN ESKİYE sıralı döner.** Düşen iddia satırını
+zaman çizelgesine karıştıran ekran bunu bilmek zorundadır: satırı tarihe göre
+doğru yere sokmak için sıra yönü gerekli. Öğe alanları
+`{ tarih, kisi, metin, eski, yeni, tone, icon }`.
+
+⚠️ **`DB.suppliers` 13 alan taşır**, §22.4 altısını sayıyordu. Eksikler:
+`yetkili · tel · eposta · vergiNo · adres · siparisSayisi · toplamTutar`.
 
 ### 22.2 KOD ÜRETİMİ — sıra GLOBAL, yıl damgası kayıt yılıdır
 
