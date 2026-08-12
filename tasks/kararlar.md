@@ -29,6 +29,15 @@
 | ADR-R2-14 | Departman talebi Operasyon kuyruğunun **altıncı** tipidir | ✅ | `kuyruk.js` · ekranda beyan |
 | ADR-R2-15 | İki geri almanın dili ayrılır | ✅ | `quicknote.js` sözlüğü |
 
+**12 Ağustos 2026 · Dilim 6 kararları** (özet — tamamı dosyanın sonunda):
+
+| # | Karar | Durum | Nerede uygulandı |
+|---|---|---|---|
+| ADR-R2-06 **rev.** | Merkezî belge arşivi AYRI GİRDİ DEĞİL, `arsiv` sekmesidir | ✅ | rota 123-124 → GÖMÜLÜYOR |
+| ADR-R2-38 | Onay adımının muhatabı: `rol` bir KÜME, `iliski` bir KENAR | ✅ | `org.js` · `GV.approval.adimMuhatap` |
+| ADR-R2-39 | Maaş kapısında ÖZ-ERİŞİM açıktır; küme sorusu dar kalır | ✅ | `GV.hr.maasGorebilir(e)` · 3 ekran |
+| ADR-R2-40 | Proje aktivasyon kapısı otorite defteri okur | ✅ | `Gates.projeAktif` |
+
 ---
 
 ## ADR-R2-01 · Kişisel not verisi TEMBEL YÜKLENİR
@@ -187,6 +196,42 @@ yönetim bloğudur.
 
 **Kritik sonuç:** yönetim bloğu standart kullanıcıya görünmediği için
 **17 girdi değişmez**. Yönetici 20 → 21 görür; §3.1 buna zaten izin veriyor.
+
+### ⚠️ 12 Ağustos 2026 — REVİZE EDİLDİ (V2-68 · beyar kararı)
+
+**Kararın ikinci yarısı GERİ ALINDI: merkezî arşiv AYRI GİRDİ OLMAYACAK.**
+
+Dilim 5'te `app-ayar-log.html` yazıldı ve `arsiv` sekmesi (rota 145) **aynı
+yüzeyi kapsadı**: belge arama, sürüm defteri, süresi dolanlar ve onay
+zinciri o sekmede zaten var. Rota 123-124 bu yüzden bilerek ✅
+işaretlenmemişti — iki karar aynı yüzeye iki ev veriyordu.
+
+**Yeni karar.** Rota **123** (`app-dokuman.html`) ve **124**
+(`app-dokuman-detay.html`) `KARŞILIĞI VAR` → **GÖMÜLÜYOR**. Hedefleri
+`app-ayar-log.html › arsiv`. Rota 125 (`app-dokuman-sure.html`) zaten
+GÖMÜLÜYOR'du ve hedefi de aynı sekmedir.
+
+**Gerekçe — iki eksen:**
+
+1. **Menü girdisi 17'de kalmalı.** Kararın ilk hâli yöneticiyi 20 → 21
+   girdiye çıkarıyordu. §3.1 buna izin veriyor ama izin vermek gerektirmek
+   değildir: revizyonun tek cümlelik amacı *"kullanıcının geçtiği ekran
+   sayısını azaltmak"*tır ve zaten çalışan bir sekmenin yanına beşinci bir
+   ayar girdisi açmak o amacın tersidir.
+2. **İki yüzey aynı defteri göstermemeli (K-21).** Bu, `DB.customers[].durum`
+   tuzağıyla aynı sınıf hatadır: aynı gerçeğin iki okuyucusu er geç ayrışır
+   ve hangisinin kanon olduğu belirsizleşir. Orada bir ALAN, burada bir
+   EKRAN — ama kural aynı: bir defterin bir yüzeyi olur.
+
+**Kararın ilk yarısı DEĞİŞMEDİ.** Günlük belge ekleme hâlâ ilgili kaydın
+Belgeler sekmesine gömülüdür (`app-proje-detay.html › belge` yayında).
+§3.3'ün "günlük ekleme bağlama, arşiv yönetimde" ayrımı korunuyor; değişen
+tek şey arşivin YERİ: ayrı bir menü girdisi değil, yönetim bloğundaki
+mevcut ayar ekranının bir sekmesi.
+
+**Ölçülebilir sonuç:** `KARŞILIĞI VAR` 43 → **41**, `GÖMÜLÜYOR` 92 → **94**,
+standart kullanıcı menüsü **17 girdi** (değişmedi), yönetici **20**
+(21 olmadı).
 
 ---
 
@@ -1128,3 +1173,242 @@ Eklenen kontrol: ilk odak hedefi belgenin **ilk odaklanabilir düğümü**
 özeti ve rapor paneli): orada odak başlangıç noktasını zaten kullanıcının
 kendi tıklaması taşımıştır, kusur o dalda doğmaz. Yasak "bu API kullanılmaz"
 değil, **"çizim anında kullanılmaz"**dır.
+
+---
+
+## ADR-R2-38 · Onay adımının muhatabı: `rol` bir KÜME, `iliski` bir KENAR
+
+**Karar (K-38).** `DB.approvalFlows[].adimlar[]` içinde muhatap **iki ayrı
+alanda** yazılır ve ikisi aynı şey değildir. Bir adım ya `rol` taşır ya
+`iliski`; ikisini birden taşırsa defter çelişkilidir ve yordam bunu yutmaz.
+Çözen tek yer `GV.approval.adimMuhatap(adim, kayit)`.
+
+### Bağlam — ölçülen kusur
+
+İki adım `rol:` alanında 27'lik rol sözlüğünde **olmayan** bir anahtar
+taşıyordu ve `DB.roleName()` ikisini de çözemiyordu (V2-61):
+
+| Zincir | Adım | `rol` | `ad` | Sözlükte? |
+|---|---|---|---|---|
+| `AKS-SAT-1` | 2 | `finans` | Muhasebe | **yok** |
+| `AKS-IZN-1` | 1 | `yonetici` | Bağlı Yönetici | **yok** |
+
+`app-ayar-sirket.html › onay` bu yüzden adımın kendi `ad` alanını basıp ⚠ ile
+uyarmak zorunda kalmıştı — doğru davranıştı (rol adı uydurulmadı) ama kusuru
+kapatmıyordu.
+
+### Neden tek bir eşleme yetmedi
+
+İlk bakışta ikisi de "yanlış yazılmış rol adı" gibi görünüyor. **Ölçüm ikisini
+ayırdı:**
+
+- `finans` — adımın kendi `ad` alanı **'Muhasebe'** yazıyor ve sözlükteki
+  `muhasebe` rolünün adı da **'Muhasebe'**. Birebir. Bu gerçekten yanlış
+  yazılmış bir **rol** adıydı → `muhasebe` olarak düzeltildi.
+- `yonetici` — adımın `ad` alanı **'Bağlı Yönetici'** yazıyor. Sözlükte böyle
+  bir rol **yok** ve olmamalı: en yakın aday `genelmudur` ('Genel Müdür') ve
+  ona eşlemek **7 izin talebinin 7'sini** kişinin kendi yöneticisi yerine
+  Genel Müdür'e göndermek olurdu. 'Bağlı Yönetici' bir rol değil bir
+  **ilişkidir**: `DB.employees[].yonetici` (15/16 kayıtta dolu).
+
+Ölçüm bunu kanıtlıyor — ilişki olarak çözüldüğünde muhatap **tek kişiye
+toplanmıyor**:
+
+```
+IZN-2026-038 · EMP-006 → EMP-003        IZN-2026-034 · EMP-013 → EMP-002
+IZN-2026-039 · EMP-016 → EMP-006        IZN-2026-033 · EMP-005 → EMP-003
+IZN-2026-037 · EMP-004 → EMP-003        (7/7 çözüldü · 3 farklı muhatap)
+IZN-2026-036 · EMP-007 → EMP-003
+IZN-2026-035 · EMP-009 → EMP-003
+```
+
+### Emsal motorda zaten vardı
+
+`Flow.yetkili` aynı ayrımı **yetki** sorusu için yapıyor ve kendi yorumunda
+gerekçesini yazıyor:
+
+> `'pm'` bir roldür ("pm rolündeki herkes"), `'sorumlu'` bir ilişkidir
+> ("BU kaydın sorumlusu"). Karıştırmak her kullanıcıyı her kaydın sorumlusu
+> yapardı.
+
+Yeni yordam aynı ayrımı **muhatap** sorusu için yapar ve ikinci bir sözlük
+açmaz: ilişki adları `GV.approval.ILISKILER` içinde tek yerdedir.
+
+### Uygulama
+
+- `rol` → bir **KÜME**. `adimMuhatap` `kisi:null` döndürür; kümenin bir
+  üyesini keyfî seçmek onay muhatabı uydurmak olurdu.
+- `iliski` → bir **KENAR**. Kayıt olmadan çözülemez; zincirin **TANIMI**
+  gösterilirken `cozuldu:false` döner ve bu bir kusur değil doğru cevaptır
+  ("tanımda kişi yazılmaz, koşumda çözülür").
+- `cozuldu:false` her dalda bir `neden` taşır; ekran onu basar, kişi uydurmaz.
+- Sözlük **genişletilmedi**: `finans` ve `yonetici` diye rol eklenmedi.
+
+### Ölçüm
+
+3 zincirin 6 adımının **6'sı** çözülüyor (önce 4/6). `app-ayar-sirket.html ›
+onay` artık kuralı kendisi kurmuyor, yordamı çağırıyor.
+
+### Sınırı
+
+`DB.employees[].yonetici` **15/16 kayıtta dolu**; boş olan kayıtta
+(`EMP-001` — kurucu, üstü yok) `cozuldu:false` döner. Bu doğru cevaptır:
+o kişinin izin talebinin bağlı yöneticisi yoktur ve zincir bunu söyler.
+Zincirin o durumda ne yapacağı (adımı atla mı, İK'ya mı düşür) bir **iş
+kuralı kararıdır** ve verilmedi — `v2-borc.md` V2-69.
+
+---
+
+## ADR-R2-39 · Maaş kapısında ÖZ-ERİŞİM açıktır; KÜME sorusu dar kalır
+
+**Karar (K-39).** Personel **kendi kaydında** `maas` ve `saatlikUcret`
+alanlarını görür; **başkasının kaydında** kapı `permMatrix.maas`tır. Yeni bir
+yetki anahtarı açılmadı.
+
+### Bağlam
+
+Ölçülen durum (V2-64): kapı yalnız `permMatrix.maas` idi ve 4 role açıktı
+(`sahip` · `genelmudur` · `ik` · `muhasebe`). Sonuç: `frontend` rolü **kendi
+profilinde kendi ücretini** `••••••` görüyordu.
+
+Bu, kanonun bilinen sonucuydu — ama **kardeş alanda aynı soru zaten
+cevaplanmıştı**. `GV.hr.ozlukGorebilir` kendi yorumunda diyor:
+
+> Kendi kaydını herkes görür — kişinin kendi kan grubunu görmesi bir yetki
+> sorunu değildir.
+
+Aynı cümle ücret için de geçerlidir: bordroyu her ay o kişi alır. Yani aynı
+ilke iki kardeş alanda **ayrı** uygulanıyordu ve bu bir tutarsızlıktı.
+
+### Neden yeni bir matris anahtarı açılmadı
+
+`permMatrix`e `kendiMaas` diye bir anahtar eklemek, 27 rolün 27'sine yeni bir
+sütun yazmak ve **hiçbir rolde `false` olmayacak** bir kapı kurmak olurdu.
+Her zaman `true` olan bir kapı kapı değildir (K-33'ün `aktif` alanıyla aynı
+sınıf: hiçbir şey ayırt etmeyen bir eksen). Var olan kapıya
+`ozlukGorebilir` ile **birebir aynı** kendi-kaydı dalı eklendi.
+
+### ÜÇÜNCÜ EKSEN — bu kararın asıl içeriği
+
+Kapıyı gevşetmenin görünmeyen riski şudur: **kendi ücretini görmek,
+başkalarının ücretini ölçen bir sayıyı açmamalıdır.** Bir kişi kendi maaşını
+görebiliyor diye 15 kişilik maaş toplamı KPI'ı açılırsa, öz-erişim bir yetki
+sızıntısına dönüşür.
+
+Bu yüzden **iki soru ayrıldı ve iki çağrı biçimine bağlandı:**
+
+| Çağrı | Soru | Öz-erişimden etkilenir mi |
+|---|---|---|
+| `maasGorebilir(e)` | "BU kaydın ücretini görebilir miyim" | **evet** — kendi kaydı açık |
+| `maasGorebilir()` | "BAŞKALARININ ücretini görebilir miyim" | **hayır** — `permMatrix.maas` |
+
+Kural: **tek kayıt basıyorsan argümanlı, küme sayıyorsan argümansız çağır.**
+Argümanı unutmak kapıyı **genişletmez, daraltır** — güvenli tarafa düşer.
+
+Somut sonuç `app-personel.html`de görülüyor: liste kolonları `perm:'maas'`
+yerine satır bazlı `mask:` kapısına geçti (kişi kendi satırını görür), ama
+**"en az X ₺" para süzgeci ve maaş toplamı KPI'ı argümansız çağrıda kaldı** —
+bir süzgeç, maskelenen değeri dolaylı olarak geri hesaplamaya yarar (UID-11
+ile aynı gerekçe).
+
+### Uygulama
+
+```js
+GV.hr.maasGorebilir(e)   // kendi kaydı → true · başkası → permMatrix.maas
+GV.hr.maasKapi(e)        // → { acik, kaynak:'permMatrix.maas'|'ozErisim', neden }
+GV.hr.maas(e, alan)      // yetkisizde '••••••' — BOŞ ya da 0 DEĞİL (UID-11)
+```
+
+`GV.hr.maas` aynı zamanda **V2-63'ü kapatıyor**: maskeleyen okuyucu özlükte
+vardı (`GV.hr.ozluk`), maaşta yoktu ve kural iki ekranda kopyalanıyordu
+(L-40). `maasKapi` maskenin altındaki **cümleyi** de ortak katmana taşıdı —
+ekran artık kendi gerekçesini yazmıyor.
+
+### Ölçüm — kapı İKİ YÖNDE de sınandı
+
+| Yön | Vaka | Sonuç |
+|---|---|---|
+| kendi kaydı | `frontend`/EMP-006 · `stajyer`/EMP-016 · `qa`/EMP-009 | **3/3 AÇIK** (`kaynak:'ozErisim'`) |
+| başkasının kaydı | aynı üç rol, başka hedef | **3/3 REDDEDİLDİ** (`••••••`) |
+| küme sorusu | `frontend` argümansız | **kapalı** — öz-erişim açmadı |
+| yetkili rol | `ik`/EMP-011 · `muhasebe`/EMP-010 | **açık** (değişmedi) |
+| `saatlikUcret` | `EMP-015` (tek dolu kayıt) | başkasına `••••••`, kendisine `1450` |
+| müşteri oturumu | `emp` yok | **reddedildi**, sebebi ayrı cümle |
+
+### Sınırı — gizlenmiyor
+
+Bu, backend izolasyonunun yerini **tutmaz**. Öz-erişim istemcide açıldı;
+gerçek sistemde kendi ücret kaydı da **sunucuda kimliğe göre** filtrelenmeli
+ve başkasının ücreti istemciye hiç gitmemelidir. Ekranlar bunu `BE-K3`
+maddesiyle beyan ediyor (`BE-K1`'in eki).
+
+---
+
+## ADR-R2-40 · Proje aktivasyon kapısı OTORİTE DEFTERİ okur
+
+**Karar (K-40).** `Gates.projeAktif` sözleşme bağını `DB.contracts[].proje`
+üzerinden ölçer; `DB.projects` tarafında bir ayna alan aranmaz. Tarih alanı
+`planlananBitis`tir.
+
+### Bağlam — ölçülen kusur
+
+Yordam iki alan okuyordu: `p.bitis` ve `p.sozlesme`. Ölçüldü:
+**`DB.projects` şemasında bu iki alan 14 kaydın 14'ünde de YOK.** Gerçek ad
+`planlananBitis`; sözleşme bağı ise hiç `projects` tarafında değil.
+
+Sonuç: kapı **14 projenin 14'ünde reddediyordu** ve `istisnaRol` boş olduğu
+için **hiçbir rol geçemiyordu**. `Başlatma Onayı → Aktif` kenarı fiilen
+kapalıydı — R2'de bir proje hiç başlatılamıyordu.
+
+### Kusur sınıfı
+
+Bu, ADR-R2-33'teki `sozlesmeAktif` kusuruyla **aynı sınıftır**: orada kapı
+ödeme planını yanlış koleksiyonda arıyordu (`DB.projectMilestones` yerine
+`DB.milestones` olmalıydı) ve dengeli bir planı da "plan yok" diye
+reddediyordu. Burada yanlış olan koleksiyon değil **alan adı** — ama sonuç
+aynı: **bir kapı, doğru kaydı da reddeder ve kimse fark etmez**, çünkü
+"reddedildi" beklenen cevap gibi görünür.
+
+V2-47'nin de aynasıdır ve ikisini yan yana koymak sınıfı tamamlıyor:
+
+| | `personelEvrak` (V2-47) | `projeAktif` (K-40) |
+|---|---|---|
+| Okuduğu alan | örnek adımında **yok** | kayıtta **yok** |
+| Sonuç | kapı **HİÇ KAPANMIYOR** | kapı **HİÇ AÇILMIYOR** |
+| Görünen belirti | yok — kural sessizce uygulanmıyor | var ama beklenen gibi duruyor |
+
+İkisi de L-31'dir: *"uygulanmayan kural, yanlış kuralın en sinsi hâlidir."*
+
+### Uygulama
+
+- `p.bitis` → `p.planlananBitis`.
+- Sözleşme bağı **otorite defterden**: `DB.contracts.filter(c => c.proje ===
+  p.kod)`. Ölçüldü: `c.proje` 6/7 kayıtta dolu ve 2026 tarihli altı müşteri
+  sözleşmesi projesinin **altısında** bağ var.
+- Defter **yüklü değilse** "sözleşme yok" DEMİYOR — `olculemedi:true` ile
+  ölçülemedi diyor (L-13 · L-25 · `sozlesmeAktif` ile aynı disiplin). Bir
+  ekranda `misc.js` yüklü değilse kullanıcıya **olmayan bir eksiklik**
+  bildirilmemeli.
+- Kapı yalnız `kaynak === 'Müşteri Sözleşmesi'` olan projede sözleşme sorar;
+  iç proje ve PoC bundan muaftır (şartname [5.2.3] yalnız sözleşmeli işten
+  söz ediyor).
+
+### Ölçüm — kapı açıldı ama ÖLÜ DEĞİL
+
+| Ölçüm | Önce | Sonra |
+|---|---:|---:|
+| `projeAktif` geçen proje | **0/14** | **8/14** |
+| reddeden | 14/14 | 6/14 |
+| enjekte edilmiş boş kayıt | reddediyor | **reddediyor** (4 eksik alan) |
+| `PRJ-2026-007` (tek `Plan` projesi) | Aktife alınamıyor | **Plan → Başlatma Onayı → Aktif tamamlanıyor** |
+
+Reddedilen altısı da 2023-2025 tarihli, `Tamamlandı` durumunda ve sözleşme
+kaydı **gerçekten olmayan** projelerdir — yani kapı hâlâ bir şey ölçüyor.
+
+### Neden bu turda düzeltildi
+
+Kapsam dondurulmuştu ve ölçüm sırasında bulunan yeni kusur `v2-borc.md`ye
+yazılıp geçilir. İstisna: **yazdığın ekranı doğrudan bozan kusur.** Rota 32
+(`app-proje-form.html`) bu kapının arkasında duruyordu: yeni açılan bir
+projeyi başlatmak mümkün olmadan form yazmak, çalışmayan bir zincirin başına
+ekran koymak olurdu.
