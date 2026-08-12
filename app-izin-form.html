@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>İzin Talebi Formu — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="ekip" data-screen="zaman">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/hr.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   İZİN TALEBİ FORMU — rota 89 · ekran brief §5 · §20.0 · §22.9
+
+   DESEN: `GV.pageHead` + `GV.form` + `GV.afterSave` (brief §5). Bu depoda
+   `CreateEditPage` ADINDA bir bileşen yoktur.
+
+   ÜÇ KİP, TEK EKRAN:
+     (argümansız)     → kendi adına yeni talep. `app-zaman.html`in
+                        "Yeni İzin Talebi" düğmesi bu adresi açar.
+     ?personel=EMP-…  → başkası adına yeni talep — `GV.perm.can('ekle')` ister.
+     ?id=IZN-…        → düzenleme.
+
+   TÜRETİLEN İKİ ALAN (brief §22.9) — kullanıcı yazmaz:
+     · `gun`     = `GV.calendar.isGunu(baslangic, bitis)` · `DB.holidays`
+                   (14 resmî tatil) + hafta sonu düşülür. Alan `readonly`
+                   basılır, formülü altında yazılıdır, canlı ölçüm sağ
+                   panelde tekrarlanır. Ölçüldü: 2026-08-10 → 2026-08-14
+                   = 5 iş günü.
+     · çakışma   = aynı personelin, TERMİNAL OLMAYAN durumdaki (geçiş
+                   tablosundan türetildi: Taslak · Onay bekliyor ·
+                   Onaylandı) başka bir talebiyle tarih kesişimi. Sağ panel
+                   çakışan kaydı KODLA basar; boolean tek başına "neyle
+                   çakıştı"yı cevapsız bırakırdı.
+
+   ⚠️ `cakisma` ALANINA YAZILMAZ — sebebi ekranda da yazılı. Kaynak
+   veride bu alan PROJE TAKVİMİ çakışmasını işaretliyor
+   (`app-zaman.html:1050-1057` ve `app-izin-detay.html:173-176` alanı
+   "Proje takvimi çakışması" diye basıyor, tek `true` kaydı IZN-2026-033'ün
+   ret notu "Marmara Faz 1 teslim haftasıyla çakışıyor"). Bu formun ölçtüğü
+   şey PERSONEL çakışmasıdır; ölçümü o alana yazmak iki yayındaki ekranı
+   yalan söyletirdi. Alan yeni kayıtta `null` doğar ("işaretlenmedi") ve
+   personel çakışması ekranda ayrı bir ölçüm olarak gösterilir.
+
+   ⚠️ BAKİYE KAPISI BU FORMUN KAPISI DEĞİLDİR ve bu bir "uyar ama
+   engelleme" kaçamağı DEĞİLDİR (brief §22.9 · §14.12). `izinBakiye`
+   kapısı geçiş tablosunda `Onaylandı` durumunun `girisKapi`sıdır: bakiyeyi
+   aşan izin ONAYLANAMAZ ama TALEP EDİLEBİLİR — çıkış yolu vardır
+   (`tur:'Ücretsiz izin'` kapıdan muaftır ve kapı bunu kendi mesajında
+   söylüyor). Form kapıyı `GV.gates.izinBakiye(taslakKayit)` ile ÇAĞIRIR
+   (koşullarını yeniden kurmaz — brief §22.1b madde 1), iki sayıyı yan yana
+   basar, aşımda ONAY ADIMININ reddedeceğini yazar ve kaydı REDDETMEZ.
+
+   DÖRT MUTASYON YASAĞI:
+     · `l.durum = …` YASAK. Doğum durumu geçiş tablosunun İLK kaydıdır ve
+       nesne literalinde verilir; geçişler `GV.flow.gec('leave', …)` ile
+       izin DETAYINDA / zaman ekranının izin çekmecesinde yürür (§7.4 · §22.17).
+     · `l.aktif` YASAK — `DB.leaves` `durum` taşır, bu defterde `aktif`
+       TUZAKLIDIR (§22.5). Yeni kayıt literalinde alan YOK; pasiflik sorusu
+       `GV.arsivli()`dendir.
+     · `e.izinBakiye` YASAK. Bakiye defterden OKUNUR; düşümü ve iadesini
+       `GV.flow.yanEtki` yapar (izin detayı bunu yazıyor).
+     · `DB.leaves` dışında hiçbir deftere satır yazılmaz — `GV.izin.olustur`
+       yordamı YOKTUR (§22.16 madde 5), kayıt nesne literaliyle doğar.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var esc = GV.esc;
+  var ico = GV.ico;
+  var F   = GV.fmt;
+
+  var EYEBROW   = 'Ekip ve Kaynaklar · İzin';
+  var LISTE     = 'app-zaman.html';
+  var LISTE_IZIN= 'app-zaman.html#izin';
+  var DETAY     = 'app-izin-detay.html';
+  /* Onay akışının TÜR anahtarı `DB.approvalTypes` içindeki İNSAN-OKUR
+     addır — bir varlık adı değil (brief §22.1c madde 4). */
+  var AKIS_TUR  = 'İzin talebi';
+
+  /* ---- Geçiş tablosu: doğum durumunun ve zorunlu alanların TEK kaynağı
+     "Taslak" dizesini elle yazmak, tablo değişince sessizce yanlış durumda
+     kayıt doğurmak demektir (brief §7.4). Ölçülemiyorsa kayıt AÇILMAZ. */
+  var TL            = (DB.transitions || {}).leave || {};
+  var ILK_DURUM     = Object.keys(TL)[0] || null;             /* → 'Taslak' */
+  var ILK_KURAL     = (ILK_DURUM && TL[ILK_DURUM]) || {};
+  var CIKIS_ZORUNLU = ILK_KURAL.zorunlu || [];                /* baslangic · bitis · tur */
+  var CIKIS_ETIKET  = ILK_KURAL.etiket || null;               /* 'Onaya Gönder' */
+  /* Çakışma ölçümünün durum kümesi de TABLODAN türetilir: terminal olmayan
+     her durum "yaşayan talep"tir (Taslak · Onay bekliyor · Onaylandı). */
+  var YASAYAN = Object.keys(TL).filter(function(d){ return !TL[d].terminal; });
+
+  var q          = new URLSearchParams(location.search);
+  var kodArg     = q.get('id');
+  var personelArg= q.get('personel');
+
+  var rec = kodArg
+    ? (DB.leaves || []).filter(function(x){ return x.kod === kodArg; })[0] || null
+    : null;
+
+  /* ================================================================
+     KÜÇÜK YARDIMCILAR
+     ================================================================ */
+  function bosNull(x){
+    var s = (x == null) ? '' : String(x).trim();
+    return s === '' ? null : s;
+  }
+  function faint(s){ return '<span class="u-faint">' + esc(s) + '</span>'; }
+  function kodEt(s){ return '<span class="cell-code">' + esc(s) + '</span>'; }
+  function empKaydi(k){
+    return k ? ((DB.employees || []).filter(function(x){ return x.kod === k; })[0] || null) : null;
+  }
+  function empAd(k){ var e = empKaydi(k); return e ? e.ad : null; }
+  function isGunu(bas, bit){
+    if(!bas || !bit || bit < bas) return null;      /* ölçülemedi — 0 DEĞİL (§10.1) */
+    return GV.calendar.isGunu(bas, bit);
+  }
+  function basitBaslik(baslik, alt){
+    GV.pageHead({
+      eyebrow:EYEBROW, title:baslik, sub:alt,
+      actions:[{ label:'İzin listesine dön', icon:'i-arrow-left', href:LISTE_IZIN }]
+    });
+  }
+
+  /* ================================================================
+     KAPILAR — hepsi REDDEDER, uyarıp geçmez (brief §14 madde 12)
+     ================================================================ */
+
+  /* ---- 1) Kayıt yok (brief §10) --------------------------------- */
+  if(kodArg && !rec){
+    basitBaslik('Kayıt bulunamadı', kodArg);
+    mount.innerHTML = GV.errorState({
+      title:kodArg + ' bulunamadı',
+      desc:'Bu kod hiçbir izin talebiyle eşleşmedi (defterde ' + (DB.leaves || []).length +
+           ' talep var). Adres çubuğundaki kodu kontrol edin ya da izin listesinden kaydı seçin.',
+      action:'<a class="btn btn-acc" href="' + LISTE_IZIN + '">İzin listesine dön</a>' });
+    return;
+  }
+
+  /* ---- 2) Oturum kapısı ----------------------------------------
+     İzin talebi saf bir iç İK kaydıdır: `personel` alanı bir `EMP-*`
+     kodudur. Müşteri oturumunda `GV.session.emp` null'dır (brief §2.2) ve
+     o kişi adına talep UYDURULAMAZ. */
+  var OTURUM_EMP = (GV.session && GV.session.emp) || null;
+  if(!OTURUM_EMP){
+    basitBaslik('İzin talebi', 'Talep sahibi oturumdan çözülemedi');
+    mount.innerHTML = GV.empty({
+      icon:'i-user',
+      title:'Bu form personel oturumu ister',
+      desc:'İzin talebinin `personel` alanı bir EMP-* kodudur ve kendi adına açılan talepte ' +
+           'oturumdan (GV.session.emp) okunur. Bu oturumda personel kodu yok (müşteri oturumu), ' +
+           'bu yüzden talebin kime ait olduğu türetilemedi ve uydurulmadı; form açılmadı.',
+      action:'<a class="btn btn-line" href="' + LISTE_IZIN + '">İzin listesine dön</a>' });
+    return;
+  }
+
+  /* ---- 3) `?personel=` bir KAYITLA eşleşmek zorundadır ----------
+     Eşleşmeyen kodu sessizce yutup oturum sahibine yazmak, kullanıcıya
+     "başkası adına açtım" dedirtip kendi adına kayıt açmak olurdu.
+     Düzenleme kipinde parametre OKUNMAZ: kaydın kendi sahibi esastır. */
+  var onPersonel = (!rec && personelArg) ? empKaydi(personelArg) : null;
+  if(!rec && personelArg && !onPersonel){
+    basitBaslik('Ön dolgu kaydı bulunamadı', 'Personel: ' + personelArg);
+    mount.innerHTML = GV.errorState({
+      title:personelArg + ' bulunamadı',
+      desc:'Adres çubuğundan gelen personel kodu hiçbir personel kaydıyla eşleşmedi (defterde ' +
+           (DB.employees || []).length + ' personel var); form o bağı uydurmaz ve talebi ' +
+           'sessizce kendi adınıza açmaz.',
+      action:'<a class="btn btn-acc" href="app-izin-form.html">Kendi adıma talep aç</a>' });
+    return;
+  }
+
+  /* Talebin sahibi: düzenlemede kaydın kendi alanı, yeni kayıtta ön dolgu
+     ya da oturum. Bu kimlik formda DEĞİŞMEZ (aşağıda salt okunur basılır). */
+  var HEDEF_PERSONEL = rec ? (rec.personel || null) : ((onPersonel && onPersonel.kod) || OTURUM_EMP);
+  var HEDEF_EMP      = empKaydi(HEDEF_PERSONEL);
+  var KENDI_ADINA    = HEDEF_PERSONEL === OTURUM_EMP;
+
+  /* ---- 4) Yetki kapısı -----------------------------------------
+     Kendi adına talep açmak yetki istemez (brief §22.9): izin talebi
+     personelin kendi hakkıdır ve geçiş tablosunda `Taslak` durumundan
+     çıkış yetkisi de `veren` İLİŞKİSİdir — bir rol değil. Başkası adına
+     açmak `ekle`, başkasının kaydını düzenlemek `duzenle` ister. */
+  var izinli = true, yetkiRet = '';
+  if(rec){
+    if(!KENDI_ADINA && !GV.perm.can('duzenle')){
+      izinli = false;
+      yetkiRet = 'Bu talep ' + (empAd(HEDEF_PERSONEL) || HEDEF_PERSONEL) + ' adına açılmış. ' +
+                 'Başkasının izin talebini düzenlemek "duzenle" yetkisi ister; rolünüz (' +
+                 GV.perm.role() + ') bu yetkiyi taşımıyor.';
+    }
+  }else if(!KENDI_ADINA && !GV.perm.can('ekle')){
+    izinli = false;
+    yetkiRet = 'Başkası adına izin talebi açmak "ekle" yetkisi ister (brief §22.9); rolünüz (' +
+               GV.perm.role() + ') bu yetkiyi taşımıyor. Kendi adınıza talep açmaya devam ' +
+               'edebilirsiniz — kendi talebi için yetki gerekmez.';
+  }
+  if(!izinli){
+    basitBaslik(rec ? 'Talep ' + rec.kod : 'Yeni İzin Talebi', 'Bu işlem için yetkiniz yok');
+    mount.innerHTML = GV.empty({
+      icon:'i-lock',
+      title:rec ? 'Talebi düzenleme yetkiniz yok' : 'Başkası adına talep açma yetkiniz yok',
+      desc:yetkiRet,
+      action:'<a class="btn btn-acc" href="app-izin-form.html">Kendi adıma talep aç</a>' });
+    return;
+  }
+
+  /* ---- 5) Doğum durumu ölçülemiyorsa yeni kayıt AÇILMAZ --------- */
+  if(!rec && !ILK_DURUM){
+    basitBaslik('Yeni İzin Talebi', 'Doğum durumu türetilemedi');
+    mount.innerHTML = GV.errorState({
+      title:'İzin geçiş tablosu yüklenemedi',
+      desc:'Yeni talebin doğacağı durum DB.transitions.leave tablosunun ilk kaydından ölçülür. ' +
+           'Tablo yüklenmediği için bu değer türetilemedi ve uydurulmadı; kayıt açılmadı.' });
+    return;
+  }
+
+  /* ---- 6) Personel kaydı yoksa bakiye ölçülemez ------------------
+     Kayıt açılmasını engellemez (talep sahibi kodu geçerli olabilir ama
+     personel defterinde bulunmayabilir); ölçülemeyen şey ölçüm gibi
+     basılmaz, yukarıda açılış notu olarak söylenir. */
+
+  /* ================================================================
+     SEÇENEK LİSTELERİ — hiçbiri ekranda YAZILI DEĞİL
+     ================================================================ */
+
+  /* `GV.hr.atanabilirler()` KAYIT dizisi döndürür ({value,label} değil —
+     brief §22.1b madde 2) ve `ad`a göre zaten sıralıdır; çağıran yeniden
+     sıralamaz. Bugün 15 kayıt döner: 16 personelin `Aktif` olanları
+     (EMP-015 `Offboarding` olduğu için listede yok). */
+  var ATANABILIR = GV.hr.atanabilirler() || [];
+
+  /* KORUNAN SEÇENEK (brief §22.1b madde 5): düzenlenen kaydın kendi değeri
+     türetilen listenin dışında kalabilir (ör. `Offboarding` bir personel).
+     Değer listeye EKLENİR; yoksa `select` onu sessizce başka bir değere
+     çevirir ve kaydettiğinizde veri KAYBOLUR. */
+  function kisiSecenekleri(mevcut, haric){
+    var liste = ATANABILIR.filter(function(e){ return e.kod !== haric; })
+      .map(function(e){ return { value:e.kod, label:e.ad + ' · ' + (e.depAd || e.dep || '—') }; });
+    if(mevcut && haric !== mevcut && !liste.some(function(o){ return o.value === mevcut; })){
+      var m = empKaydi(mevcut);
+      liste.push({ value:mevcut,
+        label:(m ? m.ad : mevcut) + ' · ' + ((m && (m.depAd || m.dep)) || '—') +
+              ' · atanabilir listesinde değil (korunan seçenek)' });
+    }
+    return liste;
+  }
+
+  var TURLER = DB.leaveTypes || [];               /* 6 değerlik ortak sözlük */
+  var UCRETSIZ = 'Ücretsiz izin';                 /* kapının kendi mesajında geçen tür */
+  var UCRETSIZ_VAR = TURLER.indexOf(UCRETSIZ) !== -1;
+
+  /* ================================================================
+     KOD ÜRETİMİ — sıra GLOBAL (brief §22.2)
+     ----------------------------------------------------------------
+     `IZN` defterinde numara yıllar arasında ilerliyor
+     (`IZN-2026-033…039`); yıl-içi tarama defterin sırasını bozar. Bu
+     yüzden max GLOBAL alınır, yıl damgası KAYIT yılıdır. Bugünkü veriyle
+     ölçüldü: IZN-2026-040.
+     ================================================================ */
+  function kodUret(){
+    var yil = String(DB.today).slice(0, 4), max = 0;
+    (DB.leaves || []).forEach(function(x){
+      var m = new RegExp('^IZN-\\d{4}-(\\d+)$').exec(x.kod || '');
+      if(m) max = Math.max(max, +m[1]);
+    });
+    return 'IZN-' + yil + '-' + String(max + 1).padStart(3, '0');
+  }
+
+  /* ================================================================
+     TÜRETİMLER
+     ================================================================ */
+
+  /* Kapıya ve muhataba verilecek TASLAK KAYIT. Kapı kendi gün sayısını
+     tarihlerden ölçüyor (ölçüldü); yine de `gun` yazılır ki kayıt şeması
+     eksik kalmasın. */
+  function taslakKayit(veri){
+    var bas = bosNull(veri.baslangic), bit = bosNull(veri.bitis);
+    return {
+      kod:rec ? rec.kod : null,
+      personel:HEDEF_PERSONEL,
+      tur:bosNull(veri.tur),
+      baslangic:bas, bitis:bit,
+      gun:isGunu(bas, bit),
+      vekil:bosNull(veri.vekil),
+      durum:rec ? rec.durum : ILK_DURUM
+    };
+  }
+
+  /* ---- ÇAKIŞMA: aynı personelin yaşayan başka talebi -------------
+     Durum kümesi geçiş tablosundan türetildi (terminal olmayanlar).
+     Ölçüldü: bugünkü 7 talebin hiçbiri birbiriyle çakışmıyor; çakışma
+     ancak yeni bir talep var olan bir aralığa girdiğinde doğar. */
+  function cakisanlar(bas, bit){
+    if(!HEDEF_PERSONEL || !bas || !bit || bit < bas) return null;   /* ölçülemedi */
+    return (DB.leaves || []).filter(function(x){
+      return x.personel === HEDEF_PERSONEL &&
+             (!rec || x.kod !== rec.kod) &&
+             YASAYAN.indexOf(x.durum) !== -1 &&
+             x.baslangic && x.bitis &&
+             x.baslangic <= bit && x.bitis >= bas;
+    });
+  }
+
+  /* ---- Aralığa düşen resmî tatiller (DB.holidays · 14 kayıt) ----- */
+  function aradakiTatiller(bas, bit){
+    if(!bas || !bit || bit < bas) return null;
+    return (DB.holidays || []).filter(function(h){ return h.tarih >= bas && h.tarih <= bit; });
+  }
+
+  /* ---- Onay akışı TANIMI — koşum değil, tanım -------------------- */
+  var AKIS    = GV.approval.akisTanim(AKIS_TUR) || null;
+  var ADIMLAR = (AKIS && AKIS.adimlar) || [];
+
+  /* Bir adım bu talepte çalışır mı: koşul değerleri ölçüldü ve üç
+     tanedir — 'hep' · 'tutar' · 'gun' (brief §22.1c madde 3). Koşulsuz
+     adım `kosul:'hep'` taşır; ayırt edici olan `esik == null`dır.
+     İzin zincirinde eşiği olan tek koşul `gun`dur ve karşılaştırma
+     `gun >= esik`tir (adım 2: İK · eşik 10 iş günü). */
+  function adimCalisir(adim, isGun){
+    /* ⚠️ EŞİK KARŞILAŞTIRMASI ORTAK YORDAMDA (K-41 · ADR-R2-41): kural dört
+       ekranda kopyalanmıştı ve biri `>` kullanıyordu. Ekran yalnız ÖLÇÜMÜ
+       verir; karşılaştırmayı ve "ölçülemedi" ayrımını yordam yapar.
+       Yordam bilinmeyen koşulda da `null` döner ("ölçülemedi"), o yüzden
+       ekranın ayrıca bir dal tutmasına gerek yok. */
+    return GV.approval.adimCalisir(adim, { gun:isGun }).calisir;
+  }
+
+  /* `tur:'rol'` bir KÜMEdir ve `kisi` HER ZAMAN null döner;
+     `tur:'iliski'` bir KENARdır ve `kisi` dolu gelir. `cozuldu:false`
+     ise KİŞİ UYDURULMAZ, `neden` basılır (brief §22.1). */
+  function muhatapMetni(m){
+    if(!m) return 'muhatap çözülemedi';
+    if(!m.cozuldu){
+      return 'çözülemedi — ' + esc(m.neden || 'sebep bildirilmedi; kişi uydurulmaz');
+    }
+    if(m.tur === 'rol'){
+      return esc(m.ad) + ' rolü · KÜME (anahtar ' + esc(m.anahtar || '—') + ') · ' +
+             'kişi zincir koşumunda belirlenir, formda uydurulmaz';
+    }
+    if(m.tur === 'iliski'){
+      return esc(m.ad || m.anahtar || 'ilişki') + ' → ' +
+             (m.kisi ? esc(empAd(m.kisi) || m.kisi) + ' · ' + esc(m.kisi) : 'çözülemedi');
+    }
+    return 'muhatap türü çözülemedi — ' + esc(m.neden || 'sebep bildirilmedi');
+  }
+
+  /* İlk adım (ilişki adımı) muhatabı = kaydın `onaylayan` alanına yazılan
+     değer. Ölçüldü: 7 talebin 7'sinde kayıttaki `onaylayan`, talep
+     sahibinin `DB.employees[].yonetici` alanıyla birebir aynı. */
+  function iliskiMuhatabi(veri){
+    var adim = ADIMLAR.filter(function(a){ return a.iliski; })[0] || null;
+    if(!adim) return null;
+    return GV.approval.adimMuhatap(adim, taslakKayit(veri));
+  }
+
+  /* ================================================================
+     SAYFA BAŞLIĞI — form bileşeninden ÖNCE (brief §2.4)
+     ================================================================ */
+  GV.pageHead({
+    eyebrow:EYEBROW,
+    title:rec ? 'Talep ' + rec.kod : 'Yeni İzin Talebi',
+    sub:rec
+      ? (rec.tur || '—') + ' · ' + (empAd(rec.personel) || rec.personel) + ' · ' +
+        (rec.durum || '—') + ' · durum bu formdan değişmez'
+      : (KENDI_ADINA ? 'Kendi adınıza' : (empAd(HEDEF_PERSONEL) || HEDEF_PERSONEL) + ' adına') +
+        ' yeni talep · ' + ILK_DURUM + ' durumunda doğar',
+    actions:[
+      { label:'Vazgeç', icon:'i-arrow-left', href:LISTE_IZIN },
+      { label:'Kaydet', icon:'i-check', cls:'btn-acc', run:function(){ kaydet(); } }
+    ]
+  });
+
+  mount.innerHTML =
+    '<div id="iznNot"></div>' +
+    '<div id="iznForm"></div>' +
+    '<div id="iznBackend" class="u-mt-8"></div>';
+
+  /* ================================================================
+     AÇILIŞ NOTLARI
+     ================================================================ */
+  var acilis = '';
+
+  if(!rec && KENDI_ADINA){
+    acilis += GV.notice({ tone:'neutral', icon:'i-user-check',
+      title:'Talep sahibi oturumdan alındı: ' + esc(empAd(OTURUM_EMP) || OTURUM_EMP),
+      text:'Kendi adınıza açılan talepte `personel` alanı oturumdan (GV.session.emp = ' +
+           esc(OTURUM_EMP) + ') gelir ve SALT OKUNUR basılır (brief §22.9). Kendi talebi için ' +
+           'yetki gerekmez; başkası adına talep açmak "ekle" yetkisi ister ve adres ' +
+           '?personel=EMP-… ile açılır.' });
+  }
+
+  if(!rec && !KENDI_ADINA){
+    acilis += GV.notice({ tone:'info', icon:'i-users',
+      title:(empAd(HEDEF_PERSONEL) || HEDEF_PERSONEL) + ' adına açıldı',
+      text:'Talep sahibi adres çubuğundaki koddan (' + esc(HEDEF_PERSONEL) + ') ön dolduruldu ve ' +
+           'salt okunur basıldı; bu işlem "ekle" yetkisi istedi ve rolünüz (' + GV.perm.role() +
+           ') o yetkiyi taşıyor. Kaydın sahibi formda değiştirilemez — sahibi değişen bir talep ' +
+           'yeni bir taleptir.' });
+  }
+
+  if(rec && rec.durum !== ILK_DURUM){
+    acilis += GV.notice({ tone:'warn', icon:'i-alert',
+      title:'Bu talep "' + esc(rec.durum) + '" durumunda',
+      text:'Form durumu DEĞİŞTİRMEZ (geçişler GV.flow.gec ile izin detayında yürür). Bu ' +
+           'durumdaki bir kaydın tarih/tür alanlarını düzenlerseniz, verilmiş karar ve varsa ' +
+           'bakiye düşümü BU FORMDAN güncellenmez: düşümü ve iadesini geçiş yan etkisi ' +
+           '(GV.flow.yanEtki) yapar ve o yalnız durum değişiminde koşar. Kaydı düzeltmek ' +
+           'yerine iptal edip yeni talep açmak, defteri tutarlı bırakan yoldur.' });
+  }
+
+  if(!HEDEF_EMP){
+    acilis += GV.notice({ tone:'warn', icon:'i-user',
+      title:'Talep sahibinin personel kaydı defterde yok',
+      text:'“' + esc(HEDEF_PERSONEL) + '” kodu DB.employees içinde bulunamadı. Bakiye, bağlı ' +
+           'yönetici ve departman bu yüzden ÖLÇÜLEMEDİ; hiçbiri "0" ya da boş olarak ' +
+           'basılmadı (brief §10.1). Talep kaydedilebilir, ama onay adımının muhatabı ' +
+           'çözülemez.' });
+  }
+
+  if(!AKIS){
+    acilis += GV.notice({ tone:'warn', icon:'i-alert',
+      title:'Onay zinciri tanımı okunamadı',
+      text:'Sağ panelin zincir önizlemesi GV.approval.akisTanim("' + esc(AKIS_TUR) + '") ' +
+           'üzerinden ölçülür ve yalnız "Yayında" olan en yüksek sürümü döner. Tanım ' +
+           'gelmediği için kaç onay adımının çalışacağı TÜRETİLEMEDİ; adım sayısı uydurulmadı ' +
+           've "0 adım" yazılmadı.' });
+  }
+
+  if(!UCRETSIZ_VAR){
+    acilis += GV.notice({ tone:'warn', icon:'i-alert-circle',
+      title:'“' + UCRETSIZ + '” türü sözlükte bulunamadı',
+      text:'Bakiye kapısının muafiyet yolu bu tür üzerinden geçiyor (kapı bunu kendi mesajında ' +
+           'söylüyor), ama DB.leaveTypes içinde bu değer yok. Aşım durumunda gösterilecek çıkış ' +
+           'yolu bu yüzden ölçülemedi ve uydurulmadı.' });
+  }
+
+  document.getElementById('iznNot').innerHTML = acilis;
+
+  /* ================================================================
+     SAĞ PANEL — CANLI ÖLÇÜM (`aside` her alan değişiminde yeniden çizilir)
+     ================================================================ */
+  function panel(veri){
+    var bas   = bosNull(veri.baslangic);
+    var bit   = bosNull(veri.bitis);
+    var tur   = bosNull(veri.tur);
+    var isGun = isGunu(bas, bit);
+    var takvimGun = (bas && bit && bit >= bas) ? (F.days(bit, bas) + 1) : null;
+    var tatiller  = aradakiTatiller(bas, bit);
+    var cak       = cakisanlar(bas, bit);
+    var taslak    = taslakKayit(veri);
+
+    var out = '';
+
+    /* ---- 1) SÜRE ÖLÇÜMÜ ---------------------------------------- */
+    out += '<div class="gv-card">' +
+      '<div class="gc-head">' +
+        '<h3 class="gc-title">' + ico('i-clock') + 'Süre ölçümü</h3>' +
+        '<span class="gc-meta">türetilir</span>' +
+      '</div>' +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Tarih aralığı', (bas && bit)
+            ? '<span class="cell-date">' + F.date(bas) + ' → ' + F.date(bit) + '</span>' +
+              (bit < bas ? GV.cell.sub('bitiş başlangıçtan önce — ölçüm yapılmadı') : '')
+            : faint('tarihler girilmedi') + GV.cell.sub('iki tarih de zorunlu (geçiş tablosu)')],
+          ['İş günü (kayda yazılan `gun`)', isGun == null
+            ? faint('—') + GV.cell.sub('ölçülemedi; "0" yazmak ölçülmemişi ölçülmüş göstermek olurdu')
+            : GV.cell.gun(isGun, isGun === 0 ? 'warn' : null) +
+              GV.cell.sub('GV.calendar.isGunu(baslangic, bitis) · hafta sonu ve DB.holidays ' +
+                          '(' + (DB.holidays || []).length + ' resmî tatil) düşülür')],
+          ['Takvim günü', takvimGun == null
+            ? faint('—')
+            : GV.fmt.num(takvimGun) + ' gün' +
+              GV.cell.sub('GV.fmt.days(bitis, baslangic) + 1 — tarih farkı yordamı; iki sayının ' +
+                          'farkı hafta sonu ve tatildir')],
+          ['Aralığa düşen resmî tatil', (tatiller == null)
+            ? faint('—')
+            : (tatiller.length
+                ? tatiller.map(function(h){
+                    return '<span class="cell-main">' + esc(h.ad) + '</span>' +
+                           GV.cell.sub(F.date(h.tarih) + ' · kaynak: ' + esc(h.kaynak));
+                  }).join('')
+                : faint('yok') + GV.cell.sub('DB.holidays bu aralıkta bir tatil taşımıyor'))],
+          ['0 iş günü uyarısı', (isGun === 0)
+            ? '<span class="badge is-warn">Aralık tümüyle tatil</span>' +
+              GV.cell.sub('seçilen aralıkta çalışılan gün yok; talep bir gün düşürmez')
+            : faint('—')]
+        ], { skipEmpty:false }) +
+      '</div></div>';
+
+    /* ---- 2) BAKİYE ve KAPI ------------------------------------- */
+    /* ⚠️ Kapı ÇAĞRILIR, koşulları ekranda yeniden kurulmaz (§22.1b madde 1).
+       Ama kapı eksik girdide (personel/tarih yok, personel defterde yok)
+       `{ok:true}` döner — bu bir ÖLÇÜM DEĞİLDİR. Ölçülebilir mi sorusunu
+       ekran kendi sorar ve ölçülemediğini söyler (L-13). */
+    var olculebilir = !!(HEDEF_EMP && bas && bit && bit >= bas && tur);
+    var kapi = olculebilir ? GV.gates.izinBakiye(taslak) : null;
+    var bakiye = HEDEF_EMP ? HEDEF_EMP.izinBakiye : null;
+    var muaf = tur === UCRETSIZ;
+
+    out += '<div class="gv-card">' +
+      '<div class="gc-head">' +
+        '<h3 class="gc-title">' + ico('i-wallet') + 'Bakiye ve onay kapısı</h3>' +
+        '<span class="gc-meta">' + esc(HEDEF_PERSONEL || '—') + '</span>' +
+      '</div>' +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Kalan bakiye (defterden)', bakiye == null
+            ? faint('—') + GV.cell.sub(HEDEF_EMP
+                ? 'izinBakiye alanı bu kayıtta boş'
+                : 'personel kaydı defterde yok')
+            : GV.cell.gun(bakiye, bakiye > 0 ? null : 'danger') +
+              GV.cell.sub('DB.employees[].izinBakiye · 16/16 dolu · bu form bu alana YAZMAZ; ' +
+                          'düşümü ve iadesini geçiş yan etkisi yapar')],
+          ['İstenen iş günü', isGun == null
+            ? faint('—') + GV.cell.sub('tarihler girilmedi')
+            : GV.cell.gun(isGun) + GV.cell.sub('yukarıdaki türetimin aynısı')],
+          ['Kapı kararı', muaf
+            ? '<span class="badge is-info">Muaf</span>' +
+              GV.cell.sub('“' + esc(UCRETSIZ) + '” türü bakiyeden düşmez; kapı bu talebi bağlamaz')
+            : (!olculebilir
+                ? faint('ölçülemedi') +
+                  GV.cell.sub('personel, tür ve iki tarih olmadan kapı ölçülemez. Kapı bu ' +
+                              'girdilerle çağrıldığında "ok" döner, ama o bir ölçüm değildir; ' +
+                              'ekran onu geçer diye basmaz')
+                : (kapi.ok
+                    ? '<span class="badge is-ok">Yeterli</span>' +
+                      GV.cell.sub(isGun + ' iş günü isteniyor, ' + bakiye + ' gün kalan · ' +
+                                  'GV.gates.izinBakiye(taslakKayit)')
+                    : '<span class="badge is-warn">Yetersiz</span>' +
+                      GV.cell.sub(esc(kapi.why))))]
+        ], { skipEmpty:false }) +
+      '</div></div>';
+
+    /* Aşım varsa: ONAY ADIMININ reddedeceği yazılır, çıkış yolu gösterilir,
+       KAYIT REDDEDİLMEZ. Kapı `Onaylandı` durumunun `girisKapi`sıdır. */
+    if(kapi && kapi.ok === false){
+      out += GV.notice({ tone:'warn', icon:'i-alert-circle',
+        title:'Bu talep ONAYLANAMAZ — ama TALEP EDİLEBİLİR',
+        text:kapi.why + ' Bu kapı formun kapısı değildir: geçiş tablosunda "Onaylandı" ' +
+             'durumunun girisKapi\'sıdır, yani reddedecek olan ONAY ADIMIDIR. Talep bu hâliyle ' +
+             'kaydedilir ve onaya gönderilebilir; reddedilebilir ve iptal edilebilir de — ' +
+             'ret/iptal bakiye harcamaz. Çıkış yolu: ' +
+             (UCRETSIZ_VAR
+               ? 'izin türünü “' + UCRETSIZ + '” olarak seçerseniz kapı bu talebi bağlamaz ' +
+                 '(muafiyeti kapının kendi mesajı söylüyor) ya da gün sayısını düşürün.'
+               : 'gün sayısını düşürün — muafiyet türü sözlükte bulunamadı.') });
+    }
+
+    /* ---- 3) ÇAKIŞMA — kodla gösterilir ------------------------- */
+    out += '<div class="gv-card">' +
+      '<div class="gc-head">' +
+        '<h3 class="gc-title">' + ico('i-calendar') + 'Personel çakışması</h3>' +
+        '<span class="gc-meta">' + (cak == null ? 'ölçülemedi' : cak.length + ' kayıt') + '</span>' +
+      '</div>' +
+      '<div class="gc-body">' +
+        (cak == null
+          ? '<p class="u-faint u-sm">Tarihler girilmeden çakışma ölçülemez; "çakışma yok" ' +
+            'yazmak ölçülmemişi ölçülmüş göstermek olurdu.</p>'
+          : (cak.length
+              ? '<ul class="gv-checklist">' + cak.map(function(x){
+                  return '<li><span class="cell-main">' + kodEt(x.kod) + ' · ' + esc(x.tur) +
+                    '<span class="cell-sub">' + F.date(x.baslangic) + ' → ' + F.date(x.bitis) +
+                    ' · ' + GV.calendar.isGunu(x.baslangic, x.bitis) + ' iş günü</span></span>' +
+                    GV.badge(x.durum) + '</li>';
+                }).join('') + '</ul>' +
+                GV.notice({ tone:'warn', icon:'i-alert',
+                  title:'Aynı personelin yaşayan başka talebiyle çakışıyor',
+                  text:'Yukarıdaki ' + cak.length + ' kayıt aynı personele ait ve tarih aralığı ' +
+                       'bu talebin aralığıyla kesişiyor. Çakışma bir KAPI DEĞİLDİR: geçiş ' +
+                       'tablosunda çakışmayı reddeden bir kural yok, o yüzden form kaydı ' +
+                       'reddetmez — ama kararı verecek yöneticinin bunu bilmesi gerekir. ' +
+                       'Çakışan kayıt KODLA basıldı: boolean tek başına "neyle çakıştı" ' +
+                       'sorusunu cevapsız bırakırdı.' })
+              : '<p class="u-sm u-muted">Çakışma yok. Ölçüm: aynı personelin (' +
+                esc(HEDEF_PERSONEL) + ') terminal olmayan durumdaki (' + esc(YASAYAN.join(' · ')) +
+                ') talepleri tarandı; durum kümesi geçiş tablosundan türetildi. Ölçüldü: ' +
+                'defterdeki 7 talebin hiçbiri birbiriyle çakışmıyor.</p>')) +
+        '<p class="u-faint u-xs">Bu ölçüm kaydın <code>cakisma</code> alanına YAZILMAZ: kaynak ' +
+          'veride o alan PROJE TAKVİMİ çakışmasını işaretliyor (tek true kaydı IZN-2026-033 ve ' +
+          'ret notu bir teslim haftasına işaret ediyor); iki yayındaki ekran alanı öyle ' +
+          'etiketliyor. Personel ölçümünü o alana yazmak, o iki ekranı yalan söyletirdi. ' +
+          'Yeni kayıtta alan null doğar (“işaretlenmedi”).</p>' +
+      '</div></div>';
+
+    /* ---- 4) ONAY ZİNCİRİ — K-38'in görünür olduğu yer ----------- */
+    if(!AKIS){
+      out += GV.notice({ tone:'warn', icon:'i-alert', title:'Zincir önizlemesi yok',
+        text:'Onay akışı tanımı okunamadı; adım listesi ve muhataplar türetilemedi.' });
+    }else{
+      var calisanSayi = ADIMLAR.filter(function(a){ return adimCalisir(a, isGun) === true; }).length;
+      var olcusuz     = ADIMLAR.some(function(a){ return adimCalisir(a, isGun) == null; });
+
+      var satirlar = ADIMLAR.map(function(a){
+        var m = GV.approval.adimMuhatap(a, taslak);
+        var c = adimCalisir(a, isGun);
+        var kosulMetni = a.esik == null
+          ? 'koşul “' + esc(a.kosul || 'hep') + '” · eşiği yok, her talepte çalışır'
+          : 'koşul “' + esc(a.kosul) + '” · yalnız ' + a.esik + ' iş günü ve üzerinde çalışır' +
+            (isGun == null ? ' · bu talepte ölçülemedi' : ' · bu talepte ' + isGun + ' iş günü');
+        var durumHtml = c === true ? '<span class="u-ok">çalışır</span>'
+                      : c === false ? faint('bu talepte çalışmaz')
+                      : faint('ölçülemedi');
+        return ['Adım ' + a.sira + ' · ' + esc(a.ad),
+          durumHtml +
+          GV.cell.sub(kosulMetni +
+            (a.sla == null || a.sla === '' ? ' · SLA tanımda yazılı değil'
+                                           : ' · SLA ' + esc(String(a.sla)) + ' gün')) +
+          GV.cell.sub('Muhatap: ' + muhatapMetni(m))];
+      });
+
+      out += '<div class="gv-card">' +
+        '<div class="gc-head">' +
+          '<h3 class="gc-title">' + ico('i-stamp') + 'Onay zinciri önizlemesi</h3>' +
+          '<span class="gc-meta">' + esc(AKIS.kod) + ' · sürüm ' + esc(String(AKIS.surum)) + '</span>' +
+        '</div>' +
+        '<div class="gc-body">' +
+          GV.dl([
+            ['Akış', esc(AKIS.ad) +
+              GV.cell.sub(kodEt(AKIS.kod) + ' · ' + esc(AKIS.durum || '—') + ' · yürürlük ' +
+                          F.date(AKIS.yururluk))],
+            ['Bu talepte çalışacak adım', (isGun == null && olcusuz)
+              ? faint('—') + GV.cell.sub('gün sayısı ölçülemedi; eşikli adımın çalışıp ' +
+                                         'çalışmayacağı türetilemedi')
+              : '<b>' + calisanSayi + '</b> / ' + ADIMLAR.length +
+                GV.cell.sub('sayı TÜRETİLDİ: eşikler akış tanımından okundu ve türetilen iş ' +
+                            'günü sayısıyla karşılaştırıldı; hiçbir yerde yazılı değil')]
+          ], { skipEmpty:false }) +
+          GV.dl(satirlar) +
+        '</div></div>';
+
+      /* Zincir ÖRNEĞİ: `GV.approval.adim(tur, kod)` zincir kaydı yoksa
+         null döner ve ekran "0/0" BASMAZ (brief §22.1c madde 4). Ölçüldü:
+         izin tipinde zincir defteri tanımlı değil (satın almadaki
+         `purchaseApprovals` karşılığı yok), bu yüzden 7 talebin 7'sinde
+         null dönüyor. */
+      var ornek = rec ? GV.approval.adim(AKIS_TUR, rec.kod) : null;
+      var kuyruk = rec
+        ? (DB.approvals || []).filter(function(a){ return a.kayit === rec.kod; })
+        : [];
+
+      if(ornek){
+        out += '<div class="gv-card">' +
+          '<div class="gc-head"><h3 class="gc-title">' + ico('i-hourglass') + 'Zincir örneği</h3></div>' +
+          '<div class="gc-body">' +
+            GV.dl([['Adım', '<b>' + ornek.adim + ' / ' + ornek.toplam + '</b>' +
+              GV.cell.sub(ornek.sonuclandi ? 'zincir tamamlandı'
+                : ornek.reddedildi ? 'zincirde ret var'
+                : ornek.siradaki ? 'sırada: ' + esc(ornek.siradaki.rol || ornek.siradaki.ad || '—')
+                : 'bekleyen adım yok')]]) +
+          '</div></div>';
+      }else{
+        out += GV.notice({ tone:'neutral', icon:'i-info',
+          title:'Zincir örneği yok — tanım gösteriliyor',
+          text:'Yukarıdaki liste zincirin TANIMIdır, bir koşumu değil: ' +
+               'GV.approval.adim("' + esc(AKIS_TUR) + '", kod) bu tipte null döner ve "0/0" ' +
+               'yazmak ölçülmemişi ölçülmüş göstermek olurdu. Zincir örneği bu formdan da ' +
+               'üretilmez — onay zinciri örneği açan bir yordam yoktur (GV.approval.karar var ' +
+               'olan satırı sonuçlandırır, satır AÇMAZ). Kaydın tek onay alanı `onaylayan`dır ' +
+               've onu ilişki adımının muhatabından türetiyoruz.' });
+      }
+
+      if(rec){
+        out += '<div class="gv-card">' +
+          '<div class="gc-head">' +
+            '<h3 class="gc-title">' + ico('i-inbox') + 'Onay kuyruğu kaydı</h3>' +
+            '<span class="gc-meta">' + kuyruk.length + ' satır</span>' +
+          '</div>' +
+          '<div class="gc-body">' +
+            (kuyruk.length
+              ? '<ul class="gv-checklist">' + kuyruk.map(function(a){
+                  return '<li><span class="cell-main">' + esc(a.baslik || a.kod) +
+                    '<span class="cell-sub">' + esc(a.kod) + ' · onaylayacak: ' +
+                    esc(DB.empName(a.onaylayan) || a.onaylayan || '—') + '</span></span>' +
+                    GV.badge(a.durum) + '</li>';
+                }).join('') + '</ul>' +
+                '<p class="u-faint u-sm">Kuyruk satırı burada yalnız OKUNUR; bu form ona ' +
+                'yazmaz ve yeni satır açmaz. Karar izin detayındaki geçiş düğmelerinden ' +
+                'verilir.</p>'
+              : '<p class="u-faint u-sm">Bu talep için DB.approvals içinde kuyruk satırı yok. ' +
+                'Ölçüldü: 7 izin talebinin 3’ünde kuyruk satırı var (IZN-2026-035 · 038 · 039), ' +
+                'kalan 4’ü kuyruğa hiç girmeden karara bağlanmış. Bu form kuyruğa satır ' +
+                'AÇMAZ.</p>') +
+          '</div></div>';
+      }
+    }
+
+    /* ---- 5) KAYIT ÖZETİ ---------------------------------------- */
+    var m1 = iliskiMuhatabi(veri);
+    out += '<div class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + ico('i-list') + 'Kayıt özeti</h3></div>' +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Talep no', rec ? kodEt(rec.kod) : faint('kaydederken üretilir') +
+            GV.cell.sub('IZN-YYYY-### · sıra defterde GLOBAL ilerler, yıl damgası kayıt yılıdır')],
+          ['Talep sahibi', HEDEF_PERSONEL
+            ? GV.user(HEDEF_PERSONEL, { sm:true }) +
+              GV.cell.sub((HEDEF_EMP && (HEDEF_EMP.depAd || HEDEF_EMP.dep)) || 'departman kayıtta yok')
+            : faint('—')],
+          ['Durum', rec
+            ? GV.badge(rec.durum) + GV.cell.sub('salt okunur — geçişler izin detayında')
+            : GV.badge(ILK_DURUM) + GV.cell.sub('yeni talep bu durumda doğar (geçiş tablosunun ' +
+                                                'ilk kaydı)')],
+          ['İzin türü', tur ? esc(tur) : faint('seçilmedi')],
+          ['Vekil', veri.vekil
+            ? GV.user(veri.vekil, { sm:true })
+            : faint('atanmadı') + GV.cell.sub('7 talebin 5’inde vekil var; zorunlu değil')],
+          ['Onay mercii (`onaylayan`)', m1
+            ? (m1.cozuldu && m1.kisi
+                ? GV.user(m1.kisi, { sm:true }) +
+                  GV.cell.sub('ilişki adımının muhatabı · GV.approval.adimMuhatap ile çözüldü · ' +
+                              'kayda bu değer yazılır')
+                : faint('çözülemedi') + GV.cell.sub(esc(m1.neden || '') + ' — kişi UYDURULMAZ, ' +
+                              'alan boş kalır'))
+            : faint('—') + GV.cell.sub('akış tanımında ilişki adımı yok')],
+          ['Talep tarihi', rec
+            ? '<span class="cell-date">' + F.date(rec.talepTarihi) + '</span>' +
+              GV.cell.sub('kaydın kendi tarihi — düzenlemede değişmez')
+            : '<span class="cell-date">' + F.date(DB.today) + '</span>' +
+              GV.cell.sub('sistemin ölçüm günü (DB.today) · saat taşımaz, defterdeki biçim ' +
+                          'korunur')],
+          ['Karar tarihi', rec
+            ? (rec.onayTarihi
+                ? '<span class="cell-date">' + F.date(rec.onayTarihi) + '</span>'
+                : faint('karar verilmedi'))
+            : faint('—') + GV.cell.sub('kararla birlikte geçiş motoru yazar')]
+        ], { skipEmpty:false }) +
+      '</div></div>';
+
+    /* ---- 6) Onaya gönderme bu formun işi DEĞİL ------------------ */
+    out += GV.notice({ tone:'neutral', icon:'i-refresh',
+      title:'“' + esc(CIKIS_ETIKET || 'Onaya Gönder') + '” düğmesi bu formda yok',
+      text:'Durum geçişi formun işi değildir (brief §7.4): "' + esc(ILK_DURUM) + '" durumundan ' +
+           'çıkış GV.flow.adimlar("leave", kod) düğmesiyle izin detayında ve zaman ekranının ' +
+           'izin çekmecesinde yapılır. Devre dışı bir düğme basılmaz — yapılamayan iş düğme ' +
+           'olarak vaat edilmez. Geçiş tablosunun bu çıkış için şart koştuğu alanlar: ' +
+           (CIKIS_ZORUNLU.length ? esc(CIKIS_ZORUNLU.join(' · ')) +
+             ' — form üçünü de zorunlu tutar ki kayıt doğduğu anda ilerletilebilir olsun.'
+            : 'tabloda yazılı değil.') +
+           ' Çıkış yetkisi “veren” İLİŞKİSİdir: bir rol değil, talebi açan personelin kendisi.' });
+
+    return out;
+  }
+
+  /* ================================================================
+     FORM TASLAĞI
+     ================================================================ */
+  var ilkIsGun = rec ? isGunu(rec.baslangic, rec.bitis) : null;
+
+  var formKayit = {
+    personel:  HEDEF_PERSONEL || '',
+    tur:       rec ? (rec.tur || '') : '',
+    baslangic: rec ? (rec.baslangic || '') : '',
+    bitis:     rec ? (rec.bitis || '') : '',
+    /* Türetilmiş alan — kullanıcı yazmaz, kaydetmede tarihlerden yeniden
+       ölçülür. Formdaki değer yalnız gösterimdir. */
+    gun:       ilkIsGun == null ? '' : ilkIsGun,
+    vekil:     rec ? (rec.vekil || '') : '',
+    gerekce:   rec ? (rec.gerekce || '') : '',
+    /* Görüntü alanları — adı `*Bilgi`: kayda YAZILMAZ. */
+    durumBilgi:      rec ? (rec.durum || '') : ILK_DURUM,
+    talepTarihiBilgi:rec ? (rec.talepTarihi || '') : DB.today
+  };
+
+  var form = GV.form({
+    mount:'#iznForm',
+    id:'izinForm',
+    record:formKayit,
+    tabs:[
+      { key:'temel', label:'Talep bilgileri', icon:'i-calendar' },
+      { key:'ek',    label:'Vekil ve kayıt',  icon:'i-users' }
+    ],
+    aside:function(veri){ return panel(veri); },
+    sections:[
+      { title:'Talep sahibi ve tür', icon:'i-user', tab:'temel',
+        desc:'Talep sahibi ' + (KENDI_ADINA ? 'oturumdan geldi' : 'adres çubuğundaki koddan geldi') +
+             ' ve salt okunur basıldı; kaydın sahibi formda değişmez. İzin türü 6 değerlik ortak ' +
+             'sözlükten (DB.leaveTypes) okunur.',
+        fields:[
+          { key:'personel', label:'Talep sahibi', type:'select', cols:6, required:true,
+            readonly:true,
+            options:kisiSecenekleri(HEDEF_PERSONEL, null),
+            hint:KENDI_ADINA
+              ? 'Oturumdan (GV.session.emp = ' + (OTURUM_EMP || '—') + ') geldi ve salt okunur ' +
+                '(brief §22.9). Başkası adına talep açmak "ekle" yetkisi ister; adres ' +
+                '?personel=EMP-… ile açılır.'
+              : 'Adres çubuğundan geldi (' + (HEDEF_PERSONEL || '—') + '); bu işlem "ekle" ' +
+                'yetkisi istedi. Kaydın sahibi değişmez — sahibi değişen talep yeni bir taleptir.' },
+
+          { key:'tur', label:'İzin türü', type:'select', cols:6, required:true,
+            placeholder:'İzin türü seçin',
+            options:TURLER,
+            hint:TURLER.length + ' değerlik ortak sözlükten (DB.leaveTypes) okunur. Geçiş ' +
+                 'tablosunun "' + ILK_DURUM + '" durumundan çıkış için şart koştuğu üç alandan ' +
+                 'biri. “' + UCRETSIZ + '” türü bakiye kapısından muaftır — muafiyeti kapı ' +
+                 'kendi mesajında söylüyor, bu form onu yeniden tanımlamıyor.' }
+        ] },
+
+      { title:'Tarihler ve süre', icon:'i-clock', tab:'temel',
+        desc:'İş günü sayısı TÜRETİLİR: GV.calendar.isGunu(baslangic, bitis) hafta sonunu ve ' +
+             (DB.holidays || []).length + ' resmî tatili (DB.holidays) düşer. Ölçüldü: ' +
+             '2026-08-10 → 2026-08-14 = 5 iş günü. Alan bu yüzden salt okunurdur.',
+        fields:[
+          { key:'baslangic', label:'Başlangıç', type:'date', cols:4, required:true,
+            hint:'Geçiş tablosunun çıkış için şart koştuğu alanlardan biri.' },
+
+          { key:'bitis', label:'Bitiş', type:'date', cols:4, required:true,
+            hint:'Başlangıçtan önce olamaz. Tek günlük izinde iki alan aynı tarihi taşır ' +
+                 '(ölçüldü: IZN-2026-039 böyle).',
+            validate:function(deger, veri){
+              if(!deger || !veri.baslangic) return '';
+              if(deger < veri.baslangic) return 'Bitiş tarihi başlangıçtan önce olamaz.';
+              return '';
+            } },
+
+          { key:'gun', label:'Süre (iş günü)', type:'number', cols:4, readonly:true, min:0,
+            hint:'TÜRETİLİR, yazılmaz: iş günü = takvim günü − hafta sonu − DB.holidays. ' +
+                 'Kaydetmede değer tarihlerden yeniden ölçülür; alandaki sayı yalnız ' +
+                 'gösterimdir ve sağ panelde canlı olarak tekrar basılır.' }
+        ] },
+
+      { title:'Gerekçe', icon:'i-stamp', tab:'temel',
+        desc:'Onay adımının okuduğu alan gerekçedir: bağlı yönetici kararını bu metne bakarak ' +
+             'verir. Geçiş tablosu bu alanı ŞART KOŞMAZ (çıkış zorunluları: ' +
+             (CIKIS_ZORUNLU.join(' · ') || '—') + '); zorunluluk formun kendi kuralıdır ve bu ' +
+             'ayrım burada yazılıdır.',
+        fields:[
+          { key:'gerekce', label:'Talep gerekçesi', type:'textarea', cols:12, rows:3,
+            required:true,
+            placeholder:'Örn. Yıllık izin planı · aile ziyareti · rapor',
+            hint:'Gerekçesiz talep onay adımında karara bağlanamaz. Ölçüldü: 7 talebin ' +
+                 '7’sinde bu alan dolu.' }
+        ] },
+
+      { title:'Vekil', icon:'i-users', tab:'ek',
+        desc:'Vekil listesi GV.hr.atanabilirler() ile gelir: bugün ' + ATANABILIR.length +
+             ' kayıt (16 personelin “Aktif” olanları; EMP-015 “Offboarding” olduğu için listede ' +
+             'yok). Talep sahibi listeden çıkarıldı — kişi kendi vekili olamaz.',
+        fields:[
+          { key:'vekil', label:'Vekil', type:'select', cols:6,
+            placeholder:'Vekil atanmadı',
+            options:kisiSecenekleri(rec ? rec.vekil : null, HEDEF_PERSONEL),
+            hint:'İsteğe bağlı. Ölçüldü: 7 talebin 5’inde vekil var, 2’sinde yok — boş ' +
+                 'bırakılırsa kayda null yazılır, uydurma vekil atanmaz.' }
+        ] },
+
+      { title:'Kayıt bilgileri', icon:'i-info', tab:'ek',
+        desc:'İkisi de salt okunur BİLGİdir; forma girilmez, kayda bu alanlardan yazılmaz. ' +
+             'Durumu geçiş motoru, karar tarihini de kararın kendisi yazar.',
+        fields:[
+          { key:'durumBilgi', label:'Durum', type:'text', cols:6, readonly:true,
+            hint:rec
+              ? 'Salt okunur. Durum bu formdan değişmez; geçişler GV.flow.gec("leave", …) ile ' +
+                'izin detayında yürür.'
+              : 'Yeni talep geçiş tablosunun İLK durumunda doğar. Değer nesne literalinde ' +
+                'verilir; kayda sonradan durum yazan satır yoktur.' },
+
+          { key:'talepTarihiBilgi', label:'Talep tarihi', type:'date', cols:6, readonly:true,
+            hint:rec
+              ? 'Kaydın kendi tarihi; düzenlemede değişmez.'
+              : 'DB.today (' + DB.today + '). Bu defterde tarih alanları saat taşımaz; ' +
+                'defterdeki biçim korunur.' }
+        ] }
+    ]
+  });
+
+  if(!form){
+    mount.innerHTML = GV.errorState({ title:'Form çizilemedi',
+      desc:'Form bileşeni bağlanamadı. Sayfayı yeniden açmayı deneyin.' });
+    return;
+  }
+
+  /* ---- Türetilmiş alanın CANLI eşitlenmesi -----------------------
+     `gun` alanı türetilmiştir ve iki tarih değişince değişir. Bileşen her
+     değişimde sağ paneli yeniden çiziyor ama alanların değerine
+     dokunmuyor; bu yüzden salt okunur alanın gösterdiği sayıyı burada
+     eşitliyoruz. Dinleyici mount'un İÇİNDEDİR (`GV.on` gerekmez, §2.6):
+     GV.refresh() mount'u baştan çizdiğinde bu düğüm de dinleyicisiyle
+     birlikte gider. Kaydetmede sayı yine tarihlerden ölçülür — bu satır
+     bir gösterim eşitlemesidir, veri kaynağı değildir. */
+  var formEl = document.getElementById('iznForm');
+  function gunAlaniniEsitle(){
+    if(!formEl) return;
+    var gunEl = formEl.querySelector('[name="gun"]');
+    if(!gunEl) return;
+    var v = form.read();
+    var n = isGunu(bosNull(v.baslangic), bosNull(v.bitis));
+    gunEl.value = (n == null ? '' : n);
+  }
+  if(formEl){
+    formEl.addEventListener('input',  gunAlaniniEsitle);
+    formEl.addEventListener('change', gunAlaniniEsitle);
+  }
+
+  /* ================================================================
+     KAYDETME
+     ================================================================ */
+  function kaydet(){
+    var v = form.submit();
+    if(!v) return false;                 /* doğrulama düştü; bileşen söyledi */
+
+    var bas = bosNull(v.baslangic);
+    var bit = bosNull(v.bitis);
+    var isGun = isGunu(bas, bit);
+
+    /* Tarih sırası doğrulaması alan tarafında da var; burada kayıt
+       KOŞULU olarak tekrar sorulur (uyarıp geçmek yasak — §14.12).
+       Sebebi: `gun` türetilemeyen bir kayıt, süresi ölçülemeyen bir izin
+       demektir ve o kayıt defterde bir şey ifade etmez. */
+    if(isGun == null){
+      GV.toast('Bitiş tarihi başlangıçtan önce olamaz; iş günü sayısı ölçülemedi ve kayıt ' +
+               'açılmadı.', 'danger');
+      return false;
+    }
+
+    var muhatap = iliskiMuhatabi(v);
+    var onaylayan = (muhatap && muhatap.cozuldu && muhatap.kisi) ? muhatap.kisi : null;
+    var cak = cakisanlar(bas, bit) || [];
+    var hedefKod;
+
+    if(!rec){
+      /* ---- YENİ KAYIT --------------------------------------------
+         Doğum durumu NESNE LİTERALİNDE verilir (geçiş tablosunun ilk
+         kaydı); kayda sonradan durum yazan satır YOKTUR. `aktif` alanı
+         BİLEREK YOK (bu defterde tuzaklı — §22.5). `ret` alanı BİLEREK
+         YOK: 7 kaydın yalnız 1’inde var ve reddin kendi alanıdır.
+         `cakisma` null doğar — sebebi ekranda ve dosya başında yazılı. */
+      hedefKod = kodUret();
+      var yeni = {
+        kod:hedefKod,
+        personel:HEDEF_PERSONEL,
+        tur:bosNull(v.tur),
+        baslangic:bas,
+        bitis:bit,
+        gun:isGun,
+        vekil:bosNull(v.vekil),
+        gerekce:bosNull(v.gerekce),
+        durum:ILK_DURUM,
+        onaylayan:onaylayan,
+        talepTarihi:DB.today,
+        onayTarihi:null,
+        cakisma:null
+      };
+      (DB.leaves || (DB.leaves = [])).unshift(yeni);
+
+      GV.audit.yaz({
+        kayit:hedefKod, modul:'İzin',
+        islem:'İzin talebi oluşturuldu · ' + (yeni.tur || '—') + ' · ' +
+              (DB.empName(HEDEF_PERSONEL) || HEDEF_PERSONEL) + ' · ' +
+              bas + ' → ' + bit + ' · ' + isGun + ' iş günü' +
+              (onaylayan ? ' · onay mercii ' + onaylayan + ' (bağlı yönetici)'
+                         : ' · onay mercii çözülemedi') +
+              (cak.length ? ' · ' + cak.length + ' taleple çakışıyor (' +
+                            cak.map(function(x){ return x.kod; }).join(', ') + ')' : ''),
+        yeni:ILK_DURUM, tone:'ok', icon:'i-plus' });
+    }else{
+      /* ---- DÜZENLEME --------------------------------------------
+         Listede BİLEREK yok: `durum` (geçiş motorunun işi) · `personel`
+         (kaydın sahibi değişmez) · `talepTarihi`/`onayTarihi` (kaydın ve
+         kararın kendi tarihi) · `onaylayan` (ilişki muhatabı personelden
+         türer, personel değişmediği için değişmez) · `cakisma` (proje
+         takvimi alanı — bu form onu ölçmüyor) · `ret` (reddin alanı) ·
+         `aktif` (tuzaklı). */
+      hedefKod = rec.kod;
+      var alanlar = {
+        tur:bosNull(v.tur),
+        baslangic:bas,
+        bitis:bit,
+        gun:isGun,
+        vekil:bosNull(v.vekil),
+        gerekce:bosNull(v.gerekce)
+      };
+      var degisen = [];
+      Object.keys(alanlar).forEach(function(k){
+        var eskiD = rec[k] == null ? '' : String(rec[k]);
+        var yeniD = alanlar[k] == null ? '' : String(alanlar[k]);
+        if(eskiD !== yeniD) degisen.push(k);
+        rec[k] = alanlar[k];
+      });
+
+      GV.audit.yaz({
+        kayit:hedefKod, modul:'İzin',
+        islem:(degisen.length
+                ? 'İzin talebi güncellendi — değişen alan: ' + degisen.join(', ')
+                : 'İzin talebi kaydedildi — alan değişmedi') +
+              ' · durum (' + (rec.durum || '—') + ') değiştirilmedi',
+        tone:'info', icon:'i-edit' });
+    }
+
+    /* ---- Nereye dönülecek (brief §5.4) ------------------------- */
+    var kapiSon = (HEDEF_EMP && bosNull(v.tur))
+      ? GV.gates.izinBakiye({ kod:hedefKod, personel:HEDEF_PERSONEL, tur:bosNull(v.tur),
+                              baslangic:bas, bitis:bit, gun:isGun })
+      : null;
+
+    var mesaj = rec
+      ? 'Talep güncellendi; durum (' + (rec.durum || '—') + ') değiştirilmedi — geçişler izin ' +
+        'detayındaki düğmelerle yürür.'
+      : 'Talep ' + ILK_DURUM + ' durumunda oluşturuldu · ' + isGun + ' iş günü.' +
+        (onaylayan ? ' Onay mercii bağlı yöneticiden türetildi: ' +
+                     (DB.empName(onaylayan) || onaylayan) + '.'
+                   : ' Onay mercii çözülemedi ve uydurulmadı; alan boş kaldı.');
+    if(kapiSon && kapiSon.ok === false){
+      mesaj += ' Bakiye kapısı bu talebi ONAYLANAMAZ gösteriyor (' + kapiSon.why +
+               ') — talep yine de kaydedildi, reddedecek olan onay adımıdır.';
+    }
+    if(cak.length){
+      mesaj += ' Aynı personelin ' + cak.length + ' yaşayan talebiyle çakışıyor: ' +
+               cak.map(function(x){ return x.kod; }).join(', ') + '.';
+    }
+
+    GV.afterSave({
+      kod:hedefKod,
+      liste:LISTE,
+      detay:DETAY,
+      yeni:!rec,
+      mesaj:mesaj,
+      alt:[{ label:'İzin listesinde aç', cls:'btn-line', href:LISTE_IZIN }]
+    });
+    return true;
+  }
+
+  /* ================================================================
+     BACKEND PAYI — brief §10.2 (b) · §20.6 · §22.15
+     ================================================================ */
+  document.getElementById('iznBackend').innerHTML =
+    '<section class="gv-card">' +
+      '<div class="gc-head">' +
+        '<h3 class="gc-title">' + ico('i-shield') + 'Backend payı</h3>' +
+        '<span class="gc-meta">4 madde</span>' +
+      '</div>' +
+      '<div class="gc-body">' +
+        '<ul class="odl-gap">' +
+          '<li><span class="odl-gap-kod">BE-P1</span>' +
+            '<span>Durum geçişi sunucuda yeniden doğrulanmaz; doğum durumu, çıkış zorunluları ve ' +
+              'bakiye kapısı yalnız istemcide ölçülür</span>' +
+            '<span class="odl-gap-bolum">§20.6</span></li>' +
+          '<li><span class="odl-gap-kod">BE-P2</span>' +
+            '<span>Zaman kaydı gerçek bir timesheet servisine bağlı değil; izin günleri kapasite ' +
+              've puantaj hesabına sunucuda işlenmiyor</span>' +
+            '<span class="odl-gap-bolum">§20.6</span></li>' +
+          '<li><span class="odl-gap-kod">BE-P3</span>' +
+            '<span>Onay zinciri örneği sunucuda açılmaz; bu ekran zincirin TANIMINI gösterir, bir ' +
+              'koşumunu değil</span>' +
+            '<span class="odl-gap-bolum">§22.15</span></li>' +
+          '<li><span class="odl-gap-kod">BE-S5</span>' +
+            '<span>Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır — üretilen ' +
+              'izin kaydı da bellekte durur</span>' +
+            '<span class="odl-gap-bolum">§9 audit_event</span></li>' +
+        '</ul>' +
+        '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+          '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+        '<p class="u-faint u-sm">Kaydettikten sonra izin detayına yönlendirme AYRI BİR DOSYAYA ' +
+          'gider ve o dosya veri betiklerini yeniden koşturur: az önce üretilen kayıt bellekten ' +
+          'silinir ve hedefte yeşil "oluşturuldu" şeridiyle birlikte "kayıt bulunamadı" görünür. ' +
+          'Bu prototipin kendi sınırıdır (brief §5.4) ve taklit edilmedi — gerçek sistemde kayıt ' +
+          'sunucuya yazılacağı için yönlendirme kaydı bulur. Ölçüldü: IZN-2026-040 üretildi, ' +
+          'yönlendirmeden sonra defter yeniden 7 kayda döndü.</p>' +
+        '<p class="u-faint u-sm">İki ölçüm daha istemcidedir: iş günü sayımı resmî tatil ' +
+          'defterinin (DB.holidays · ' + (DB.holidays || []).length + ' kayıt) 2025-2026 ' +
+          'aralığıyla sınırlıdır — bu aralığın dışına düşen bir izin, tatilleri eksik sayar; ' +
+          've izin bakiyesi personel kaydındaki tek bir alandan okunur, bir hak defteri ' +
+          '(kıdem/yıl devri) yoktur. Gerçek sistemde ikisi de sunucuda tutulmalıdır.</p>' +
+      '</div>' +
+    '</section>';
+});
+</script>
+</body>
+</html>

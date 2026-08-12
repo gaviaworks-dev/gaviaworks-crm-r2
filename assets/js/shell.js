@@ -839,6 +839,7 @@
        olmaması da, burada olup diskte olmaması da kırmızı yanar. */
     'app-proje-form.html',
     'app-satinalma-form.html',
+    'app-izin-form.html',
     /* Dilim 5 — Ayarlar. Dört ekranın dördü de şartname §3.3'ün AYNI ayar
        kabuğudur; sekmeler `GV.shell.ayarSekmeleri()` ile yetkiden üretilir. */
     'app-ayar-profil.html',
