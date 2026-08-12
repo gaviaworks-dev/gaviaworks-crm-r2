@@ -321,7 +321,18 @@
     }
 
     function bagla(r, veri){
-      mount.addEventListener('click', function(e){
+      /* ⚠️ ÖLÇÜLEN KUSUR (gömme dilimi ajanı raporladı, burada ölçülüp
+         onarıldı): burada `mount.addEventListener` vardı ve `bagla()` HER
+         `ciz()`te koşuyor. `mount` düğümü kalıcı — yalnız `innerHTML`
+         değişiyor — dolayısıyla her rapor/filtre değişiminde bir dinleyici
+         daha birikiyordu; n. tıklamada `ciz()` n kez koşuyor ve altı
+         raporun hesap yordamları katlanarak çalışıyordu. Ekranda görünür
+         bozulma yok (çizim idempotent), bu yüzden beş oturum fark
+         edilmedi. §2.6'nın `GV.on(el, type, fn, key)` yordamı tam bu iş
+         için var ve kayıt anahtarı düğüme yazıldığı için ikinci bağlama
+         öncekini SÖKER. `select` dinleyicileri her çizimde YENİ düğümlere
+         bağlanıyor, onlarda birikme yok — dokunulmadı. */
+      GV.on(mount, 'click', function(e){
         var s = e.target.closest('[data-rp]');
         if(s){ durum.key = s.dataset.rp; urlYaz(); ciz(); return; }
         var c = e.target.closest('[data-cikti]');
