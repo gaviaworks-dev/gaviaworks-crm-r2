@@ -361,6 +361,79 @@ document.addEventListener('gv:ready', function(){
       if(i.vade && (!m.sonVade || i.vade > m.sonVade)) m.sonVade = i.vade;
     });
 
+    /* ---- ROTA 27 · 28 — KOMİSYON (ADR-R2-04) -----------------------
+       ADR-R2-04: komisyon ayrı ekran değil, finans raporunda bir SATIRDIR.
+       Tavan bu raporda DOLU (KPI 4/4 · tablo 1/1) olduğu için komisyon yeni
+       bir KPI ya da tablo AÇMAZ; var olan tek tablonun müşteri ekseninde iki
+       KOLON olur (`DB.commissions[].musteri` 6/6 kayıtta dolu).
+
+       Dönem süzgeci `kazanimTarihi` iledir — `odemeTarihi` DEĞİL: komisyon
+       kazanç tarihinde doğar ve ödenmemiş kayıtta `odemeTarihi` null'dır,
+       o alanla süzmek ödenmemiş komisyonu görünmez yapardı.
+
+       Rota 28 (derinleşme): `GV.rapor` satır tıklamasıyla derinleşme yordamı
+       TAŞIMIYOR (`bagla()` yalnız `[data-rp]` · `[data-cikti]` · filtre
+       değişimini dinler). Ortak katmana dokunulmaz; derinleşme hücrenin
+       İÇİNDE `<details>` ile verilir. */
+    var kom = (DB.commissions || []);
+    var komPer = {}, komDisiPer = {};
+    kom.forEach(function(c){
+      var hedef = icinde(c.kazanimTarihi, f) ? komPer : komDisiPer;
+      (hedef[c.musteri] || (hedef[c.musteri] = [])).push(c);
+    });
+    /* Tablonun satırları FATURADAN gelir. Seçili filtrede faturası olmayan
+       bir müşterinin komisyonu hiçbir satıra düşmez — sayısı başlıkta beyan
+       edilir, satır uydurulmaz (fatura/tahsilat kolonları boş bir satır,
+       ölçülmemişi ölçülmüş gösterirdi). */
+    var komGorunmez = kom.filter(function(c){ return !perMus[c.musteri]; }).length;
+
+    /* Tek komisyon kaydının derinleşme satırı. `tutar` KAYITTAN okunur;
+       oran × ciro ile TÜRETİLMEZ (oran bir kayıtta 0, ciro bir kayıtta 0 ve
+       tutar yine de dolu — çelişki gizlenmez, yazılır). */
+    function komKayit(c){
+      var carpim = (c.oran || 0) * (c.ciro || 0) / 100;
+      var celiski = (!c.oran || !c.ciro)
+        ? (!c.oran && !c.ciro ? 'oran ve ciro 0' : !c.oran ? 'oran 0' : 'ciro 0')
+        : (Math.abs(carpim - (c.tutar || 0)) > 1 ? 'oran × ciro = ' + F.money(carpim) : '');
+      return '<div class="u-xs"><b>' + GV.esc(c.kod) + '</b> · ' + GV.esc(c.kisi) + '</div>' +
+        '<div class="u-xs u-muted">ciro ' + F.money(c.ciro || 0) +
+          ' · oran %' + (c.oran != null ? c.oran : '—') +
+          ' · tutar ' + F.money(c.tutar) +
+          ' · ' + GV.esc(c.durum) +
+          ' · kazanç ' + (c.kazanimTarihi ? F.date(c.kazanimTarihi) : 'tarih yok') + '</div>' +
+        (celiski
+          ? '<div class="u-xs u-warn">Kayıt çelişkili (' + GV.esc(celiski) + '): tutar oran × ciro ile ' +
+            'türetilmedi, kayıttaki tutar okundu.</div>'
+          : '');
+    }
+    function komHucre(kod){
+      if(!canFinans) return { html:'<span class="cell-mask">••••••</span>', disa:'' };
+      var ic = komPer[kod] || [], dis = komDisiPer[kod] || [];
+      var toplam = ic.reduce(function(s,c){ return s + (c.tutar || 0); }, 0);
+      if(!ic.length && !dis.length) return { html:'<span class="u-faint">—</span>', disa:'' };
+      var govde = ic.map(komKayit).join('') +
+        (dis.length ? '<div class="u-xs u-muted">' + dis.length + ' kayıt bu dönemin dışında ' +
+          'ya da kazanç tarihi yazılı değil (' + dis.map(function(c){
+            return c.kazanimTarihi ? F.date(c.kazanimTarihi) : 'tarih yok'; }).join(', ') +
+          ') — dönem süzgeci kazanimTarihi iledir, tarihsiz kayıt hiçbir döneme girmez.</div>' : '');
+      return {
+        html:'<details><summary class="u-sm">' +
+               (ic.length ? F.money(toplam) + ' · ' + ic.length + ' kayıt'
+                          : '<span class="u-faint">— · dönem dışı ' + dis.length + '</span>') +
+             '</summary>' + govde + '</details>',
+        /* CSV'ye ham HTML sızmaz: `disa` düz metindir ve maskeleme kuralını
+           delmez (yetkisiz kullanıcı yukarıda '' ile döndü). */
+        disa:ic.length ? toplam : ''
+      };
+    }
+    function komDurumHucre(kod){
+      if(!canFinans) return { html:'<span class="cell-mask">••••••</span>', disa:'' };
+      var ic = komPer[kod] || [], d = [];
+      ic.forEach(function(c){ if(d.indexOf(c.durum) === -1) d.push(c.durum); });
+      if(!d.length) return { html:'<span class="u-faint">—</span>', disa:'' };
+      return { html:d.map(function(x){ return GV.badge(x); }).join(' '), disa:d.join(' · ') };
+    }
+
     return {
       kpis:[
         { lbl:'Toplam fatura', val:maskeli(F.money(brut)), gizli:!canFinans },
@@ -380,9 +453,17 @@ document.addEventListener('gv:ready', function(){
           aciklama:'İki seri, ortak eksen · aylık kırılım · kaynak: DB.invoices + DB.paymentAllocations' }
       ],
       tablo:{
-        baslik:'Müşteri bakiye tablosu',
+        /* Başlık ölçümü taşır: kaç komisyon kaydının bu tabloya HİÇ
+           düşmediği. Satırlar faturadan gelir; seçili filtrede faturası
+           olmayan müşterinin komisyonu hiçbir kolona düşmez. Sayı filtreye
+           göre yeniden hesaplanır, sabit yazılmadı. */
+        baslik:'Müşteri bakiye tablosu' +
+          (canFinans && komGorunmez
+            ? ' · ' + komGorunmez + ' komisyon kaydı bu filtrede faturası olmayan müşteride — kolonlarda yok'
+            : ''),
         kolonlar:[{ lbl:'Müşteri' }, { lbl:'Fatura', num:true }, { lbl:'Tahsilat', num:true },
-                  { lbl:'Açık bakiye', num:true }, { lbl:'Son vade' }],
+                  { lbl:'Açık bakiye', num:true }, { lbl:'Son vade' },
+                  { lbl:'Komisyon', num:true }, { lbl:'Komisyon durumu' }],
         satirlar:Object.keys(perMus).map(function(k){
           var m = perMus[k];
           return [
@@ -393,7 +474,9 @@ document.addEventListener('gv:ready', function(){
                 ? '<span class="' + (m.acik ? 'u-danger' : 'u-faint') + '">' + F.money(m.acik) + '</span>'
                 : '<span class="cell-mask">••••••</span>',
               disa:canFinans ? m.acik : '' },
-            { v:m.sonVade ? F.date(m.sonVade) : '—' }
+            { v:m.sonVade ? F.date(m.sonVade) : '—' },
+            komHucre(k),
+            komDurumHucre(k)
           ];
         }).sort(function(a,b){ return String(a[0].v).localeCompare(String(b[0].v), 'tr'); })
       }
@@ -423,6 +506,73 @@ document.addEventListener('gv:ready', function(){
       return tk.filter(function(t){ return String(t.acilis || '').slice(0,7) === m; }).length;
     });
 
+    /* ---- ROTA 60 — MEMNUNİYET ANKETİ DEFTERİ (`DB.surveys`) ---------
+       Anket defteri, yukarıdaki `Memnuniyet` KPI'ının YERİNE GEÇMEZ:
+       o KPI `DB.tickets[].memnuniyet` okur (talep başına tek puan), bu
+       defter ise 24 ayrı anket kaydıdır (proje teslimi · dönemsel · destek
+       talebi). İkisi farklı ölçüdür ve AYNI KOLONDA TOPLANMAZ. KPI tavanı
+       bu raporda da DOLU (4/4) olduğu için anket yeni KPI açmaz; boş olan
+       ikinci grafik yuvasına ve tablonun bir kolonuna girer.
+
+       Anketin projesi doğrudan yazılı değil, `ilgili` alanından TÜRETİLİR:
+       PRJ-* zaten projedir, DST-* talebin projesine çözülür, BKP-* ve boş
+       olanın proje bağı YOKTUR (uydurulmaz — kapsam süzgeci açıkken düşer).
+       `sorumlu` süzgeci ankete UYGULANMAZ: `DB.surveys` personel alanı
+       taşımıyor (`yanitlayan` müşteri tarafındaki kişidir). */
+    function anketProje(s){
+      if(!s.ilgili) return null;
+      if(String(s.ilgili).indexOf('PRJ-') === 0) return s.ilgili;
+      if(String(s.ilgili).indexOf('DST-') === 0){
+        var d = (DB.tickets || []).filter(function(x){ return x.kod === s.ilgili; })[0];
+        return d ? (d.proje || null) : null;
+      }
+      return null;
+    }
+    var ank = (DB.surveys || []).filter(function(s){
+      return icinde(s.tarih, f) && (!f.kapsam || anketProje(s) === f.kapsam);
+    });
+    /* `durum:'Bekliyor'` ortalamaya GİRMEZ — sıfır sayılmaz, sayılır ve yazılır. */
+    var ankYanit = ank.filter(function(s){ return s.durum === 'Yanıtlandı' && s.puan != null; });
+    var ankBekleyen = ank.filter(function(s){ return s.durum !== 'Yanıtlandı'; });
+    var ankOrt = ankYanit.length
+      ? (ankYanit.reduce(function(a,s){ return a + s.puan; }, 0) / ankYanit.length) : null;
+
+    /* NPS kırılımı — etiketler ve tonları ortak katmanda (ui.js NPS sözlüğü:
+       Destekleyici / Nötr / Kötüleyici) tanımlı, ton `GV.tone`dan okunur.
+       ⚠️ Ortak katmanda EŞİKLERİ HESAPLAYAN yordam YOK (sözlük yalnız etiket
+       ve ton taşıyor); eşikler burada uygulanır ve ekranda yazılır. */
+    var ankTavsiye = ank.filter(function(s){ return s.tavsiye != null; });
+    function npsGrup(ad, sec){
+      return { label:ad, value:ankTavsiye.filter(sec).length,
+               tone:GV.tone ? GV.tone(ad) : '' };
+    }
+    var npsVeri = ankTavsiye.length ? [
+      npsGrup('Destekleyici', function(s){ return s.tavsiye >= 9; }),
+      npsGrup('Nötr',         function(s){ return s.tavsiye >= 7 && s.tavsiye <= 8; }),
+      npsGrup('Kötüleyici',   function(s){ return s.tavsiye <= 6; })
+    ] : [];
+
+    /* Talebin kendi anketi — talep ekseninde tablo kolonu. Ölçüldü: bir
+       talebin en fazla bir anketi var, yine de çoklu bağ basılabilir.
+       Buraya dönem süzgeci UYGULANMAZ: satır zaten o talebin satırıdır ve
+       talebe bağlı anketi dönem penceresi yüzünden gizlemek, var olan bağı
+       yok göstermek olurdu. Grafikteki defter ölçüsü dönemlidir; bu kolon
+       satırın kendi kaydıdır. */
+    function anketHucre(t){
+      var list = (DB.surveys || []).filter(function(s){ return s.ilgili === t.kod; });
+      if(!list.length) return { html:'<span class="u-faint">—</span>', disa:'' };
+      return {
+        html:list.map(function(s){
+          return GV.badge(s.durum) +
+            (s.puan != null ? ' <span class="u-num">' + s.puan.toFixed(1) + ' / 5</span>' : '');
+        }).join(' '),
+        ipucu:list.map(function(s){ return s.kod + ' · ' + s.tur + ' · ' + s.tarih; }).join(' | '),
+        disa:list.map(function(s){
+          return s.kod + ' · ' + s.durum + (s.puan != null ? ' · ' + s.puan : '');
+        }).join(' | ')
+      };
+    }
+
     return {
       kpis:[
         { lbl:'Açık talep', val:F.num(acik.length) },
@@ -439,12 +589,23 @@ document.addEventListener('gv:ready', function(){
         { baslik:'Talep trendi — son 12 ay',
           html:C.line([{ ad:'Açılan talep', values:acilan }], ay.map(ayEtiket),
                       { height:280, label:'Aylık açılan talep' }),
-          aciklama:'Kaynak: DB.tickets.acilis (' + tk.length + ' kayıt)' }
+          aciklama:'Kaynak: DB.tickets.acilis (' + tk.length + ' kayıt)' },
+        { baslik:'Anket defteri — tavsiye skoru kırılımı',
+          html:C.bar(npsVeri, { height:280, label:'Anket tavsiye skoru kırılımı' }),
+          aciklama:'Kaynak: DB.surveys (' + ank.length + ' anket, dönem süzgeci tarih alanı ile) · ' +
+            'eşikler: destekleyici 9-10 · nötr 7-8 · kötüleyici 0-6 · ' +
+            (ankOrt != null
+              ? 'yanıtlanan ' + ankYanit.length + ' ankette ortalama puan ' + ankOrt.toFixed(1) + ' / 5'
+              : 'yanıtlanmış anket yok, ortalama hesaplanmadı') +
+            ' · ' + ankBekleyen.length + ' anket yanıt bekliyor ve ortalamaya GİRMEDİ' +
+            ' · ' + (ank.length - ankTavsiye.length) + ' ankette tavsiye skoru yok' +
+            ' · bu ölçü DB.tickets.memnuniyet KPI’ından AYRIDIR, onunla toplanmaz' +
+            (f.sorumlu ? ' · sorumlu süzgeci ankete uygulanmadı: DB.surveys personel alanı taşımıyor' : '') }
       ],
       tablo:{
         baslik:'Açık kritik talepler',
         kolonlar:[{ lbl:'Talep' }, { lbl:'Müşteri' }, { lbl:'Öncelik' },
-                  { lbl:'SLA' }, { lbl:'Sorumlu' }],
+                  { lbl:'SLA' }, { lbl:'Sorumlu' }, { lbl:'Anket' }],
         satirlar:acik.filter(function(t){
           return t.oncelik === 'Kritik' || t.oncelik === 'Yüksek';
         }).map(function(t){
@@ -453,7 +614,8 @@ document.addEventListener('gv:ready', function(){
             { v:t.musteriAd || t.musteri },
             { html:GV.pri(t.oncelik), disa:t.oncelik },
             { v:t.sla || '—' },
-            { v:t.sorumlu ? DB.empName(t.sorumlu) : '—' }
+            { v:t.sorumlu ? DB.empName(t.sorumlu) : '—' },
+            anketHucre(t)
           ];
         })
       }
