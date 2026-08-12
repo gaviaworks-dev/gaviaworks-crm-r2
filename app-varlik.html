@@ -177,9 +177,12 @@ document.addEventListener('gv:ready', function(){
 
   /* K-30 — düşen zimmet iddiası satırı. Veriye YAZILMAZ, görüntü anında
      defterden türetilir; demirbaş bağlamında VARSA basılması ZORUNLUDUR.
-     `dusenIddiaSatiri` `icon:'i-alert-triangle'` döndürüyor ama bu ad 113
-     sembollük sprite'ta YOK (brief §3) — sahte/boş ikon basmamak için burada
-     geçerli bir sprite adıyla (`i-alert`) elle basılır; bu bir ORTAK KATMAN
+     ⚠️ BU YORUM BAYATLADI ve düzeltildi: yordam eskiden
+     `icon:'i-alert-triangle'` döndürüyordu ve o ad 113 sembollük sprite'ta
+     YOK, o yüzden bu ekran geçerli adı elle basıyordu. `domain.js`
+     `dusenIddiaSatiri` artık `icon:'i-alert'` döndürüyor — telafi GEREKSİZ.
+     Elle basma korunuyor (satır bu ekranın kendi işaretlemesine giriyor)
+     ama sebebi artık "yordam yanlış ad veriyor" DEĞİL: bu bir ORTAK KATMAN
      eksikliğidir, raporda bildirildi, `domain.js` değiştirilmedi. */
   function dusenIddiaHtml(demirbasKod){
     var satir = GV.varlik.dusenIddiaSatiri(demirbasKod);
@@ -266,7 +269,16 @@ document.addEventListener('gv:ready', function(){
         : '<span class="u-faint">—</span>' + GV.cell.sub('tutanak dosya adı kayıtlı değil')],
       ['Hasar', bos(z.hasar) ? GV.esc(z.hasar) : null],
       ['İade tarihi', iade && z.iadeTarihi ? '<span class="cell-date">' + F.date(z.iadeTarihi) + '</span>' : null],
-      ['İade kontrolü', iade && bos(z.iadeKontrol) ? GV.badge(z.iadeKontrol) : null],
+      /* ⚠️ SÖZLÜKSÜZ ALANDA ROZET YOK (§22.17.12). `iadeKontrol` bir sözlüğe
+         bağlı değildir (1/7 kayıtta dolu, tek değer `'Eksikli'`); `GV.badge`
+         onu ton sözlüğünde arar, bulamaz ve NÖTR basar — yani rozet hiçbir
+         şey söylemez ama sözlükte varmış gibi görünür. Düz metin + kaynağı.
+         `app-demirbas-detay.html` aynı alanı bu kurala uyarak basıyordu;
+         iki ekran aynı alanı iki biçimde basmamalı (L-40). */
+      ['İade kontrolü', iade && bos(z.iadeKontrol)
+        ? GV.esc(z.iadeKontrol) + GV.cell.sub('sözlüğü yok — değer tutanak kaydından, ' +
+            'rozet basılmadı çünkü ton sözlüğünde karşılığı yok')
+        : null],
       ['Eksik ekipman', iade && bos(z.eksik) ? GV.esc(z.eksik) : null],
       ['İade alan', iade && z.iadeAlan ? GV.user(z.iadeAlan, { sm:true }) : null]
     ];
