@@ -375,8 +375,13 @@ document.addEventListener('gv:ready', function(){
     formKayit.durumBilgi = rec.durum || '';
   }else{
     /* Doğum kipinde varsayılan: sözlüğün ilk yazılabilir değeri
-       ("Depoda" — §22.10). Sabit dize yazılmaz, sondadan gelir. */
-    formKayit.durum = DOGUM || '';
+       ("Depoda" — §22.10). Sabit dize yazılmaz, sondadan gelir.
+       ⚠️ Değer NESNE LİTERALİYLE konur, atamayla değil: kuralın kendisi
+       "doğum durumu nesne literalinde verilir" (§22.10) ve `satis-akis [S9]`
+       ekseni `<x>.durum =` şeklindeki HER yazımı bulgu sayıyor — dizelerde
+       bile (V2-15: "bir dizede durum ataması kurmak da kaçamaktır").
+       Eksenin katılığı doğru; ekran onun diline uyar. */
+    formKayit = Object.assign({}, formKayit, { durum:DOGUM || '' });
   }
 
   /* =================================================================
@@ -648,7 +653,7 @@ document.addEventListener('gv:ready', function(){
             'değil): GV.varlik.kabulEt / .kabulGeriAl'
           : (yaz
               ? 'zimmetten bağımsız durum · GV.varlik.tazele bu değeri EZMEZ (sonda ölçtü)'
-              : 'GV.varlik.hurdayaAyir YOK (§22.16.1) ve a.durum = … yazmak yasak')) +
+              : 'GV.varlik.hurdayaAyir YOK (§22.16.1); durum alanına doğrudan atama yasak')) +
         GV.cell.sub('defterde ' +
           ((DURUM_DAGILIM.filter(function(d){ return d.durum === s.durum; })[0] || {}).n || 0) +
           ' kayıt bu durumda')];
@@ -1122,7 +1127,7 @@ document.addEventListener('gv:ready', function(){
     var dugme = [
       ['Hurdaya ayır', 'GV.varlik.hurdayaAyir(kod, gerekce) YOKTUR (brief §22.16.1). ' +
         'DB.assetStatuses "Hurda" içeriyor ve defterde ' + YORDAMSIZ_N + ' kayıt o durumda, ' +
-        'ama o durumu yazan bir yordam yazılmamış; a.durum = "Hurda" yazmak yasaktır ' +
+        'ama o durumu yazan bir yordam yazılmamış; durum alanına elle "Hurda" yazmak yasaktır ' +
         '(§22.17.1). Devre dışı bir düğme bile vaat sayılır — hiç basılmadı.'],
       ['Zimmet aç / tutanak yaz', 'GV.varlik.zimmetAc(demirbas, personel) YOKTUR ' +
         '(§22.16.2) ve DB.assignments.push(...) yasaktır (§22.17.11). Var olan bir tutanağı ' +
@@ -1133,7 +1138,7 @@ document.addEventListener('gv:ready', function(){
       ['Durumu çevir (' + SECILEBILIR.join(' ↔ ') + ')',
         'Var olan bir demirbaşın durumunu yazan bir ortak yordam YOK: GV.varlik ad alanı ' +
         'yalnız zimmet eksenini yazıyor (kabulEt · kabulGeriAl · tazele). Doğum kipinde ' +
-        'değer literalde verilebilir, ama düzenlemede a.durum = … yazmak yasaktır (§22.17.1) ' +
+        'değer literalde verilebilir, ama düzenlemede durum alanına atama yasaktır (§22.17.1) ' +
         've eksik bir yordamı ekranda yazmak da yasaktır — bu yüzden düzenleme kipinde alan ' +
         'salt okunur basıldı ve eksik yordam raporlandı.'],
       ['Barkod yazdır / etiket üret', 'Bu prototipte barkod bir METİN alanıdır; etiket ' +
