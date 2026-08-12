@@ -1,0 +1,1217 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Yeni Demirbaş — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="ekip" data-screen="varlik">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/hr.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   DEMİRBAŞ FORMU — rota 95 · brief §5 (CreateEditPage deseni) · §20.3 ·
+   §20.4 · §20.7 · §22.0 · §22.2 · §22.3 · §22.4 · §22.10 · §22.15 ·
+   §22.16 · §22.17
+
+   DESEN: `GV.pageHead` + `GV.form` + `GV.afterSave`. Bu depoda
+   `CreateEditPage` ADINDA bir bileşen yoktur; desen budur (brief §5).
+
+   BU EKRANIN ÇEKİRDEK KURALI — DURUM TÜRETİLMİŞTİR
+   ─────────────────────────────────────────────────────────────────────
+   `DB.transitions.asset` YOKTUR (brief §22.3; ölçüldü: geçiş tablosunda
+   15 varlık var, `asset` onlardan biri değil). Demirbaşın `durum` ve
+   `zimmetli` alanları TÜRETİLMİŞ GÖRÜNÜMDÜR; otorite `DB.assignments`
+   defteridir (ADR-R2-29 · K-30 · brief §20.3). Bu yüzden:
+
+     · Form durum sözlüğünün TAMAMINI listelemez. Hangi değerin
+       yazılabilir olduğunu ekran KENDİ SÖZÜNDEN değil, türetim
+       yordamının kendisinden ölçer: sözlüğün her değeri
+       `GV.varlik.tazele` yordamından bir SONDA nesnesiyle geçirilir ve
+       yordamın EZDİĞİ değerler listeden düşer (aşağıda `SONDA`). Kuralı
+       ikinci kez yazmak (L-40) yerine yordama sorulur.
+       Ölçülen sonuç: `Depoda` ve `Aktif` korunur · `Zimmetli` ve
+       `Zimmet bekliyor` `Depoda`ya EZİLİR · `Hurda` korunur ama onu
+       YAZAN YORDAM YOK (§22.16.1) — o yüzden o da listelenmez.
+     · `zimmetli` · `zimmetTarihi` · `iadeTarihi` alanlarına bu ekran
+       HİÇ YAZMAZ; doğum literalinde de yer almazlar. `DB.assets`
+       üstünde doğrudan atama yasaktır (§22.17.1). Bu üç alanı yazan tek
+       yer `GV.varlik` ad alanıdır (`kabulEt` · `kabulGeriAl` · `tazele`).
+     · DURUM YALNIZ DOĞUMDA BİR ALANDIR. §22.10 forma iki değer veriyor
+       (`Depoda` varsayılan · `Aktif`), §22.17.1 ise `a.durum = …`
+       atamasını yasaklıyor; ikisini birden karşılayan tek yol §22.1b.4'ün
+       DOĞUM LİTERALİDİR. Var olan bir demirbaşın durumunu yazan bir ortak
+       yordam yazılmamıştır (`GV.varlik` ad alanında böyle bir imza yok),
+       o yüzden düzenleme kipinde alan SALT OKUNUR basılır, kaydetme onu
+       OKUMAZ ve eksik yordam beyan edilir. Kardeş formlar (proje ·
+       personel · izin) durumu aynı biçimde salt okunur basıyor.
+     · Açık (iade edilmemiş) bir zimmet tutanağı olan demirbaşta durum
+       zaten tutanaktan türer: ne yazılsa `GV.varlik.tazele` bir sonraki
+       yüklemede tutanağın söylediğini yazar (ölçüldü). Yazılamayan bir
+       alanı bir `<select>` olarak basmak vaat olurdu.
+
+   SONDA DEFTERE DOKUNMAZ: `GV.varlik.tazele` yalnız verilen nesneyi ve
+   `DB.assignments`i okur; sonda nesnesi `DB.assets`e girmez, aktivite
+   defterine satır yazmaz (ölçüldü: 207 aktivite kaydı sonda öncesi ve
+   sonrası aynı) ve `GV.varlik.sonTazeleme` ölçümünü bozmaz.
+
+   KAYIT YAZMA — `GV.demirbas.*` DİYE BİR AD ALANI YOKTUR (§22.16.6) ve
+   `GV.varlik.olustur/guncelle` de yoktur. Kayıt, teklif/fatura/proje/
+   personel formlarındaki desenle NESNE LİTERALİYLE doğar; doğum durumu
+   literalde verilir, kayda sonradan durum yazan satır YOKTUR
+   (§22.1b.4 · §14.5).
+
+   KOD ÜRETİMİ: brief §22.2 GLOBAL-max varyantı. Yıl-içi tarama
+   `DMB-2026-016` yerine `DMB-2026-004` üretirdi; oysa 004 numarası
+   `DMB-2025-004` olarak defterde kullanılmış — sıra yıllar arasında
+   ilerliyor (`DMB-2023-011` · `DMB-2024-001…003` · `DMB-2025-004…010` ·
+   `DMB-2026-012…015`). Bugünkü veriyle üretilen kod: `DMB-2026-016`
+   (ölçüldü).
+
+   YÜKLENEN VERİ (brief §22.0 tablosu, sıra §1.1): org · crm · work ·
+   misc · ops · hr · lifecycle.
+   ⚠️ ÖLÇÜM: `DB.assets` · `DB.assignments` · `DB.assetClaimDrops` ·
+   `DB.suppliers` · `DB.orders` · `DB.assetCategories` **`ops.js`te**,
+   `DB.assetStatuses` **`hr.js`te**, `DB.departments` **`org.js`te**.
+   Brief §20.0 bu koleksiyonları `hr.js`e yazıyor; ölçüm başkasını
+   söylüyor ve raporda bildirildi. İki dosya da bu ekranda yüklü olduğu
+   için sonuç doğru; ama "kullanmadığın veri dosyasını yükleme" kuralı
+   bu satırın doğru olmasına bağlıdır. `firsat.js` · `odeme.js` ·
+   `notes.js` · `reports.js` yüklenmez.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var esc = GV.esc;
+  var F   = GV.fmt;
+
+  var q    = new URLSearchParams(location.search);
+  var kod  = q.get('id');
+  var tumu = DB.assets || [];
+  /* Kaydı ortak yordam bulur (`GV.varlik.kayit` kod da kayıt da kabul
+     eder — brief §20.3); ekran ikinci bir arama yazmaz. */
+  var rec  = kod ? GV.varlik.kayit(kod) : null;
+
+  /* ---- Küçük yardımcılar -------------------------------------------- */
+  function bosNull(x){
+    var s = (x == null) ? '' : String(x).trim();
+    return s === '' ? null : s;
+  }
+  function sayiYaNull(x){
+    var s = String(x == null ? '' : x).trim();
+    if(s === '') return null;
+    var n = parseFloat(s.replace(',', '.'));
+    return isFinite(n) ? n : null;
+  }
+  function faint(s){ return '<span class="u-faint">' + esc(s) + '</span>'; }
+  function faintNot(html){ return '<p class="u-faint u-sm">' + html + '</p>'; }
+  function kodEt(s){ return '<span class="cell-code">' + esc(s) + '</span>'; }
+  function benzersiz(list){
+    return (list || []).filter(function(v, i, s){
+      return v != null && v !== '' && s.indexOf(v) === i; });
+  }
+  function trSirala(a, b){ return String(a).localeCompare(String(b), 'tr'); }
+  function kart(ikon, baslik, meta, govde){
+    return '<section class="gv-card u-mt-4"><div class="gc-head">' +
+      '<h3 class="gc-title">' + GV.ico(ikon) + esc(baslik) + '</h3>' +
+      (meta ? '<span class="gc-meta">' + meta + '</span>' : '') +
+      '</div><div class="gc-body">' + govde + '</div></section>';
+  }
+  function depKaydi(k){ return (DB.departments || []).filter(function(d){ return d.kod === k; })[0] || null; }
+  function tedarikciKaydi(k){ return (DB.suppliers || []).filter(function(s){ return s.kod === k; })[0] || null; }
+  function siparisKaydi(k){ return (DB.orders || []).filter(function(o){ return o.kod === k; })[0] || null; }
+
+  /* =================================================================
+     0. ÜÇ KAPI — kayıt yok · müşteri oturumu · yetki yok
+     ================================================================= */
+  if(kod && !rec){
+    GV.pageHead({
+      eyebrow:'Ekip ve Kaynaklar', title:'Kayıt bulunamadı', sub:kod,
+      actions:[{ label:'Varlık listesine dön', icon:'i-arrow-left', href:'app-varlik.html?t=demirbas' }]
+    });
+    mount.innerHTML = GV.errorState({
+      title:kod + ' bulunamadı',
+      desc:'Bu kod demirbaş defterindeki ' + tumu.length + ' kayıttan hiçbiriyle eşleşmedi. ' +
+           'Adres çubuğundaki kodu kontrol edin ya da demirbaş yüzeyinden kaydı seçin.',
+      action:'<a class="btn btn-acc" href="app-demirbas-form.html">Yeni demirbaş kaydı aç</a>' });
+    return;
+  }
+
+  /* Müşteri oturumuna karşı kayıt kapısı (brief §6 adım 2 · §21.11).
+     Demirbaş kaydında `musteri` alanı YOKTUR (ölçüldü: 20 alanlı şemada
+     böyle bir alan yok) — kapıya `musteri:null` verilir: yordam müşteri
+     oturumunu her hâlükârda reddeder, personel oturumunu geçirir. Ekran
+     ikinci bir "müşteri mi" testi yazmaz. */
+  if(!GV.guardRecord({ mount:'#rec', musteri:null, kod:rec ? rec.kod : null,
+      eyebrow:'Ekip ve Kaynaklar',
+      title:rec ? ([rec.marka, rec.model].filter(Boolean).join(' ') || rec.kod) : 'Yeni Demirbaş',
+      geriHref:'app-varlik.html?t=demirbas', geriLabel:'Varlık listesine dön' })) return;
+
+  var izinli = rec ? GV.perm.can('duzenle') : GV.perm.can('ekle');
+  if(!izinli){
+    GV.pageHead({
+      eyebrow:'Ekip ve Kaynaklar',
+      title:rec ? ([rec.marka, rec.model].filter(Boolean).join(' ') || rec.kod) : 'Yeni Demirbaş',
+      sub:'Bu ekran için yetkiniz yok',
+      actions:[{ label:'Varlık listesine dön', icon:'i-arrow-left', href:'app-varlik.html?t=demirbas' }]
+    });
+    mount.innerHTML = GV.empty({ icon:'i-lock',
+      title:rec ? 'Demirbaş kaydını düzenleme yetkiniz yok' : 'Yeni demirbaş kaydı açma yetkiniz yok',
+      desc:'Rolünüz (' + GV.perm.role() + ') bu işlem için yetkili değil. Varlık listesini ' +
+           'görüntülemeye devam edebilirsiniz.',
+      action:'<a class="btn btn-line" href="app-varlik.html?t=demirbas">Varlık listesine dön</a>' });
+    return;
+  }
+
+  /* =================================================================
+     1. DURUM EKSENİ — TÜRETİM YORDAMINA SORULUR, YENİDEN YAZILMAZ
+     -----------------------------------------------------------------
+     `DB.assetStatuses` 5 değer taşır. Hangisinin bu formdan YAZILABİLİR
+     olduğunu ekran bir listeye gömmez: her değeri bir SONDA nesnesiyle
+     `GV.varlik.tazele`den geçirir ve yordamın ezdiklerini düşürür.
+     Sonda `DB.assets`e girmez, deftere satır yazmaz.
+     ================================================================= */
+  var DURUMLAR = DB.assetStatuses || [];
+
+  /* Sonda kodu defterde OLMAYAN bir koddur: `GV.varlik.zimmetOf` onu
+     `DB.assignments` içinde aradığında hiçbir tutanak bulmaz, yani
+     "tutanaksız demirbaş" hâli ölçülür.
+     ⚠️ Sonda nesnesi ŞEKLİ TAM olmalıdır ve soru `r.degisti` DEĞİLDİR:
+     ölçüldü ki `zimmetli` alanını TAŞIMAYAN bir nesnede yordam alanı
+     `undefined`dan `null`a çekiyor ve `degisti:true` diyor — yani
+     `degisti` iki ekseni birden (durum VE zimmet) cevaplıyor. Buradaki
+     soru yalnız DURUM eksenidir; o yüzden karşılaştırma `p.durum`
+     üzerinden yapılır. Bu ayrım ölçülmeden yazılan ilk sürüm bütün
+     sözlüğü "türetilir" sayıp formu durumsuz bırakıyordu. */
+  var SONDA_KOD = 'DMB-OLCUM-0';
+  var SONDA = DURUMLAR.map(function(d){
+    var p = { kod:SONDA_KOD, durum:d, zimmetli:null, zimmetTarihi:null, iadeTarihi:null };
+    GV.varlik.tazele(p);
+    return { durum:d, sonra:p.durum, ezildi:p.durum !== d };
+  });
+  var TURETILEN = SONDA.filter(function(s){ return s.ezildi; })
+                       .map(function(s){ return s.durum; });   /* Zimmetli · Zimmet bekliyor */
+  /* Yordamın KORUDUĞU değerler yazılabilir adaylardır; ama bir değeri
+     yazan yordam yoksa o da listelenmez. `Hurda` tam bu durumdadır:
+     `GV.varlik.hurdayaAyir` YOK (§22.16.1) ve `a.durum = 'Hurda'`
+     yazmak yasak (§22.17.1). Ad listesi tek yerde durur. */
+  var YORDAMSIZ = ['Hurda'];
+  var SECILEBILIR = SONDA.filter(function(s){
+    return !s.ezildi && YORDAMSIZ.indexOf(s.durum) === -1; }).map(function(s){ return s.durum; });
+  var DOGUM = SECILEBILIR[0] || null;      /* sözlüğün ilk değeri — 'Depoda' */
+
+  /* Defterin bugünkü hâli — sayılar ölçülür, yazılmaz. */
+  var DURUM_DAGILIM = DURUMLAR.map(function(d){
+    return { durum:d, n:tumu.filter(function(a){ return a.durum === d; }).length };
+  });
+  var TAZELE = GV.varlik.sonTazeleme || null;   /* { olculen, degisen[] } — yükleme ölçümü */
+
+  /* ⚠️ DURUM YALNIZ DOĞUMDA YAZILIR — düzenlemede HİÇ OKUNMAZ.
+     İki kural aynı noktada kesişiyor:
+       · §22.10: formda seçilebilen durum İKİ değerdir (Depoda · Aktif),
+       · §22.17.1: `a.durum = …` YASAK — türetilmiş görünüme atama.
+     İkisini birden karşılayan tek yol, brief §22.1b.4'ün doğum literali
+     desenidir: durum kayıt DOĞARKEN literalde verilir, var olan bir
+     kayda SONRADAN yazılmaz. Mevcut bir demirbaşı `Depoda` ↔ `Aktif`
+     arasında çeviren bir ortak yordam YAZILMAMIŞTIR (`GV.varlik` ad
+     alanında böyle bir imza yok — brief §20.3'teki liste tamdır) ve
+     olmayan yordamın yerine atama koymak yasaktır. Bu yüzden düzenleme
+     kipinde alan SALT OKUNUR basılır, sebebi yazılır ve eksik yordam
+     raporlanır. Kardeş formlar (proje · personel · izin) durumu aynı
+     biçimde salt okunur basıyor — sözleşme aynı. */
+  var acikZimmet   = rec ? GV.varlik.zimmetOf(rec.kod) : null;
+  var durumBasilir = !rec;                  /* yalnız DOĞUM kipinde alan */
+  /* İKİ YÖNÜN DEFTER ÖLÇÜMÜ: kapı sessiz çalışmaz. */
+  var ACIK_ZIMMETLI_N = tumu.filter(function(a){ return !!GV.varlik.zimmetOf(a.kod); }).length;
+  var DOGABILIR_N = tumu.filter(function(a){ return SECILEBILIR.indexOf(a.durum) !== -1; }).length;
+  var YORDAMSIZ_N = tumu.filter(function(a){ return YORDAMSIZ.indexOf(a.durum) !== -1; }).length;
+
+  /* =================================================================
+     2. SÖZLÜKLER, TÜRETİLEN SEÇENEKLER VE DEFTER ÖLÇÜMLERİ
+     ================================================================= */
+  var canFinans   = GV.perm.can('finans');
+  var ROL_SAYI    = Object.keys(DB.permMatrix || {}).length;
+  var FINANS_ROL  = Object.keys(DB.permMatrix || {}).filter(function(r){
+    return (DB.permMatrix[r] || {}).finans === true; }).length;
+  /* Ekleme yetkisi olan rol sayısı — ekranın kendi yetki kapısının
+     ölçülebilen yönü. Bölüm erişimi (kabuk 403) matristen okunamaz:
+     o karar kabuğun kendi eşlemesindedir ve bu ekran onu ölçemez. */
+  var EKLE_ROL = Object.keys(DB.permMatrix || {}).filter(function(r){
+    return (DB.permMatrix[r] || {}).ekle && (DB.permMatrix[r] || {}).ekle !== 'yok'; }).length;
+
+  /* Kategori: SÖZLÜK VARDIR (20 değer) — kayıtlardan türetilmez.
+     Ölçüldü: 15 kayıtta 8 kategori kullanılmış. */
+  var KATEGORILER   = DB.assetCategories || [];
+  var KAT_KULLANILAN= benzersiz(tumu.map(function(a){ return a.kategori; }));
+
+  /* SÖZLÜĞÜ OLMAYAN ALANLAR (brief §22.4): seçenekler defterden
+     türetilir ve kaynağı ekranda YAZILIR (§10.1). */
+  var ALT_KATEGORI = benzersiz(tumu.map(function(a){ return a.altKategori; })).sort(trSirala);
+  var LOKASYONLAR  = benzersiz(tumu.map(function(a){ return a.lokasyon; })).sort(trSirala);
+
+  /* Tedarikçi ve sipariş defterleri: kodları kayıt taşır, sözlük değil.
+     Pasiflik sorusu `GV.arsivli`den geçer — `aktif` alanı OKUNMAZ
+     (§22.17.4 · K-33). Ölçüldü: 7 tedarikçinin hiçbiri pasif değil. */
+  var TEDARIKCILER = DB.suppliers || [];
+  var TED_PASIF    = TEDARIKCILER.filter(function(s){ return GV.arsivli(s); }).length;
+  var TED_SEC      = TEDARIKCILER.map(function(s){
+    return { value:s.kod, label:s.kod + ' · ' + s.unvan +
+      (s.kategori ? ' · ' + s.kategori : '') + (GV.arsivli(s) ? ' · pasif' : '') };
+  });
+  var SIPARISLER = DB.orders || [];
+  var SIP_SEC    = SIPARISLER.slice().sort(function(a, b){
+    return String(b.tarih || '').localeCompare(String(a.tarih || '')); }).map(function(o){
+    return { value:o.kod, label:o.kod + ' · ' + (o.tedarikci || 'tedarikçi yok') + ' · ' +
+      (o.tarih ? F.date(o.tarih) : 'tarih yok') + ' · ' + (o.durum || '—') };
+  });
+  var DEPLER    = DB.departments || [];
+  var DEP_PASIF = DEPLER.filter(function(d){ return GV.arsivli(d); }).length;
+  var DEP_SEC   = DEPLER.map(function(d){
+    return { value:d.kod, label:d.kod + ' · ' + d.ad + (GV.arsivli(d) ? ' · pasif departman' : '') };
+  });
+
+  /* KORUNAN SEÇENEK (brief §22.1b.5): düzenlenen kaydın kendi değeri
+     türetimin dışında kalabilir (sözlükten düşmüş bir kategori, elle
+     girilmiş bir lokasyon, defterden silinmiş bir tedarikçi). O değer
+     listeye EKLENİR — yoksa `select` onu sessizce başka bir değere
+     çevirir ve kaydetmek VERİ KAYBI olur. Yeni kayıtta eklenmez;
+     çelişki yayılmaz. */
+  function korunan(secenekler, alan, gerekce){
+    if(!rec) return secenekler;
+    var v = rec[alan];
+    if(v == null || v === '') return secenekler;
+    var varMi = secenekler.some(function(o){
+      return (o && typeof o === 'object' ? o.value : o) === v; });
+    if(varMi) return secenekler;
+    return secenekler.concat([{ value:v, label:v + ' · ' + gerekce }]);
+  }
+
+  /* ---- Defter ölçümleri — hepsi sayılır ---------------------------- */
+  var ALTKAT_DOLU  = tumu.filter(function(a){ return !!a.altKategori; }).length;
+  var OZELLIK_DOLU = tumu.filter(function(a){ return !!a.ozellik; }).length;
+  var BARKOD_DOLU  = tumu.filter(function(a){ return !!a.barkod; }).length;
+  var SIPARIS_DOLU = tumu.filter(function(a){ return !!a.siparis; }).length;
+  var TED_DOLU     = tumu.filter(function(a){ return !!a.tedarikci; }).length;
+  var DEP_DOLU     = tumu.filter(function(a){ return !!a.dep; }).length;
+  var ALIS_DOLU    = tumu.filter(function(a){ return !!a.alisTarihi; }).length;
+  var GAR_BAS_DOLU = tumu.filter(function(a){ return !!a.garantiBas; }).length;
+  var GAR_BIT_DOLU = tumu.filter(function(a){ return !!a.garantiBit; }).length;
+  var GAR_BITEN    = tumu.filter(function(a){ return a.garantiBit && String(a.garantiBit) < String(DB.today); }).length;
+  var GAR_ALIS_AYNI= tumu.filter(function(a){ return a.garantiBas && a.garantiBas === a.alisTarihi; }).length;
+  var SERI_TEKIL   = benzersiz(tumu.map(function(a){ return a.seri; })).length;
+  var ARSIVLI_N    = tumu.filter(function(a){ return GV.arsivli(a); }).length;
+  var FIYAT_DOLU   = tumu.filter(function(a){ return typeof a.alisFiyati === 'number'; }).length;
+  var FIYAT_SIFIR  = tumu.filter(function(a){ return a.alisFiyati === 0; }).length;
+  var IDDIA_DUSEN  = (DB.assetClaimDrops || []).length;
+
+  /* Barkod deseni ÖLÇÜLDÜ: 15 kaydın 15'inde barkod, kodun sıra
+     numarasından türüyor (`DMB-2026-015` → `GW-DMB-0015`). Bu yüzden
+     alan boş bırakıldığında değer TÜRETİLİR ve türetildiği ekranda
+     yazılır — sessizce değil. */
+  function barkodTuret(demirbasKod){
+    var m = /-(\d+)$/.exec(String(demirbasKod || ''));
+    return m ? 'GW-DMB-' + String(+m[1]).padStart(4, '0') : null;
+  }
+  var BARKOD_DESEN = tumu.filter(function(a){ return a.barkod === barkodTuret(a.kod); }).length;
+
+  /* ---- Üretilecek kod: brief §22.2 GLOBAL-max varyantı ------------- */
+  function kodUret(){
+    var yil = String(DB.today).slice(0, 4), max = 0;
+    (DB.assets || []).forEach(function(x){
+      var m = /^DMB-\d{4}-(\d+)$/.exec(x.kod || '');
+      if(m) max = Math.max(max, +m[1]);        /* ← YIL SERBEST, sıra global */
+    });
+    return 'DMB-' + yil + '-' + String(max + 1).padStart(3, '0');
+  }
+
+  /* =================================================================
+     3. FORMA BASILAN ALAN LİSTELERİ VE ÖN DOLGU
+     -----------------------------------------------------------------
+     Listeler TEK yerde durur; kaydetme de bunları okur (L-40). Para
+     alanı AYRI listededir: yetki kapısı onu hem çizimden hem okumadan
+     düşürür (§22.17.6). Durum da ayrıdır: türetim onu ezebilir.
+     ================================================================= */
+  var METIN_ALAN = ['kategori','altKategori','marka','model','seri','ozellik','barkod',
+                    'alisTarihi','tedarikci','siparis','garantiBas','garantiBit',
+                    'lokasyon','dep'];
+  var PARA_ALAN  = ['alisFiyati'];
+
+  var ETIKET = {
+    kategori:'Kategori', altKategori:'Alt kategori', marka:'Marka', model:'Model',
+    seri:'Seri no', ozellik:'Özellik', barkod:'Barkod', alisTarihi:'Alış tarihi',
+    alisFiyati:'Alış fiyatı (NET)', tedarikci:'Tedarikçi', siparis:'Sipariş',
+    garantiBas:'Garanti başlangıcı', garantiBit:'Garanti bitişi',
+    lokasyon:'Lokasyon', dep:'Departman', durum:'Durum'
+  };
+  function zorLabel(a){ return ETIKET[a] || a; }
+
+  var formKayit = {};
+  if(rec){
+    METIN_ALAN.forEach(function(k){ formKayit[k] = rec[k] == null ? '' : rec[k]; });
+    if(canFinans) PARA_ALAN.forEach(function(k){ formKayit[k] = rec[k] == null ? '' : rec[k]; });
+    /* Durum düzenlemede SALT OKUNUR ve alanın adı `durumBilgi` — kayda
+       yazan koddan ayırt edilebilsin diye (proje/personel formlarıyla
+       aynı sözleşme; elle durum ataması ekseni bu ad ayrımını okuyor). */
+    formKayit.durumBilgi = rec.durum || '';
+  }else{
+    /* Doğum kipinde varsayılan: sözlüğün ilk yazılabilir değeri
+       ("Depoda" — §22.10). Sabit dize yazılmaz, sondadan gelir. */
+    formKayit.durum = DOGUM || '';
+  }
+
+  /* =================================================================
+     4. SAYFA BAŞLIĞI — form bileşeninden ÖNCE (brief §2.4)
+     -----------------------------------------------------------------
+     "Vazgeç" her iki kipte de VARLIK LİSTESİNE döner. `app-demirbas-
+     detay.html` bu turda henüz yazılmadı ve sayfa başlığı kabuğun
+     `markWip` gözlemcisinin taradığı `.gv-main` alanının dışında olabilir
+     (brief §2.7) — yayında olmayan bir hedefi orada vaat etmemek en
+     dürüst davranış. Kaydettikten sonra hedef seçimini `GV.afterSave`
+     KENDİSİ ölçer (`GV.shell.ekranAcilabilir`, brief §5.4); ekran tahmin
+     yapmaz, iki hedefi de bildirir.
+     ================================================================= */
+  GV.pageHead({
+    eyebrow:'Ekip ve Kaynaklar',
+    title:rec ? ([rec.marka, rec.model].filter(Boolean).join(' ') || rec.kod) : 'Yeni Demirbaş',
+    sub:rec
+      ? rec.kod + ' · ' + rec.durum + ' · durum TÜRETİLMİŞ alandır'
+      : 'Yeni demirbaş · kayıt "' + (DOGUM || '—') + '" durumunda doğar · kod ' + kodUret(),
+    actions:[
+      { label:'Vazgeç', icon:'i-arrow-left', href:'app-varlik.html?t=demirbas' },
+      { label:'Kaydet', icon:'i-check', cls:'btn-acc', run:function(){ kaydet(); } }
+    ]
+  });
+
+  mount.innerHTML = '<div id="dmbForm"></div><div id="dmbBasilmayan"></div>' +
+                    '<div id="dmbBackend"></div>';
+
+  /* =================================================================
+     5. ALANLAR
+     ================================================================= */
+  /* GARANTİ KAPISI — İKİ YÖNDEN DE REDDEDER (brief §22.10).
+     "Uyar ama geçir" yasak (§14.12): bitiş başlangıçtan önce olamaz.
+     ISO tarih dizeleri sözlükbilimsel sırada karşılaştırılır. Aynı kural
+     iki alandan da sorulur ki kullanıcı hangisini sonradan değiştirirse
+     değiştirsin kapı kapansın — kural tek yerde (`garantiSirasi`). */
+  function garantiSirasi(bas, bit){
+    if(!bas || !bit) return '';
+    if(String(bit) < String(bas)) return 'Garanti bitişi (' + F.date(bit) + '), garanti ' +
+      'başlangıcından (' + F.date(bas) + ') önce olamaz.';
+    return '';
+  }
+  function garantiBitKontrol(val, veri){ return garantiSirasi(bosNull(veri.garantiBas), bosNull(val)); }
+  function garantiBasKontrol(val, veri){ return garantiSirasi(bosNull(val), bosNull(veri.garantiBit)); }
+
+  /* Seri no ve barkod TEKİLLİK GÖZLEMİ — kapı DEĞİL. Ölçüldü: 15 kaydın
+     serisi de barkodu da tekil. Ama demirbaş defteri için bir mükerrer
+     kontrolü yordamı YAZILMAMIŞTIR; olmayan bir kuralı reddetmek onu
+     uydurmak olurdu (L-13). Çakışma sağ panelde KODLA gösterilir. */
+  function ayniAlan(alan, deger){
+    var d = bosNull(deger);
+    if(!d) return [];
+    return tumu.filter(function(a){
+      return (!rec || a.kod !== rec.kod) &&
+             String(a[alan] || '').trim().toLocaleLowerCase('tr') === String(d).toLocaleLowerCase('tr');
+    });
+  }
+
+  var kimlikAlanlar = [
+    { key:'kategori', label:ETIKET.kategori, type:'select', cols:6, required:true,
+      options:korunan(KATEGORILER, 'kategori', 'kayıtta yazılı; sözlükte yok'),
+      hint:'Kategori için ORTAK SÖZLÜK VAR (' + KATEGORILER.length + ' değer) ve seçenekler ' +
+           'oradan okunur — kayıtlardan türetilmez. Ölçüldü: ' + tumu.length + ' demirbaşta ' +
+           KAT_KULLANILAN.length + ' kategori kullanılmış; kullanılmamış olanlar da seçilebilir.' },
+    { key:'altKategori', label:ETIKET.altKategori, type:'select', cols:6,
+      options:korunan(ALT_KATEGORI, 'altKategori', 'kayıtta yazılı'),
+      hint:'Alt kategori sözlüğü YOK: ' + ALT_KATEGORI.length + ' seçenek mevcut ' + tumu.length +
+           ' demirbaş kaydından türetildi (' + ALT_KATEGORI.join(' · ') + '). Defterde ' +
+           ALTKAT_DOLU + '/' + tumu.length + ' kayıtta dolu. Yeni bir değer bu listeye ancak ' +
+           'bir kayıtla girer; kaydın kendi değeri listede yoksa korunur.' },
+    { key:'marka', label:ETIKET.marka, type:'text', cols:6, required:true,
+      placeholder:'Örn. Apple',
+      hint:'Marka sözlüğü YOK, serbest metindir. Liste ve çekmece marka ile modeli birlikte ' +
+           'basar; ikisi ayrı alandır.' },
+    { key:'model', label:ETIKET.model, type:'text', cols:6, required:true,
+      placeholder:'Örn. MacBook Pro 14 M3',
+      hint:'Serbest metin. Zimmet tutanağında ve arama kutusunda kaydın tanınır adı marka + ' +
+           'modeldir.' },
+    { key:'seri', label:ETIKET.seri, type:'text', cols:6, required:true,
+      placeholder:'Örn. C02X1234ABCD',
+      hint:'Zorunlu: fiziksel demirbaşı tekilleştiren alan budur. Ölçüldü: ' + SERI_TEKIL + '/' +
+           tumu.length + ' kayıtta seri no tekil. Mükerrer kontrolü bir KAPI DEĞİLDİR — bu ' +
+           'defter için yazılmış bir benzersizlik yordamı yok; çakışma sağ panelde kodla ' +
+           'gösterilir, kayıt reddedilmez.' },
+    { key:'barkod', label:ETIKET.barkod, type:'text', cols:6,
+      placeholder:rec ? '' : (barkodTuret(kodUret()) || ''),
+      hint:'Boş bırakırsanız kodun sıra numarasından TÜRETİLİR (ölçüldü: ' + BARKOD_DESEN + '/' +
+           tumu.length + ' kayıtta barkod "GW-DMB-####" deseniyle kodun numarasına eşit). ' +
+           'Yazdığınız değer korunur; türetim yalnız boş alanda çalışır ve sağ panelde ' +
+           'kaydetmeden önce gösterilir.' },
+    { key:'ozellik', label:ETIKET.ozellik, type:'text', cols:12,
+      placeholder:'Örn. M3 Pro · 18 GB RAM · 512 GB SSD',
+      hint:'Serbest metin; teknik özet. Defterde ' + OZELLIK_DOLU + '/' + tumu.length +
+           ' kayıtta dolu ve değerler " · " ile ayrılmış tek satırdır — aynı biçim korunur.' }
+  ];
+
+  var alimAlanlar = [
+    { key:'alisTarihi', label:ETIKET.alisTarihi, type:'date', cols:6,
+      hint:'Defterde ' + ALIS_DOLU + '/' + tumu.length + ' kayıtta dolu. Bugün ' +
+           F.date(DB.today) + '. Bu alan bir TARİHTİR, zaman damgası değil — defterdeki ' +
+           'biçim korunur (brief §22.1c.6).' },
+    { key:'tedarikci', label:ETIKET.tedarikci, type:'select', cols:6,
+      options:korunan(TED_SEC, 'tedarikci', 'kayıtta yazılı; tedarikçi defterinde yok'),
+      hint:'Tedarikçi defterinden okunur (' + TEDARIKCILER.length + ' kayıt, ' + TED_PASIF +
+           ' pasif). Ölçüldü: ' + TED_DOLU + '/' + tumu.length + ' demirbaşta dolu. ' +
+           'Tedarikçinin kendi "kategori" alanı demirbaş kategorisiyle AYNI SÖZLÜK DEĞİLDİR ' +
+           '(örn. "Bulut hizmeti"); bu yüzden seçenekler kategoriye göre süzülmez.' },
+    { key:'siparis', label:ETIKET.siparis, type:'select', cols:6,
+      options:korunan(SIP_SEC, 'siparis', 'kayıtta yazılı; sipariş defterinde yok'),
+      hint:'Opsiyonel. Sipariş defteri ' + SIPARISLER.length + ' kayıt; demirbaşların ' +
+           SIPARIS_DOLU + '/' + tumu.length + ' tanesi bir siparişe bağlı. Boş kalması ' +
+           'normaldir (2026 öncesi alım ya da siparişsiz alım) ve detayda "—" basılır — ' +
+           'tedarikçi eşleşmesi bağ yerine geçmez, uydurulmaz.' },
+    { key:'garantiBas', label:ETIKET.garantiBas, type:'date', cols:6, validate:garantiBasKontrol,
+      hint:'Boş bırakırsanız ALIŞ TARİHİNDEN türetilir (ölçüldü: ' + GAR_ALIS_AYNI + '/' +
+           GAR_BAS_DOLU + ' kayıtta garanti başlangıcı alış tarihine eşit). İkinci el ya da ' +
+           'sonradan başlayan garantide değeri elle girin; girdiğiniz değer korunur.' },
+    { key:'garantiBit', label:ETIKET.garantiBit, type:'date', cols:6, validate:garantiBitKontrol,
+      hint:'Defterde ' + GAR_BIT_DOLU + '/' + tumu.length + ' kayıtta dolu; ' + GAR_BITEN +
+           ' kaydın garantisi bugüne göre bitmiş. Başlangıçtan ÖNCE bir bitiş kaydedilemez: ' +
+           'kapı reddeder, uyarıp geçmez.' }
+  ];
+  var paraAlanlar = [
+    { key:'alisFiyati', label:ETIKET.alisFiyati, type:'money', cols:6, currency:'₺', min:0,
+      hint:'NET (KDV hariç) — siparişin net ekseniyle aynı. Ölçüldü: ' + FIYAT_DOLU + '/' +
+           tumu.length + ' kayıtta sayısal değer var ve ' + FIYAT_SIFIR + ' kayıtta değer 0 ' +
+           '(ölçülmüş bir sıfır: bedelsiz/abonelik kalemi). Bu yüzden 0 reddedilmez.' }
+  ];
+
+  var konumAlanlar = [
+    { key:'lokasyon', label:ETIKET.lokasyon, type:'select', cols:6,
+      options:korunan(LOKASYONLAR, 'lokasyon', 'kayıtta yazılı'),
+      hint:'Lokasyon sözlüğü YOK: ' + LOKASYONLAR.length + ' seçenek mevcut ' + tumu.length +
+           ' demirbaş kaydından türetildi (' + LOKASYONLAR.join(' · ') + '). Bulut kalemleri ' +
+           'de bu eksende taşınır — fiziksel olmayan demirbaş "Bulut" lokasyonundadır.' },
+    { key:'dep', label:ETIKET.dep, type:'select', cols:6,
+      options:korunan(DEP_SEC, 'dep', 'kayıtta yazılı; departman defterinde yok'),
+      hint:'Departman defterinden okunur (' + DEPLER.length + ' kayıt, ' + DEP_PASIF +
+           ' pasif — pasiflik sorusu GV.arsivli yordamındadır, "aktif" alanı okunmaz). ' +
+           'Ölçüldü: ' + DEP_DOLU + '/' + tumu.length + ' demirbaşta dolu. Liste ekranı bu ' +
+           'alanı satır kapsamı olarak kullanır (departman kapsamlı roller).' }
+  ];
+  if(durumBasilir){
+    konumAlanlar.push({ key:'durum', label:ETIKET.durum, type:'select', cols:6,
+      required:true, options:SECILEBILIR,
+      hint:'Bu alan ' + DURUMLAR.length + ' değerlik sözlüğün YALNIZ ' + SECILEBILIR.length +
+           ' değerini listeler (' + SECILEBILIR.join(' · ') + '); varsayılan "' + (DOGUM || '—') +
+           '". Sebebi sağ panelde ölçümüyle yazılı: "' + TURETILEN.join('" ve "') + '" değerleri ' +
+           'zimmet defterinden TÜRETİLİR ve bu formdan yazılsa bir sonraki yüklemede ezilir; "' +
+           YORDAMSIZ.join(' · ') + '" için ise yazan bir yordam yok. Değer kayıt DOĞARKEN ' +
+           'literalde verilir; var olan bir kayda sonradan durum yazılmaz.' });
+  }else{
+    konumAlanlar.push({ key:'durumBilgi', label:ETIKET.durum, type:'select', cols:6,
+      readonly:true, options:DURUMLAR,
+      hint:(acikZimmet
+        ? 'Bu demirbaşın yaşayan bir zimmet tutanağı var (' + acikZimmet.kod + '): durum o ' +
+          'tutanaktan TÜRETİLİR. Kabul / kabul geri alma zimmet yüzeyindedir. '
+        : 'Kaydın durumu ("' + (rec.durum || '—') + '") bu formdan DEĞİŞMEZ. ') +
+        'Durum yalnız kayıt DOĞARKEN literalde verilir; var olan bir demirbaşın durumunu ' +
+        'yazan bir ortak yordam yoktur ve türetilmiş bir alana atama yasaktır. Alan salt ' +
+        'okunur basılıyor, kaydetme onu okumuyor.' });
+  }
+
+  /* =================================================================
+     6. FORM
+     ================================================================= */
+  var sekmeler = [
+    { key:'kimlik', label:'Künye', icon:'i-package' },
+    { key:'alim',   label:'Alım ve garanti', icon:'i-cart' },
+    { key:'konum',  label:'Konum ve durum', icon:'i-home' }
+  ];
+
+  var bolumler = [
+    { title:'Demirbaşın künyesi', icon:'i-package', tab:'kimlik',
+      desc:'Kod kaydederken defterden üretilir; durum bu bölümde değil "Konum ve durum" ' +
+           'sekmesindedir ve orada yalnız türetimin ezmediği değerler listelenir.',
+      fields:kimlikAlanlar },
+    { title:'Alım, tedarik ve garanti', icon:'i-cart', tab:'alim',
+      desc:'Tarih alanları TARİH biçimindedir (saat taşımaz). Garanti bitişi başlangıçtan ' +
+           'önce olamaz — kapı iki alandan da sorulur ve reddeder.',
+      fields:alimAlanlar },
+    { title:'Konum, departman ve durum', icon:'i-home', tab:'konum',
+      desc:'Durum TÜRETİLMİŞ bir görünümdür; otorite zimmet defteridir. Bu bölümde yalnız ' +
+           'türetimin ezmediği ve yazan yordamı olan değerler seçilebilir.',
+      fields:konumAlanlar }
+  ];
+  if(canFinans) bolumler.splice(2, 0, {
+    title:'Alış bedeli', icon:'i-wallet', tab:'alim',
+    desc:'Kaydın kendi alanıdır; toplam varlık değeri liste ekranında bu alandan TÜRETİLİR. ' +
+         'Amortisman ya da güncel değer hesabı bu prototipte yoktur ve uydurulmaz.',
+    fields:paraAlanlar });
+
+  var form = GV.form({
+    mount:'#dmbForm',
+    id:'demirbasForm',
+    record:formKayit,
+    tabs:sekmeler,
+    aside:function(veri){ return yanPanel(veri); },
+    sections:bolumler
+  });
+
+  if(!form){
+    mount.innerHTML = GV.errorState({ title:'Form çizilemedi',
+      desc:'Form bileşeni bağlanamadı. Sayfayı yeniden açmayı deneyin.' });
+    return;
+  }
+
+  /* =================================================================
+     7. SAĞ PANEL — TÜRETİLMİŞ DURUMUN CANLI HÂLİ
+     ================================================================= */
+  function yanPanel(v){
+    var out = '';
+    var hedefKod = rec ? rec.kod : kodUret();
+
+    /* ---- Kayıt özeti ------------------------------------------------ */
+    /* Garanti başlangıcı BOŞSA alış tarihinden türetilecek (aşağıdaki
+       türetim kartı bunu kaydetmeden önce gösterir) — panel de aynı
+       değeri ölçer ki kapı iki yerde ayrışmasın. */
+    var garBas = bosNull(v.garantiBas) || bosNull(v.alisTarihi);
+    var garBit = bosNull(v.garantiBit);
+    out += '<div class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-package') + 'Kayıt özeti</h3>' +
+        '<span class="gc-meta">' + esc(rec ? 'düzenleme' : 'yeni kayıt') + '</span></div>' +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Demirbaş no', rec
+            ? kodEt(rec.kod)
+            : kodEt(hedefKod) + ' ' + faint('kaydederken defterden üretilir')],
+          ['Durum', rec
+            ? GV.badge(rec.durum) + GV.cell.sub('türetilmiş görünüm — otorite zimmet defteri')
+            : (DOGUM ? GV.badge(DOGUM) + GV.cell.sub('doğum durumu, literalde verilir')
+                     : faint('durum sözlüğü okunamadı'))],
+          ['Kategori', bosNull(v.kategori)
+            ? esc(v.kategori) + (bosNull(v.altKategori) ? GV.cell.sub(esc(v.altKategori)) : '')
+            : faint('seçilmedi')],
+          ['Marka / Model', (bosNull(v.marka) || bosNull(v.model))
+            ? esc([bosNull(v.marka), bosNull(v.model)].filter(Boolean).join(' ')) +
+              (bosNull(v.seri) ? GV.cell.sub('Seri: ' + esc(v.seri)) : '')
+            : faint('girilmedi')],
+          ['Barkod', bosNull(v.barkod)
+            ? kodEt(v.barkod)
+            : (barkodTuret(hedefKod)
+                ? kodEt(barkodTuret(hedefKod)) + GV.cell.sub('boş bırakıldı → kaydederken kod ' +
+                    'numarasından türetilecek')
+                : faint('türetilemedi — kod deseni okunamadı'))],
+          ['Konum', bosNull(v.lokasyon)
+            ? esc(v.lokasyon) + (bosNull(v.dep) ? GV.cell.sub(esc(v.dep)) : '')
+            : faint('seçilmedi')],
+          ['Alış bedeli', canFinans
+            ? (sayiYaNull(v.alisFiyati) == null
+                ? faint('girilmedi')
+                : GV.cell.mny(sayiYaNull(v.alisFiyati)) + GV.cell.sub('NET · KDV hariç'))
+            : '<span class="cell-mask">••••••</span>' + GV.cell.sub('para yetkisi kapalı')]
+        ]) +
+      '</div></div>';
+
+    /* ---- DURUM EKSENİ — sonda ölçümüyle ----------------------------- */
+    var sondaSatir = SONDA.map(function(s){
+      var yaz = SECILEBILIR.indexOf(s.durum) !== -1;
+      return [esc(s.durum),
+        (yaz
+          ? '<span class="u-ok">formda seçilebilir</span>'
+          : (s.ezildi
+              ? '<span class="u-warn">türetilir — sonda "' + esc(s.durum) + '" yazdı, yordam "' +
+                esc(s.sonra) + '" bıraktı</span>'
+              : '<span class="u-muted">listelenmez — yazan yordam yok</span>')) +
+        GV.cell.sub(s.ezildi
+          ? 'envanteri bu duruma getiren tek olay personelin KABULÜDÜR (tutanağın yazılması ' +
+            'değil): GV.varlik.kabulEt / .kabulGeriAl'
+          : (yaz
+              ? 'zimmetten bağımsız durum · GV.varlik.tazele bu değeri EZMEZ (sonda ölçtü)'
+              : 'GV.varlik.hurdayaAyir YOK (§22.16.1) ve a.durum = … yazmak yasak')) +
+        GV.cell.sub('defterde ' +
+          ((DURUM_DAGILIM.filter(function(d){ return d.durum === s.durum; })[0] || {}).n || 0) +
+          ' kayıt bu durumda')];
+    });
+    out += '<div class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-refresh') +
+        'Durum ekseni — TÜRETİLMİŞ</h3>' +
+        '<span class="gc-meta">' + SECILEBILIR.length + '/' + DURUMLAR.length + ' seçilebilir</span>' +
+      '</div><div class="gc-body">' +
+        GV.dl(sondaSatir) +
+        faintNot('Demirbaşın geçiş tablosu <b>yoktur</b>: <b>durum</b> ve <b>zimmetli</b> ' +
+          'alanları <b>DB.assignments</b> defterinden türetilir (ADR-R2-29 · K-30). Bu tablo ' +
+          'bir liste olarak yazılmadı — sözlüğün her değeri <b>GV.varlik.tazele</b> yordamından ' +
+          'bir sonda nesnesiyle geçirildi ve yordamın ezdikleri düşürüldü. Sonda deftere ' +
+          'girmez, aktivite yazmaz. Kural iki yerde tanımlanmaz; kapı değişirse bu liste ' +
+          'kendiliğinden takip eder.') +
+        faintNot('Yükleme ölçümü: ' + (TAZELE
+          ? '<b>' + TAZELE.olculen + '</b> demirbaş ölçüldü, <b>' +
+            (TAZELE.degisen || []).length + '</b> kayıt değişti' +
+            ((TAZELE.degisen || []).length === 0
+              ? ' — envanter defterle tutarlı (K-30: bir onarımın her açılışta tekrar koşması, ' +
+                'onarılmamış demektir).'
+              : ' → ' + esc((TAZELE.degisen || []).join(' · ')) + '.')
+          : 'GV.varlik.sonTazeleme okunamadı — ölçüm yapılamadı.')) +
+        faintNot('Durum yalnız <b>doğum kipinde</b> bir alandır; düzenlemede salt okunur ' +
+          'basılır ve kaydetme onu <b>okumaz</b>. Sebebi: §22.10 forma iki değer veriyor, ' +
+          'ama var olan bir kayda durum yazan bir ortak yordam yok ve türetilmiş bir alana ' +
+          'atama yasak — ikisini birden karşılayan tek yol doğum literalidir. Defterin ' +
+          'bugünkü hâli: <b>' + DOGABILIR_N + '/' + tumu.length + '</b> kayıt bu formun ' +
+          'doğurabileceği bir durumda (' + esc(SECILEBILIR.join(' · ')) + '), <b>' +
+          ACIK_ZIMMETLI_N + '</b> kayıtta açık zimmet tutanağı var (türetim tutanaktan gelir), ' +
+          '<b>' + YORDAMSIZ_N + '</b> kayıt yazan yordamı olmayan bir durumda (' +
+          esc(YORDAMSIZ.join(' · ')) + ').') +
+      '</div></div>';
+
+    if(acikZimmet){
+      out += GV.notice({ tone:'info', icon:'i-user-check',
+        title:'Yaşayan zimmet tutanağı: ' + acikZimmet.kod,
+        text:'Bu demirbaş ' + (DB.empName(acikZimmet.personel) || acikZimmet.personel) +
+             ' üzerinde; personel onayı "' + acikZimmet.personelOnay + '"' +
+             (acikZimmet.teslimTarihi ? ', teslim ' + F.date(acikZimmet.teslimTarihi) : '') +
+             '. Envanterin "' + (rec ? rec.durum : '—') + '" durumu bu tutanaktan türer; bu ' +
+             'formdan hiçbir şekilde değişmez. Kabul ve kabul geri alma tutanak çekmecesindedir.',
+        actions:[{ label:'Zimmet yüzeyini aç', href:'app-varlik.html?t=zimmet' }] });
+    }
+    if(rec && !acikZimmet){
+      out += GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Var olan bir demirbaşın durumunu yazan yordam yok',
+        text:'Kayıt "' + rec.durum + '" durumunda. Bu değeri değiştiren bir ortak yordam ' +
+             'yazılmamış: GV.varlik ad alanında yalnız zimmet ekseni var (kabulEt · ' +
+             'kabulGeriAl · tazele), hurdaya ayırma yordamı da yok. Türetilmiş bir alana ' +
+             'doğrudan atama yasak olduğu için durum alanı salt okunur basıldı ve kaydetme ' +
+             'ona dokunmuyor. Devre dışı bir düğme bile vaat sayılır, o yüzden hiç basılmadı; ' +
+             'eksik yordam raporlandı.' +
+             (SECILEBILIR.indexOf(rec.durum) !== -1
+               ? ' ("' + SECILEBILIR.join('" ↔ "') + '" çevirmesi bu yüzden yapılamıyor.)'
+               : '') });
+    }
+
+    /* ---- DÜŞEN ZİMMET İDDİASI — varsa basılır ----------------------- */
+    if(rec){
+      var iddia = GV.varlik.dusenIddiaSatiri(rec.kod);
+      if(iddia){
+        out += GV.notice({ tone:'warn', icon:'i-alert',
+          title:'Envanterdeki eski zimmet iddiası düşürüldü (K-30)',
+          text:iddia.metin + ' Bu satır veriye YAZILMAZ; görüntü anında defterden türer ve ' +
+               'burada basılır çünkü envanterin bir zamanlar başka bir şey söylediği bilgisi ' +
+               'kaybolmamalıdır.' });
+      }
+    }
+
+    /* ---- TÜRETİLECEK DEĞERLER — sessiz değil, önceden gösterilir ---- */
+    var turetim = [];
+    if(!bosNull(v.barkod)){
+      turetim.push(['Barkod', barkodTuret(hedefKod)
+        ? kodEt(barkodTuret(hedefKod)) + GV.cell.sub('kaynak: kodun sıra numarası · ölçüm ' +
+            BARKOD_DESEN + '/' + tumu.length + ' kayıtta bu desen')
+        : faint('türetilemedi — kod deseni okunamadı, alan boş kalır')]);
+    }
+    if(!bosNull(v.garantiBas) && bosNull(v.alisTarihi)){
+      turetim.push(['Garanti başlangıcı', '<span class="cell-date">' + F.date(v.alisTarihi) +
+        '</span>' + GV.cell.sub('kaynak: alış tarihi · ölçüm ' + GAR_ALIS_AYNI + '/' +
+        GAR_BAS_DOLU + ' kayıtta ikisi eşit')]);
+    }
+    if(turetim.length){
+      out += kart('i-sliders', 'Boş bırakılan alanlar için türetim', turetim.length + ' alan',
+        GV.dl(turetim) +
+        faintNot('Bu değerler kaydetmede türetilecek ve denetim kaydında türetildikleri ' +
+          'yazılacak. Alanı elle doldurursanız sizin değeriniz korunur; türetim yalnız BOŞ ' +
+          'alanda çalışır. Türetilemeyen alan boş kalır — uydurulmaz.'));
+    }
+
+    /* ---- GARANTİ ---------------------------------------------------- */
+    var garSatir = [];
+    var garHata = garantiSirasi(garBas, garBit);
+    garSatir.push(['Aralık', (garBas || garBit)
+      ? esc((garBas ? F.date(garBas) : '—') + ' → ' + (garBit ? F.date(garBit) : '—'))
+      : faint('girilmedi')]);
+    if(garBit){
+      /* Gün farkı ORTAK YORDAMDAN: GV.fmt.days(iso) = iso − DB.today,
+         gün cinsinden (brief §21.11 · §22.1c.1 — SÜRE biçimlendiricisi
+         DEĞİL). Yönü ekran ISO karşılaştırmasıyla söyler, ikinci bir
+         gün aritmetiği kurmaz. */
+      var fark = F.days(garBit);
+      var bitti = String(garBit) < String(DB.today);
+      garSatir.push([bitti ? 'Biteli' : 'Kalan',
+        (fark == null || !isFinite(Number(fark)))
+          ? faint('ölçülemedi')
+          : GV.cell.gun(Math.abs(Number(fark)), bitti ? 'danger' : 'ok') +
+            GV.cell.sub(bitti ? 'garanti bugüne göre BİTMİŞ (bugün ' + F.date(DB.today) + ')'
+                              : 'bugün ' + F.date(DB.today))]);
+    }
+    if(garHata){
+      garSatir.push(['Sıra', '<span class="u-danger">' + esc(garHata) +
+        '</span>' + GV.cell.sub('kaydetme bu hâlde REDDEDİLİR — uyarıp geçmek yasak')]);
+    }
+    if(garBas && bosNull(v.alisTarihi) && String(garBas) < String(v.alisTarihi)){
+      garSatir.push(['Alışla ilişki', '<span class="u-warn">garanti başlangıcı alış ' +
+        'tarihinden önce</span>' + GV.cell.sub('bu bir KAPI DEĞİL gözlemdir: defterde ' +
+        GAR_ALIS_AYNI + '/' + GAR_BAS_DOLU + ' kayıtta ikisi eşit, ama ikinci el alımda ' +
+        'ayrışabilir — kayıt kabul edilir')]);
+    }
+    out += kart('i-shield-check', 'Garanti', esc(GAR_BITEN + '/' + tumu.length + ' kayıt bitmiş'),
+      GV.dl(garSatir) +
+      faintNot('Garanti bitişi başlangıçtan önce olamaz ve bu bir <b>kapıdır</b>: kural iki ' +
+        'alandan da sorulur (hangisini sonradan değiştirirseniz kapı kapanır) ve kaydetme ' +
+        '<b>reddedilir</b>. Kalan gün <b>GV.fmt.days</b> ile ölçülür; ekran ikinci bir gün ' +
+        'aritmetiği kurmaz.'));
+
+    /* ---- TEDARİK ---------------------------------------------------- */
+    var tedSatir = [];
+    var ted = bosNull(v.tedarikci) ? tedarikciKaydi(v.tedarikci) : null;
+    var sip = bosNull(v.siparis) ? siparisKaydi(v.siparis) : null;
+    tedSatir.push(['Tedarikçi', ted
+      ? '<span class="cell-main">' + esc(ted.unvan) + '</span>' +
+        GV.cell.sub(esc(ted.kod + ' · ' + (ted.kategori || 'kategori yok') +
+          (ted.odemeVadesi ? ' · vade ' + ted.odemeVadesi : '') +
+          (typeof ted.puan === 'number' ? ' · puan ' + F.num(ted.puan, 1) : '')))
+      : (bosNull(v.tedarikci)
+          ? '<span class="u-warn">' + esc(v.tedarikci) + ' tedarikçi defterinde yok</span>'
+          : faint('seçilmedi — defterde ' + TED_DOLU + '/' + tumu.length + ' kayıtta dolu'))]);
+    tedSatir.push(['Sipariş', sip
+      ? kodEt(sip.kod) + GV.cell.sub(esc((sip.tedarikci || '—') + ' · ' +
+          (sip.tarih ? F.date(sip.tarih) : 'tarih yok') + ' · ' + (sip.durum || '—') +
+          (sip.teslimKontrol ? ' · teslim kontrolü: ' + sip.teslimKontrol : '')))
+      : (bosNull(v.siparis)
+          ? '<span class="u-warn">' + esc(v.siparis) + ' sipariş defterinde yok</span>'
+          : faint('bağlanmadı — ' + SIPARIS_DOLU + '/' + tumu.length +
+                  ' demirbaş bir siparişten türetildi'))]);
+    if(ted && sip && sip.tedarikci && ted.kod !== sip.tedarikci){
+      tedSatir.push(['Tutarlılık', '<span class="u-warn">seçilen sipariş başka bir ' +
+        'tedarikçinin (' + esc(sip.tedarikci) + ')</span>' +
+        GV.cell.sub('bu bir gözlemdir; siparişi bir demirbaşa bağlayan kuralı yazan yordam ' +
+                    'yok, kayıt reddedilmez')]);
+    }
+    out += kart('i-truck', 'Tedarik zinciri', null, GV.dl(tedSatir) +
+      faintNot('Sipariş bağı <b>opsiyoneldir</b> ve boş kalması ölçülmüş bir gerçektir: ' +
+        'defterdeki ' + tumu.length + ' demirbaşın ' + SIPARIS_DOLU + ' tanesi bir siparişe ' +
+        'bağlı. Tedarikçi eşleşmesi bir sipariş bağı DEĞİLDİR ve öyle sayılmaz.'));
+
+    /* ---- PARA KAPISI — kapalıysa SEBEBİ yazılır (boş kutu bırakılmaz) */
+    if(!canFinans){
+      out += GV.notice({ tone:'info', icon:'i-lock',
+        title:'Alış bedeli alanı basılmadı',
+        text:'Rolünüz (' + GV.perm.role() + ') para göremiyor; ' + FINANS_ROL + '/' + ROL_SAYI +
+             ' rolde bu bayrak açık. Maskelenmiş bir giriş alanı kaydedildiğinde gerçek değeri ' +
+             '"••••••" ile ezerdi, bu yüzden alan hiç basılmadı ve kaydetme onu okumuyor' +
+             (rec ? ' — kaydın mevcut bedeline dokunulmuyor.'
+                  : '; kayıt bedel alanı boş (null) doğar. "0" yazmak "bedeli sıfır" demek ' +
+                    'olurdu, oysa doğru cümle "bu oturumda yazılamadı".') });
+    }
+
+    /* ---- MÜKERRER GÖZLEMİ — kapı değil ------------------------------ */
+    var seriAyni   = ayniAlan('seri', v.seri);
+    var barkodAyni = ayniAlan('barkod', v.barkod);
+    if(seriAyni.length || barkodAyni.length){
+      out += GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Aynı değer başka bir demirbaş kaydında yazılı',
+        text:(seriAyni.length
+                ? 'Seri no: ' + seriAyni.map(function(a){ return a.kod; }).join(' · ') + '. '
+                : '') +
+             (barkodAyni.length
+                ? 'Barkod: ' + barkodAyni.map(function(a){ return a.kod; }).join(' · ') + '. '
+                : '') +
+             'Bu bir KAPI DEĞİLDİR: demirbaş defteri için mükerrer kontrolü yordamı ' +
+             'yazılmamış ve olmayan bir kuralı reddetmek onu uydurmak olurdu. Ölçüldü: ' +
+             SERI_TEKIL + '/' + tumu.length + ' kayıtta seri no tekil — yani çakışma ' +
+             'defterin bugünkü hâline aykırıdır ve büyük olasılıkla bir hatadır.' });
+    }
+
+    /* ---- Düzenleme kipinde: kaydetme neye dokunur ------------------- */
+    if(rec){
+      out += kart('i-edit', 'Kaydetme neye dokunur', null,
+        GV.dl([
+          ['Yazılacak', esc(METIN_ALAN.map(zorLabel).join(', '))],
+          ['Alış bedeli', canFinans
+            ? 'yazılacak'
+            : '<span class="u-muted">okunmayacak — para yetkisi kapalı, kayıttaki değer ' +
+              'korunuyor</span>'],
+          ['Durum', '<span class="u-muted">okunmayacak — türetilmiş görünüm, otorite zimmet ' +
+            'defteri; durum yalnız doğum literalinde verilir</span>'],
+          ['Dokunulmayacak', 'durum · zimmetli · zimmetTarihi · iadeTarihi · arsiv · aktif' +
+            GV.cell.sub('ilk üçü türetilmiş görünümün alanları (tek yazan yer GV.varlik), ' +
+              '<b>arsiv</b> ayrı bir eksen (bu kayıtta ' +
+              (GV.arsivli(rec) ? 'ARŞİVLİ' : 'arşivli değil') + '), <b>aktif</b> tuzaklı')]
+        ]));
+    }
+
+    return out;
+  }
+
+  /* =================================================================
+     8. KAYDETME
+     ================================================================= */
+  function kaydet(){
+    var v = form.submit();
+    if(!v) return false;                     /* doğrulama düştü — bileşen söyledi */
+    return rec ? guncelle(v) : yeniKayit(v);
+  }
+
+  /* Bağ doğrulaması TEK yerde: seçenek listesi dışından (adres, korunan
+     seçenek, DOM kurcalama) gelen bir kodu sessizce yazmak, defterde
+     karşılığı olmayan bir bağ üretmek olurdu. */
+  function baglarGecerli(v){
+    var depKod = bosNull(v.dep);
+    if(depKod && !depKaydi(depKod)){
+      GV.toast(depKod + ' departman defterinde bulunamadı; departman bağı kurulmadı.', 'danger');
+      return false;
+    }
+    var tedKod = bosNull(v.tedarikci);
+    if(tedKod && !tedarikciKaydi(tedKod)){
+      GV.toast(tedKod + ' tedarikçi defterinde bulunamadı; tedarikçi bağı kurulmadı.', 'danger');
+      return false;
+    }
+    var sipKod = bosNull(v.siparis);
+    if(sipKod && !siparisKaydi(sipKod)){
+      GV.toast(sipKod + ' sipariş defterinde bulunamadı; sipariş bağı kurulmadı.', 'danger');
+      return false;
+    }
+    var g = garantiSirasi(bosNull(v.garantiBas) || bosNull(v.alisTarihi), bosNull(v.garantiBit));
+    if(g){
+      /* İkinci sigorta: alan doğrulaması normalde buraya düşmez, ama
+         garanti başlangıcı TÜRETİLDİĞİNDE (boş alan → alış tarihi) kapı
+         yeniden ölçülmelidir. Uyarıp geçmek yasak. */
+      GV.toast(g + ' Kayıt kaydedilmedi.', 'danger', 6000);
+      return false;
+    }
+    return true;
+  }
+
+  /* Durum okuma TEK yerde ve YALNIZ DOĞUMDA: düzenleme kipinde bu yordam
+     hiç çağrılmaz, alan da basılmaz. */
+  function durumOku(v){
+    if(!durumBasilir) return null;
+    var d = bosNull(v.durum);
+    if(d && SECILEBILIR.indexOf(d) === -1){
+      /* Buraya normalde düşülmez (select yalnız iki değer taşır); adres
+         ya da DOM üzerinden gelen türetilmiş bir durumu yazmak, bir
+         sonraki yüklemede ezilecek bir yalan yazmak olurdu. */
+      GV.toast('"' + d + '" bu formdan yazılamaz: değer zimmet defterinden türetilir ya da ' +
+               'yazan bir yordamı yok. Kayıt kaydedilmedi.', 'danger', 6000);
+      return false;
+    }
+    return d || DOGUM;
+  }
+
+  function yeniKayit(v){
+    if(!DOGUM){
+      GV.toast('Demirbaş durum sözlüğü okunamadı; kayıt doğum durumu olmadan açılamaz.', 'danger');
+      return false;
+    }
+    if(!baglarGecerli(v)) return false;
+    var durum = durumOku(v);
+    if(durum === false) return false;
+
+    var hedefKod = kodUret();
+    var barkod   = bosNull(v.barkod) || barkodTuret(hedefKod);
+    var garBas   = bosNull(v.garantiBas) || bosNull(v.alisTarihi);
+    var turetilen= [];
+    if(!bosNull(v.barkod) && barkod)      turetilen.push('barkod (koddan)');
+    if(!bosNull(v.garantiBas) && garBas)  turetilen.push('garantiBas (alış tarihinden)');
+
+    /* ---- DOĞUM — nesne literali (§22.1b.4: `GV.demirbas.olustur` YOK).
+       Alan sırası defterdeki 20 alanlı şemayla aynıdır; biçim değiştirmek
+       defteri ikiye bölerdi.
+       ZİMMET ALANLARI — `null` ŞEKLİYLE DOĞAR, DEĞER YAZILMAZ:
+         `zimmetli` · `zimmetTarihi` · `iadeTarihi` türetilmiş görünümün
+         alanlarıdır ve bu ekran onlara HİÇBİR ZAMAN bir personel kodu ya
+         da tarih yazmaz; değer yazan tek yer `GV.varlik`tır (kabulEt ·
+         kabulGeriAl · tazele) ve otorite `DB.assignments`tir (§22.17.1).
+         ⚠️ Ama literalde HİÇ YER ALMAMALARI ölçüldü ve YANLIŞ çıktı:
+         `zimmetli` alanını taşımayan bir kayıtta `GV.varlik.tazele`
+         alanı `undefined`dan `null`a çekiyor ve `tazeleHepsi` o kaydı
+         HER AÇILIŞTA "değişti" diye rapor ediyor (ölçüldü:
+         `degisen:[{kod:…,eskiDurum:'Depoda',yeniDurum:'Depoda'}]`).
+         K-30 tam bunu yasaklıyor: "bir onarımın her seferinde tekrar
+         koşması, onarılmamış demektir" ve `sonTazeleme.degisen.length
+         === 0` öyle kalmalıdır. Bu yüzden üç alan `null` DEĞERİYLE —
+         yani türetimin tutanaksız demirbaş için hesapladığı değerle —
+         doğar; defterdeki 15 kaydın 15'i de bu üç alanı taşıyor, şekil
+         korunur. Ölçüm: tam şekilli kayıt eklendiğinde `tazeleHepsi`
+         `degisen:[]` döndürüyor.
+       DİĞER YAZILMAYAN alanlar ve sebepleri:
+         · `arsiv` → arşiv ekseni AYRIDIR (§22.10) ve sorusu
+           `GV.arsivli`den geçer. Ölçüldü: defterde alan yalnız 1/15
+           kayıtta var. Yeni kayıt alanı taşımadan doğar; "false" yazmak
+           var olmayan bir ekseni varmış gibi göstermek olurdu.
+         · `aktif` → TUZAKLI alan (K-33): okunmaz, yazılmaz, süzülmez.
+       TÜRETİLENLER: `barkod` (kodun sıra numarasından) ve boş bırakıldıysa
+       `garantiBas` (alış tarihinden). İkisi de yalnız BOŞ alanda türetilir
+       ve denetim kaydında yazılır. */
+    var yeni = {
+      kod:hedefKod,
+      kategori:bosNull(v.kategori),
+      altKategori:bosNull(v.altKategori),
+      marka:bosNull(v.marka),
+      model:bosNull(v.model),
+      seri:bosNull(v.seri),
+      ozellik:bosNull(v.ozellik),
+      alisTarihi:bosNull(v.alisTarihi),
+      alisFiyati:canFinans ? sayiYaNull(v.alisFiyati) : null,
+      tedarikci:bosNull(v.tedarikci),
+      garantiBas:garBas,
+      garantiBit:bosNull(v.garantiBit),
+      lokasyon:bosNull(v.lokasyon),
+      dep:bosNull(v.dep),
+      durum:durum,
+      zimmetli:null,          /* ↑ üçü de TÜRETİLMİŞ görünümün ŞEKLİ:    */
+      zimmetTarihi:null,      /*   tutanaksız demirbaş için türetimin     */
+      iadeTarihi:null,        /*   hesapladığı değer NULL'dır (ölçüldü)   */
+      barkod:barkod,
+      siparis:bosNull(v.siparis)
+    };
+    (DB.assets || (DB.assets = [])).unshift(yeni);
+
+    GV.audit.yaz({
+      kayit:hedefKod, modul:'Demirbaş',
+      islem:'Demirbaş kaydı oluşturuldu · ' +
+            [yeni.kategori, [yeni.marka, yeni.model].filter(Boolean).join(' ')]
+              .filter(Boolean).join(' · ') +
+            ' · seri ' + (yeni.seri || 'yok') +
+            ' · ' + (yeni.lokasyon || 'lokasyon yok') +
+            (turetilen.length ? ' · türetilen alan: ' + turetilen.join(', ') : ''),
+      yeni:durum, tone:'ok', icon:'i-plus' });
+
+    if(!canFinans)
+      GV.toast('Alış bedeli yetkiniz olmadığı için ne basıldı ne yazıldı; kayıt bedel ' +
+               'bilgisi olmadan doğdu.', 'info', 6000);
+
+    GV.afterSave({
+      kod:hedefKod, liste:'app-varlik.html', detay:'app-demirbas-detay.html', yeni:true,
+      mesaj:hedefKod + ' oluşturuldu; demirbaş "' + durum + '" durumunda doğdu. Durum ' +
+            'TÜRETİLMİŞ bir görünümdür: zimmet ancak personel bir tutanağı kabul ettiğinde ' +
+            'envanteri "Zimmetli" yapar' +
+            (turetilen.length ? '. Türetilen alan: ' + turetilen.join(', ') : '') + '.',
+      alt:[{ label:'Zimmet yüzeyini aç', href:'app-varlik.html?t=zimmet' }]
+    });
+    return true;
+  }
+
+  function guncelle(v){
+    if(!baglarGecerli(v)) return false;
+
+    /* Yazılan alanlar: YALNIZ forma basılanlar. `durum` · `zimmetli` ·
+       `zimmetTarihi` · `iadeTarihi` · `arsiv` · `aktif` bu döngülerde
+       YOK — basılmadıkları için okunmuyorlar da. Para alanı yalnız yetki
+       varsa listeye giriyor: maskelenmiş/basılmamış bir alanı yazmak
+       gerçek değeri ezerdi (§22.17.6). */
+    var degisen = [];
+    METIN_ALAN.forEach(function(k){
+      var yeniD = bosNull(v[k]);
+      /* Türetim yalnız BOŞ alanda çalışır ve neyin türetildiği yazılır. */
+      if(k === 'barkod'     && !yeniD) yeniD = barkodTuret(rec.kod);
+      if(k === 'garantiBas' && !yeniD) yeniD = bosNull(v.alisTarihi);
+      var eskiD = (rec[k] == null || rec[k] === '') ? null : rec[k];
+      if(String(yeniD) !== String(eskiD)){ degisen.push(k); rec[k] = yeniD; }
+    });
+    if(canFinans){
+      PARA_ALAN.forEach(function(k){
+        var yeniD = sayiYaNull(v[k]);
+        var eskiD = rec[k] == null ? null : rec[k];
+        if(yeniD !== eskiD){ degisen.push(k); rec[k] = yeniD; }
+      });
+    }
+    /* DURUM BU DÖNGÜLERDE YOK ve bilinçli olarak yok: türetilmiş bir
+       alana atama yasak (§22.17.1) ve var olan bir demirbaşın durumunu
+       yazan bir ortak yordam yazılmamış. Kaydın durumu ne ise o kalır. */
+
+    GV.audit.yaz({
+      kayit:rec.kod, modul:'Demirbaş',
+      islem:degisen.length
+        ? 'Demirbaş kaydı güncellendi — değişen alan: ' +
+          degisen.map(function(k){ return ETIKET[k] || k; }).join(', ')
+        : 'Demirbaş kaydı kaydedildi — basılan alanlarda değişiklik yok',
+      tone:'info', icon:'i-edit' });
+
+    if(!canFinans)
+      GV.toast('Alış bedeli yetkiniz olmadığı için ne basıldı ne okundu; kayıttaki değer ' +
+               'korundu.', 'info', 6000);
+    GV.toast('Durum alanı okunmadı: türetilmiş görünüme atama yasak ve var olan bir ' +
+             'demirbaşın durumunu yazan yordam yok. Kayıttaki durum ("' + rec.durum +
+             '") korundu.', 'info', 6000);
+
+    GV.afterSave({
+      kod:rec.kod, liste:'app-varlik.html', detay:'app-demirbas-detay.html', yeni:false,
+      mesaj:'Demirbaş kaydı güncellendi; durum "' + rec.durum + '" olarak kaldı — durum bu ' +
+            'formdan hiç okunmadı (türetilmiş görünüm; otorite zimmet defteri). Zimmet ' +
+            'alanlarına (zimmetli · zimmetTarihi · iadeTarihi) dokunulmadı.',
+      alt:acikZimmet ? [{ label:'Zimmet yüzeyini aç', href:'app-varlik.html?t=zimmet' }] : []
+    });
+    return true;
+  }
+
+  /* =================================================================
+     9. BASILMAYAN ALANLAR VE BASILMAYAN DÜĞMELER — sebepleri YAZILI
+     ================================================================= */
+  (function basilmayan(){
+    var el = document.getElementById('dmbBasilmayan');
+    if(!el) return;
+    var satir = [
+      ['zimmetli · zimmetTarihi · iadeTarihi',
+        'TÜRETİLMİŞ görünümün alanları. Otorite DB.assignments defteridir (ADR-R2-29 · K-30) ' +
+        've bu üç alana DEĞER yazan tek yer GV.varlik yordamlarıdır (kabulEt · kabulGeriAl · ' +
+        'tazele). Bu form onlara hiçbir zaman bir personel kodu ya da tarih yazmaz; yeni kayıt ' +
+        'literalinde yalnız NULL ŞEKLİYLE yer alırlar. Sebebi ölçüldü: alan hiç taşınmazsa ' +
+        'türetim yordamı onu her açılışta undefined→null çekiyor ve tazeleHepsi o kaydı her ' +
+        'seferinde "değişti" diye rapor ediyor — K-30 tam bunu yasaklıyor ("bir onarımın her ' +
+        'seferinde tekrar koşması, onarılmamış demektir"). Bu yükleme: ' +
+        (TAZELE ? TAZELE.olculen + ' kayıt ölçüldü, ' + (TAZELE.degisen || []).length +
+                  ' değişti' : 'ölçüm okunamadı') +
+        '. Defterde zimmetli ' + tumu.filter(function(a){ return !!a.zimmetli; }).length + '/' +
+        tumu.length + ' kayıtta dolu; açık tutanağı olan kayıt sayısı ' + ACIK_ZIMMETLI_N + '.'],
+      ['durum — yalnız DOĞUMDA bir alan',
+        'Doğum kipinde ' + DURUMLAR.length + ' değerlik sözlüğün ' + SECILEBILIR.length +
+        ' değeri basılır (' + SECILEBILIR.join(' · ') + '); varsayılan "' + (DOGUM || '—') +
+        '". "' + TURETILEN.join('" ve "') + '" basılmaz çünkü zimmet defterinden türetilir — ' +
+        'sonda ölçümü: bu değerler yazıldığında GV.varlik.tazele onları "' +
+        (SONDA.filter(function(s){ return s.ezildi; })[0] || {}).sonra + '" yapıyor. "' +
+        YORDAMSIZ.join(' · ') + '" basılmaz çünkü yazan yordam yok (GV.varlik.hurdayaAyir ' +
+        'YOK — brief §22.16.1). DÜZENLEME kipinde alan hiç basılmaz ve kaydetme onu okumaz: ' +
+        'var olan bir demirbaşın durumunu yazan bir ortak yordam yazılmamış ve türetilmiş bir ' +
+        'alana doğrudan atama yasak (§22.17.1). Kardeş formlarda (proje · personel · izin) ' +
+        'durum da aynı biçimde salt okunur basılıyor.'],
+      ['arsiv',
+        'Arşiv ekseni durum ekseninden AYRIDIR (brief §22.10) ve sorusu GV.arsivli ' +
+        'yordamındadır. Ölçüldü: alan defterde yalnız ' +
+        (DB.assets || []).filter(function(a){ return Object.prototype.hasOwnProperty.call(a, 'arsiv'); }).length +
+        '/' + tumu.length + ' kayıtta var ve arşivli kayıt sayısı ' + ARSIVLI_N +
+        '. Yeni kayıt bu alanı taşımadan doğar; "false" yazmak var olmayan bir ekseni ' +
+        'varmış gibi göstermek olurdu.'],
+      ['aktif',
+        'TUZAKLI alan (K-18 → K-33): okuyan undefined alır ve bayat eksen sayacı artar. Bu ' +
+        'ekran onu okumaz, yazmaz, süzmez; kayıt doğarken de yazılmaz. Pasiflik sorusu ' +
+        'GV.arsivli yordamındadır ve demirbaşta kanon "durum"dur.'],
+      ['alisFiyati (yalnız para yetkisi kapalıysa)',
+        canFinans
+          ? 'Bu oturumda BASILDI: rol para görebiliyor (' + FINANS_ROL + '/' + ROL_SAYI +
+            ' rolde bayrak açık). Kapı kapalı olduğunda bu satır "basılmadı ve okunmadı" der.'
+          : 'Kişisel/finansal veri kapısı kapalı (' + FINANS_ROL + '/' + ROL_SAYI +
+            ' rolde açık): alan basılmadı ve kaydetme onu okumuyor. Maskelenmiş bir input ' +
+            'kaydedildiğinde gerçek değeri ezerdi (§22.17.6). Boş bırakmak da yasaktı — boş ' +
+            '"veri yok" demektir, oysa veri var ve bu rol göremiyor (UID-11).'],
+      ['musteriAd · musteri gibi bir bağ',
+        'Demirbaş kaydında müşteri alanı YOKTUR (20 alanlı şema ölçüldü). Bu yüzden liste ' +
+        'kapsamı da müşteri üzerinden kurulmaz; kayıt kapısına musteri:null verildi.'],
+      ['Tutanak dosyası / belge yükleme',
+        'Bu form dosya sormaz: zimmet tutanağı DEMİRBAŞIN değil ZİMMET kaydının alanıdır ' +
+        '(DB.assignments[].tutanak, ölçüldü 7/7 dosya adı) ve tutanak bir ÇEKMECEDİR, ekran ' +
+        'değil (brief §20.7). Dosya deposu prototipte yok — BE-S4 aşağıda beyan edildi.']
+    ];
+    var dugme = [
+      ['Hurdaya ayır', 'GV.varlik.hurdayaAyir(kod, gerekce) YOKTUR (brief §22.16.1). ' +
+        'DB.assetStatuses "Hurda" içeriyor ve defterde ' + YORDAMSIZ_N + ' kayıt o durumda, ' +
+        'ama o durumu yazan bir yordam yazılmamış; a.durum = "Hurda" yazmak yasaktır ' +
+        '(§22.17.1). Devre dışı bir düğme bile vaat sayılır — hiç basılmadı.'],
+      ['Zimmet aç / tutanak yaz', 'GV.varlik.zimmetAc(demirbas, personel) YOKTUR ' +
+        '(§22.16.2) ve DB.assignments.push(...) yasaktır (§22.17.11). Var olan bir tutanağı ' +
+        'kabul etmek/kabulü geri almak mümkündür ve zimmet yüzeyindedir; yeni tutanak açan ' +
+        'bir yol yok.'],
+      ['İade al', 'GV.varlik.iadeAl(zimmetKod) YOKTUR (§22.16.3). iadeTarihi · iadeKontrol · ' +
+        'eksik · iadeAlan alanları veride var (1/7 kayıtta dolu) ama yazan yordam yok.'],
+      ['Durumu çevir (' + SECILEBILIR.join(' ↔ ') + ')',
+        'Var olan bir demirbaşın durumunu yazan bir ortak yordam YOK: GV.varlik ad alanı ' +
+        'yalnız zimmet eksenini yazıyor (kabulEt · kabulGeriAl · tazele). Doğum kipinde ' +
+        'değer literalde verilebilir, ama düzenlemede a.durum = … yazmak yasaktır (§22.17.1) ' +
+        've eksik bir yordamı ekranda yazmak da yasaktır — bu yüzden düzenleme kipinde alan ' +
+        'salt okunur basıldı ve eksik yordam raporlandı.'],
+      ['Barkod yazdır / etiket üret', 'Bu prototipte barkod bir METİN alanıdır; etiket ' +
+        'üreten ya da barkodu okuyan bir yordam yok. Barkod değeri kodun sıra numarasından ' +
+        'türetilir (ölçüldü: ' + BARKOD_DESEN + '/' + tumu.length + '), bir görsel üretilmez.']
+    ];
+    el.innerHTML =
+      kart('i-list', 'Bu formun basmadığı alanlar ve sebepleri', satir.length + ' madde',
+        GV.dl(satir)) +
+      kart('i-x-circle', 'Basılmayan düğmeler ve sebepleri', dugme.length + ' madde',
+        GV.dl(dugme) +
+        faintNot('Yapılamayan iş <b>düğme olarak vaat edilmez</b> (brief §14.6): yordamı ' +
+          'olmayan bir işlem için devre dışı bir düğme bırakmak yerine sebebi yazılır. ' +
+          'Bu maddeler raporda ortak katman eksiği olarak bildirildi; ekran onları ' +
+          '<b>yazmadı</b> (assets/ altına ajan dokunmaz).'));
+  })();
+
+  /* =================================================================
+     10. BACKEND PAYI — brief §10.2 (b) biçimi · §20.6 · §22.15
+     ================================================================= */
+  document.getElementById('dmbBackend').innerHTML =
+    '<section class="gv-card u-mt-8"><div class="gc-head">' +
+      '<h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+      '<span class="u-faint u-sm">3 madde</span></div>' +
+      '<div class="gc-body">' +
+        '<ul class="odl-gap">' +
+          '<li><span class="odl-gap-kod">BE-K2</span>' +
+            '<span>Zimmet tutanağı ıslak/e-imza taşımaz; kabul yalnız bir bayraktır — ' +
+              'envanteri "Zimmetli" yapan onay bir imza değil bir alan değeridir</span>' +
+            '<span class="odl-gap-bolum">§20.6</span></li>' +
+          '<li><span class="odl-gap-kod">BE-S4</span>' +
+            '<span>Belge yükleme gerçek depoya yazmaz; dosya adı ve boyutu bellekte tutulur</span>' +
+            '<span class="odl-gap-bolum">§9</span></li>' +
+          '<li><span class="odl-gap-kod">BE-S5</span>' +
+            '<span>Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır</span>' +
+            '<span class="odl-gap-bolum">§9 audit_event</span></li>' +
+        '</ul>' +
+        '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+          '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+        '<p class="u-faint u-sm">BE-K2 bu formda <b>doğrudan görünür</b>: durum alanı ' +
+          '"Zimmetli" ve "Zimmet bekliyor" değerlerini listelemiyor çünkü o iki değer ' +
+          'zimmet defterinden türer. Gerçek sistemde o türetim bir <b>imzalı tutanağa</b> ' +
+          'bağlanmalıdır; bugün tek dayanak <b>personelOnay</b> alanıdır.</p>' +
+        '<p class="u-faint u-sm">BE-S4 bu ekranda bir dosya alanı olarak görünmez: form ' +
+          'dosya sormuyor. Madde varlık ekseninde gerçektir — zimmet kayıtlarının 7/7\'sinde ' +
+          'bir tutanak <b>dosya adı</b> var, dosyanın kendisi yok ve indirilemez. Bu formdan ' +
+          'doğan demirbaş da o eksene bağlanacaktır.</p>' +
+        '<p class="u-faint u-sm">Durum geçişi maddesi (BE-P1) burada <b>beyan edilmedi</b>: ' +
+          'demirbaşın durum makinesi <b>yoktur</b> (DB.transitions.asset yok), yani sunucuda ' +
+          'yeniden doğrulanacak bir geçiş de yok. Onun yerine ölçülmüş prototip sınırı şudur: ' +
+          '<b>durum türetimi istemcide koşar.</b> Sayfa her açılışta ' +
+          '<b>GV.varlik.tazeleHepsi()</b> ile envanteri zimmet defterinden yeniden türetiyor ' +
+          '(bu yükleme: ' + (GV.varlik.sonTazeleme
+              ? GV.varlik.sonTazeleme.olculen + ' kayıt ölçüldü, ' +
+                (GV.varlik.sonTazeleme.degisen || []).length + ' değişti'
+              : 'ölçüm okunamadı') +
+          '). Sunucu aynı türetimi yapmadıkça doğrudan bir API çağrısı envantere tutanaksız ' +
+          'bir "Zimmetli" yazabilir.</p>' +
+        '<p class="u-faint u-sm">Prototip sınırı: <b>hurdaya ayırma, zimmet açma ve iade ' +
+          'alma yordamları yazılmamıştır</b> (brief §22.16.1-3). Bu yüzden bu formda o ' +
+          'işlemler için düğme <b>basılmadı</b> ve sebepleri yukarıda yazıldı — devre dışı ' +
+          'bir düğme bile vaat sayılır.</p>' +
+        '<p class="u-faint u-sm">Ölçüm sınırı: ekranın kendi yetki kapısının <b>reddeden ' +
+          'yönü</b> matristen okunabiliyor (' + EKLE_ROL + '/' + ROL_SAYI + ' rolde ekleme ' +
+          'yetkisi açık, ' + FINANS_ROL + '/' + ROL_SAYI + ' rolde para bayrağı açık), ama ' +
+          '<b>bölüm erişimi</b> kabuğun kendi eşlemesindedir ve bu ekran onu ölçemez: bir rol ' +
+          'ekleme yetkisi taşısa bile bölüm kapalıysa kabuk 403 basar ve ekran kodu hiç ' +
+          'koşmaz. Bu yüzden ekranın kendi kapısı "ölü" değil, bugünkü rol kümesinde büyük ' +
+          'ölçüde <b>ulaşılamaz</b> olabilir; iki şeyi karıştırmamak için ayrı yazıldı.</p>' +
+        '<p class="u-faint u-sm">Prototip sınırı: <b>düzenleme yetkisinin KAPSAMI bu formda ' +
+          'uygulanmıyor.</b> Yetki matrisi bu rolde <b>duzenle = ' +
+          esc(GV.perm.scope('duzenle')) + '</b> diyor, ama kayıt bazlı düzenleme kapsamını ' +
+          'ölçen bir ortak yordam yok (kayıt kapısı yalnız müşteri oturumuna karşı çalışıyor ' +
+          '— brief §22.1e.2, borç V2-85). Ekran kendi kapsam kuralını <b>uydurmadı</b>; ' +
+          'eksik beyan edildi.</p>' +
+      '</div>' +
+    '</section>';
+});
+</script>
+</body>
+</html>
