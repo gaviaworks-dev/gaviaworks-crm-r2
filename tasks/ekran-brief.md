@@ -4355,3 +4355,40 @@ R1 ekranının okuduğu defterler: `DB.activities` · `DB.announcements` ·
 
 **Sonuç: rota 2 ve rota 5 AYNI EKRANA yazar (GRUP 6) ve TEK ajanla ele
 alınır.** İkisi de salt okunur; yazma yordamı gerekmiyor.
+
+### 23.14 Rota 2 · 5 — ŞARTNAMENİN KENDİ ÇELİŞKİSİ ÖLÇÜLEREK ÇÖZÜLDÜ
+
+Ajan üç yeni **kart** yazdı ve panel personel kimliğinde **9 karta** çıktı.
+Ölçüldü — bu yazılı bir kabul kriterini deliyordu:
+
+* `sadelestirme-talimati.md` **§4.1**: *"Her kullanıcı panelde **en fazla
+  altı kart** görmelidir."* — `riskler-ve-kapsam.md:210`'da ölçülmüş kabul
+  kriteri olarak izleniyor (ajanda · kuyruk · not · bildirim + iki rol özeti).
+* Aynı belgenin **§3** tablosu ise: *"`app-panel-ozet`, onay, bildirim ve
+  duyuru sayfaları → `/panel` **widget ve DRAWER'ları**"*.
+
+**Çelişki görünürdü, ölçülünce çözüldü: §3'ün kendisi ikinci bir biçim adı
+veriyor — DRAWER.** Üç yüzey kart olmaktan çıkarılıp çekmeceye alındı.
+Kart tavanı korunuyor **ve** rota satırları kapanıyor; hiçbiri feda
+edilmedi. Gerçek Chromium, beş rol: `sahip` · `pm` · `ik` ·
+`satistemsilci` · `musteri` → **hepsinde kart 6**.
+
+Çekmece şeridi (`.pn-serit`) rol kapılıdır ve **devre dışı düğme
+BASMAZ**: burada yapılamayan bir iş yok, yalnız yetkisi olmayan bir
+kullanıcı var — §2'nin "yetkisiz öğe menüden kaldırılmalı" ilkesi geçerli.
+Ölçülen görünürlük: `sahip` 3 çekmece · `pm` 3 · `ik` 3 ·
+`satistemsilci` 2 (Dikkat kapalı) · `musteri` 0.
+
+⚠️ **AKTİF EKSENİ BİR TUZAK YAKALADI (`[A3]`).** Ajanın kodu dört yerde
+`.aktif` okuyordu. İkisi doğruydu (`DB.announcements` ve `DB.policies`
+**aktif kanonludur** — `durum` alanı taşımıyorlar, ölçüldü) ve yalnız
+K-33 beyanı eksikti. İkisi **YANLIŞTI**: `DB.inspections` ve `DB.vehicles`
+`durum` TAŞIR, yani **durum kanonludur ve `aktif` orada tuzaktır**.
+`GV.arsivli`ye çevrildi. Bugün 4+4 kaydın 0'ı arşivli olduğu için görünen
+sonuç değişmiyor — **ama okunan eksen değişiyor**, ve tuzak tam böyle
+sessiz kalır.
+
+⚠️ `assets/css/r2.css` yorumu *"En fazla altı kart: …"* bu turda
+GÜNCELLENDİ (ajan `assets/`e dokunamaz, bütünleyen taraf düzeltti):
+tavanın neden hâlâ altı olduğunu ve üç yüzeyin neden çekmece olduğunu
+söylüyor. Bu, turun **dördüncü** bayat beyanıydı.

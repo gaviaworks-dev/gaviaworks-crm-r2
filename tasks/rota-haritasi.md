@@ -39,8 +39,8 @@
 | KARAR BEKLİYOR | **0** | %0,0 | 0 |
 | **Toplam** | **148** | %100 | 148 |
 | YENİ yazılacak | **8** — altısı (Y1–Y6) **yayında**, ikisi kaldı | — | 8 |
-| **Bugün R2'de yayında** | **125** | %84,5 | 97 |
-| **Kalan** | **23** | %15,5 | 51 |
+| **Bugün R2'de yayında** | **127** | %85,8 | 97 |
+| **Kalan** | **21** | %14,2 | 51 |
 
 > **12 Ağustos · Dilim 6 — iki satır karar DEĞİŞTİRDİ, dokuzu yazılıyor.**
 > `KARŞILIĞI VAR` 43 → 41: rota **123** ve **124** (`app-dokuman.html` ve
@@ -106,10 +106,10 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
 | 1 | `app-panel.html` | **KARŞILIĞI VAR** ✅ | R2'de `app-panel.html` — Gündem. §4.1 yerleşimiyle **yeniden yazıldı**: 4 sayaç + altı kart (ajanda · iş kuyruğu · hızlı notlar · bildirimler + iki rol özeti). |
-| 2 | `app-panel-ozet.html` | **GÖMÜLÜYOR** | `app-panel.html` widget'ı. §3.3: "Tam ekranı yalnız derin geçmiş gerektiğinde aç." |
+| 2 | `app-panel-ozet.html` | **GÖMÜLÜYOR** | `app-panel.html` widget'ı. §3.3: "Tam ekranı yalnız derin geçmiş gerektiğinde aç." | ✅ **GÖMÜLDÜ** → `app-panel.html`. Eksik üç blok ölçüldü (dondurulmuş R1 `app-panel-ozet.html` blok blok okundu): **Dikkat gerektirenler** ve **Dünden bugüne** yazıldı, dördü zaten vardı. ⚠️ **KART DEĞİL ÇEKMECE**: §4.1 "en fazla altı kart" tavanı korunuyor, §3 bu sayfalar için "widget **ve drawer**'ları" diyor. Ölçüldü: her rolde kart **6**.
 | 3 | `app-panel-onaylar.html` | **GÖMÜLÜYOR** ✅ | Üst çubuk onay çekmecesi — R2'de **çalışıyor** (`gvApprove`). §3.2: "onay için ayrıca üst düzey bölüm açılmamalıdır." |
 | 4 | `app-panel-bildirimler.html` | **GÖMÜLÜYOR** ✅ | Üst çubuk bildirim çekmecesi — R2'de **çalışıyor** (`gvBell`). |
-| 5 | `app-panel-duyurular.html` | **GÖMÜLÜYOR** | Panel duyuru widget'ı. |
+| 5 | `app-panel-duyurular.html` | **GÖMÜLÜYOR** | Panel duyuru widget'ı. | ✅ **GÖMÜLDÜ** → `app-panel.html` › **Duyurular çekmecesi** (`DB.announcements` 3 kayıt). "Okundu" rozeti `okuyanlar` dizisinden türetiliyor; **"okundu işaretle" düğmesi BASILMADI** — o diziye yazan yordam yok (V2-99 sınıfı), sebebi ekranda.
 | 6 | `app-panel-yonetici.html` | **GÖMÜLÜYOR** ✔ ✅ | **ADR-R2-07:** ayrı ekran değil, Ana Panel'in rol varyantı. R2'de `OZET_BY_ROLE` tablosu rol başına iki özet kartı seçiyor; `sahip` ve `genelmudur` fırsat + nakit görüyor. **Çalışıyor.** |
 
 ---

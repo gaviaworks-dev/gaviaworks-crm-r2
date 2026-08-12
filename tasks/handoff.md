@@ -1,4 +1,4 @@
-# Handoff — 13 Ağustos 2026 · Dilim 7 (GÖMME) AÇILDI · sekiz satır kapandı
+# Handoff — 13 Ağustos 2026 · Dilim 7 (GÖMME) AÇILDI · **on satır kapandı**
 
 > `claude --continue` sonrası **ilk iş** bunu okumaktır. Hafıza context değil,
 > diskteki defterlerdir.
@@ -15,17 +15,18 @@
 
 | | |
 |---|---|
-| HEAD | `9deff4a` · **197 commit** (bu oturumda **9**) |
+| HEAD | `<son>` · **199 commit** (bu oturumda **11**) |
 | Ekran | **48 + index** (yeni ekran YAZILMADI — gömme dilimi) |
-| Rota | **125/148 yayında · kalan 23** (girişte 117/31) |
-| Kalanın dağılımı | **1** kapsam dışı (66) · **18** bloke · **4** gerçek iş (2 · 5 · 62 · 63) |
+| Rota | **127/148 yayında · kalan 21** (girişte 117/31) |
+| Kalanın dağılımı | **1** kapsam dışı (66) · **18** bloke · **2** gerçek iş (62 · 63) |
 | Eksen | **14 eksen TEMİZ** · `[A9]` özet denetimi yeşil |
-| Tarayıcı | **93 girdi × 6 = 558 ölçüm · 558/558 geçerli · 0 bulgu · 166,5 sn** |
+| Tarayıcı | **93 girdi × 6 = 558 ölçüm · 558/558 geçerli · 0 bulgu · 164,2 sn** |
 | Menü tavanı | en yüksek günlük girdi **17** — DEĞİŞMEDİ (yeni girdi açılmadı) |
 | v2-borç | **V2-98** ve **V2-99** açıldı |
 
-**Kapanan sekiz satır:** 27 · 28 (komisyon) · 51 · 52 (departman talebi) ·
-60 (anket) · 65 (toplantı kararı) · 79 (bütçe) · 125 (süresi dolanlar).
+**Kapanan on satır:** 2 · 5 (panel) · 27 · 28 (komisyon) · 51 · 52
+(departman talebi) · 60 (anket) · 65 (toplantı kararı) · 79 (bütçe) ·
+125 (süresi dolanlar).
 
 ---
 
@@ -88,6 +89,7 @@ Geçen tur bu bir kez yakalanmıştı (`EMP-016` kartı). Bu turda **üç kez**:
 | `app-arac-detay.html` `salt()` | *"devre dışı bir düğme bile vaat sayılır"* | Beyar kararı 2 tam tersini istedi; karar uygulandığı AN cümle ekranda yanlışa döndü |
 | `app-operasyon.html` sayfa alt beyanı | *"beş tip tek yüzeyde"* | çip şeridi **altı** çip basıyordu; aynı ekranın §6.2 paragrafı zaten "altı" diyordu — **iki cümle birbiriyle çelişiyordu** |
 | `tasks/ekran-brief.md` §23.4 | *"`ui.js:278` NPS gruplamasını zaten tanımlıyor"* | o satırlar yalnız bir **rozet TON sözlüğü**; eşikleri hesaplayan yordam YOK |
+| `assets/css/r2.css:56` | *"En fazla altı kart: …"* | panel çekmece şeridi alınca yorum eksiği anlatır oldu; güncellendi (ajan `assets/`e dokunamaz) |
 
 **DERS: bir kuralın hâlini anlatan cümle, kuralın KENDİSİNDEN türetilmeli.**
 Operasyon'un tip sayısı artık `Object.keys(K.tipler).length`ten geliyor;
@@ -142,9 +144,8 @@ bırakma" maddesi eklendi.
 
 ## 7. AÇIK KALAN İŞ — 23 satır
 
-**Gerçek iş (4 satır):**
-1. **Rota 2 · 5** → `app-panel.html` (GRUP 6). Eksik üç blok §4'te ölçülü.
-2. **Rota 62 · 63** → toplantı (GRUP 7). Panel ayağı ZATEN yayında
+**Gerçek iş (2 satır):**
+1. **Rota 62 · 63** → toplantı (GRUP 7). Panel ayağı ZATEN yayında
    ("Günün ajandası"); yazılacak olan `app-musteri-detay.html` ve
    `app-proje-detay.html` aktivite yüzeyindeki bağlamsal kayıt.
    **İKİ EKRANA dokunur — tek ajan kuralını doğal olarak ihlal eder,
@@ -156,6 +157,25 @@ bırakma" maddesi eklendi.
 
 **Devreden borç:** ADR-R2-41·42·43·44 `kararlar.md`e taşınmalı (üç turdur
 devrediyor) · V2-94 · V2-96 · V2-97.
+
+---
+
+## 7b. PANELDE ŞARTNAMENİN KENDİ ÇELİŞKİSİ ÇÖZÜLDÜ
+
+Ajan üç yeni **kart** yazdı ve panel personel kimliğinde **9 karta** çıktı.
+§4.1 *"en fazla altı kart"* yazılı bir kabul kriteridir
+(`riskler-ve-kapsam.md:210`). Aynı belgenin §3'ü ise bu sayfalar için
+*"`/panel` widget **ve DRAWER'ları**"* diyor.
+
+**Taraf seçilmedi — §3'ün kendisi ikinci biçimi adıyla veriyor.** Üç yüzey
+çekmeceye alındı: tavan korunuyor **ve** rota satırları kapanıyor. Beş
+rolde ölçüldü, hepsinde kart **6**.
+
+⚠️ Aynı turda `aktif-ekseni` `[A3]` bir **tuzak alan okuması** yakaladı:
+`DB.inspections` ve `DB.vehicles` `durum` taşır (durum kanonlu), `aktif`
+orada tuzaktır — `GV.arsivli`ye çevrildi. Bugün 0 kayıt arşivli olduğu
+için görünen sonuç değişmiyor, **ama okunan eksen değişiyor**. Tuzak tam
+böyle sessiz kalır; eksen olmasa bu tur da fark edilmezdi.
 
 ---
 
@@ -182,7 +202,14 @@ Bu turda eklenen:
    **yordamı taşımıyor**. Ortak katmana yordam yazmak yerine hücre içinde
    `<details>` kullanıldı. Ortak katmana gerçek bir derinleşme yordamı
    yazılsın mı, yoksa bu biçim kalsın mı?
-5. **Rota 79'un K-21 artığı.** `p.sozlesmeTutari` künyede
+5. 🔴 **Müşteri portalı kimliği (`emp:null`) panelde İÇ VERİ görüyor** —
+   bu turun eklemesi DEĞİL, önceden de böyleydi ve ajan ölçtü:
+   "Son bildirimler" 5 iç bildirim · "Proje özeti" 6 iç proje ·
+   "Ekip özeti" 15 personel + izin talepleri İSİMLERİYLE · KPI
+   "Bekleyen onay=10". Bu turda eklenen üç çekmece bu kimliğe KAPALI.
+   Var olan davranışı bozmama yükümlülüğü gereği dokunulmadı —
+   **turun en ağır bulgusu budur**, `v2-borc.md`ye yazılacak.
+6. **Rota 79'un K-21 artığı.** `p.sozlesmeTutari` künyede
    `Sözleşme tutarı`, taşınan maliyet kartında `Gelir (sözleşme tutarı)`
    olarak geçiyor — artık iki ayrı sekmede. Künyeden de çekilsin mi?
 
