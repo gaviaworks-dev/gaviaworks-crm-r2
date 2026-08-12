@@ -352,22 +352,111 @@ const OLC_ODAK_HAZIRLIK = new Function(`
   };
 `);
 
+/* Çizimin DURULMASINI bekler: `sessizlik` ms boyunca hiç DOM değişikliği
+   olmadıysa sayfa oturmuştur. `tavan` aşılırsa yine döner — durmayan bir
+   animasyon ölçümü sonsuza kadar bekletemez. Yazı tipi de burada beklenir:
+   taşma ölçümü metin genişliğine bağlıdır ve yedek yazı tiple ölçülen
+   genişlik BAŞKA BİR ŞEYİN ölçümüdür. */
+/* ⚠️ SESSİZLİK TEK BAŞINA YETMEZ — ÖLÇÜLDÜ (bu turda, üç liste ekranında).
+   `GV.list` gerçek satırları çizmeden önce 260 ms YÜKLENİYOR iskeleti basar
+   (`ui.js` `load()` · `cfg.delay == null ? 260`). O 260 ms boyunca DOM hiç
+   değişmez: saf sessizlik ölçütü "çizim bitti" der, ölçüm iskeleti ölçer ve
+   `app-musteri` 989 düğüm yerine 416 düğümle YEŞİL yanar. Sessizliği ölçmek,
+   sayfanın BEKLEDİĞİNİ bitmiş sanmaktır.
+
+   Bu yüzden önce ÜRÜNÜN KENDİ İŞARETİ beklenir: yükleme iskeleti
+   (`[aria-busy="true"]` · `.sk`) belgeden kalkana kadar. İşaret ürünün
+   kendi sözleşmesidir (`GV.skeleton`), eksenin uydurduğu bir sezgi değil. */
+const YUKLEME_BITTI = ({ tavan }) => new Promise(res => {
+  const bitis = Date.now() + tavan;
+  const bak = () => {
+    if (!document.querySelector('[aria-busy="true"], .sk')) return res('bitti');
+    if (Date.now() > bitis) return res('tavan');
+    setTimeout(bak, 25);
+  };
+  bak();
+});
+
+const DURULMA_BEKLE = ({ sessizlik, tavan }) => new Promise(res => {
+  const bitis = Date.now() + tavan;
+  let t = null, mo = null, sert = null;
+  const bit = () => { if (mo) mo.disconnect(); clearTimeout(t); clearTimeout(sert); res(true); };
+  const kur = () => { clearTimeout(t); t = setTimeout(bit, Math.max(0, Math.min(sessizlik, bitis - Date.now()))); };
+  Promise.race([
+    document.fonts ? document.fonts.ready : Promise.resolve(),
+    new Promise(r => setTimeout(r, tavan))
+  ]).then(() => {
+    mo = new MutationObserver(kur);
+    mo.observe(document.documentElement, { childList: true, subtree: true, attributes: true, characterData: true });
+    sert = setTimeout(bit, Math.max(0, bitis - Date.now()));
+    kur();
+  });
+});
+
 /* ---- Ana akış ------------------------------------------------------ */
 (async () => {
+  const basladi = Date.now();
   const srv = sunucu();
   await new Promise(r => srv.listen(PORT, '127.0.0.1', r));
   const base = `http://127.0.0.1:${PORT}`;
 
   const browser = await chromium.launch();
+
+  /* ===================================================================
+     DIŞ KAYNAK ÖNBELLEĞİ — ölçülen yavaşlığın TEK büyük kalemi
+     ÖLÇÜLDÜ (bu turda, gerçek Chromium):
+       · dış yazı tipi ERİŞİLEBİLİR   → `goto(networkidle)` 1050 ms
+       · dış yazı tipi CEVAPSIZ       → 30003 ms ve `goto` **fırlatıyor**
+       · dış istek anında kesilirse   →   527 ms
+     Her ölçüm TEMİZ bağlamda koştuğu için tarayıcı önbelleği boştur ve
+     540 ölçüm CDN'e 1600'den fazla istek atar. Ağ engelli ya da yavaş bir
+     ortamda ölçüm başına 30+ saniye oraya gider; devredilen "1,1 ölçüm
+     dakika" ölçümü tam olarak budur.
+
+     ÇÖZÜM: dış kaynak BİR KEZ gerçek CDN'den alınır, sonraki her istek
+     bellekten AYNI bayt ile karşılanır. Sayfa aynı CSS'i ve aynı woff2'yi
+     görür — yazı tipi metrikleri, dolayısıyla taşma ölçümü DEĞİŞMEZ.
+
+     ⚠️ Alınamazsa ölçüm "temiz" sayılmaz, KİPİ yazılır: yedek yazı tipiyle
+     ölçülen bir taşma sonucu, CDN'li koşumla karşılaştırılamaz. Sessizce
+     yedeğe düşmek, farklı bir şey ölçüp aynı adı vermektir. */
+  const disOnbellek = new Map();
+  let yaziTipiKipi = 'CDN';
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const page = await ctx.newPage();
+    page.on('response', async r => {
+      if (!/^https?:\/\//.test(r.url()) || r.url().startsWith(base)) return;
+      if (r.status() >= 400) return;
+      try {
+        disOnbellek.set(r.url(), { status: r.status(), contentType: r.headers()['content-type'] || 'application/octet-stream', body: await r.body() });
+      } catch (e) { /* gövdesi okunamayan istek önbelleğe girmez */ }
+    });
+    /* Isınma tek seferliktir; ağ engelliyse 8 sn'de pes edilir ve YEDEK kipe
+       düşülür. Uzun tavan burada tüm koşumu bekletirdi. */
+    await page.goto(base + '/app-panel.html?role=sahip', { waitUntil: 'networkidle', timeout: 8000 }).catch(() => {});
+    await page.evaluate(() => document.fonts.ready).catch(() => {});
+    await ctx.close();
+    if (!disOnbellek.size) yaziTipiKipi = 'YEDEK — CDN alınamadı, ölçüm yerel yedek yazı tipiyle yapıldı';
+  }
+  console.log(`  ÖNBELLEK · dış kaynak ${disOnbellek.size} parça · yazı tipi kipi: ${yaziTipiKipi}\n`);
+
   const sonuclar = [];
   let toplamBulgu = 0;
+  const sure = { goto: 0, iskelet: 0, olcum: 0, odak: 0, baglam: 0, tavanaVuran: 0 };
 
-  for (const ek of EKRANLAR) {
+  /* `GV_ALT=12` — yalnız ilk 12 ekran. EŞDEĞERLİK ÖLÇÜMÜ İÇİN vardır:
+     eski ve yeni yöntem aynı ekran kümesinde koşturulup düğüm ve bulgu
+     sayısı birebir karşılaştırılabilsin. Kapı koşumu filtresiz koşar. */
+  const ALT = process.env.GV_ALT ? Number(process.env.GV_ALT) : 0;
+  for (const ek of (ALT ? EKRANLAR.slice(0, ALT) : EKRANLAR)) {
     for (const g of GENISLIK) {
       /* Her ölçüm TEMİZ bağlamda: önceki sayfanın oturumu, konsolu ve
          localStorage'ı bir sonrakine sızmasın. */
+      let z = Date.now();
       const ctx = await browser.newContext({ viewport: { width: g, height: 900 }, deviceScaleFactor: 1 });
       const page = await ctx.newPage();
+      sure.baglam += Date.now() - z;
 
       /* Konsol iki kovaya ayrılır. Dış CDN (Google Fonts) hatası bu deponun
          kusuru DEĞİLDİR — ağ engelli ortamda her sayfada çıkar ve kendi
@@ -376,6 +465,15 @@ const OLC_ODAK_HAZIRLIK = new Function(`
       const konsol = [];      /* kendi kaynağımız — GERÇEK bulgu */
       const disKaynak = [];   /* üçüncü taraf — ayrı raporlanır */
       const disMi = (u) => /^https?:\/\//.test(u) && !u.startsWith(base);
+
+      /* Dış istek AĞA ÇIKMAZ: önbellekteki aynı bayt anında döner. Önbellekte
+         olmayan dış istek kesilir ve `disKaynak`a yazılır — sessizce beklemek
+         yerine görünür olur. Kendi kaynağımız yönlendirilmez. */
+      await page.route(u => disMi(u.toString()), route => {
+        const v = disOnbellek.get(route.request().url());
+        if (v) return route.fulfill({ status: v.status, contentType: v.contentType, body: v.body });
+        return route.abort();
+      });
       page.on('console', m => {
         if (m.type() !== 'error') return;
         const t = m.text().slice(0, 200);
@@ -421,16 +519,47 @@ const OLC_ODAK_HAZIRLIK = new Function(`
       const url = base + '/' + yol +
         (ek.oturum ? (yol.indexOf('?') === -1 ? '?role=' + rol : '&role=' + rol) : '') +
         (parca ? '#' + parca : '');
-      await page.goto(url, { waitUntil: 'networkidle' });
+      /* ⚠️ ESKİ HÂLİNDE `.catch` YOKTU: dış kaynak cevap vermeyen bir ortamda
+         `goto` 30 sn sonra fırlatıyor ve KAPININ TAMAMI çöküyordu — 540
+         ölçümün tek bir yavaş isteğe bağlı olması ölçüm değil kumardır.
+         Artık yükleme hatası bir BULGUdur; koşum devam eder. */
+      z = Date.now();
+      let yuklemeHatasi = '';
+      /* ⚠️ `networkidle` BIRAKILDI ve yerine ÜÇ AÇIK KOŞUL kondu. Gerekçe
+         ölçüldü: `networkidle` tanımı gereği "son istekten sonra 500 ms
+         sessizlik" bekler — yani her ölçüme, hiçbir şey ölçmeyen yarım
+         saniye ekler (faz dökümünde `goto 549ms`ti, işin kendisi ~50 ms).
+         Üstelik bekleme AĞA bağlıdır: dış istek cevap vermezse 30 sn.
+         Yerine beklenen üç şey, ölçümün gerçekten muhtaç olduğu üç şey:
+           1. `domcontentloaded` — belge ve senkron betikler hazır
+           2. `.gv-app` iskeleti (oturumlu ekranda) — kabuk koştu
+           3. `document.fonts.ready` — TAŞMA ölçümü yazı tipi metriğine
+              bağlıdır; yedek yazı tipiyle ölçülen genişlik yanlış olur */
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 })
+        .catch(e => { yuklemeHatasi = String(e.message).split('\n')[0]; });
+      sure.goto += Date.now() - z;
       /* Kabuk sprite'ı fetch ile enjekte ediyor ve gv:ready ondan sonra
          atılıyor; networkidle yetmeyebilir. İskeletin doğmasını bekle. */
+      z = Date.now();
       if (ek.oturum) await page.waitForSelector('.gv-app', { timeout: 5000 }).catch(() => {});
-      await page.waitForTimeout(350);
+      /* ⚠️ SABİT 350 ms BEKLEME KALDIRILDI. Sabit bekleme iki yönden de
+         yanlıştı: hızlı ekranda boşa harcanıyor, ağır ekranda YETMİYOR ve
+         yarım çizilmiş sayfa ölçülüyordu (ölçüm başına 350 ms × 540 = 3,2
+         dakika saf bekleme). Yerine DURULMA ölçülür: DOM 90 ms boyunca hiç
+         değişmediyse çizim bitmiştir. Tavan 700 ms — sabit beklemenin iki
+         katı, yani hiçbir ekran eskisinden AZ beklemiş olmaz. */
+      const yuklemeKip = await page.evaluate(YUKLEME_BITTI, { tavan: 4000 }).catch(() => 'hata');
+      await page.evaluate(DURULMA_BEKLE, { sessizlik: 90, tavan: 700 }).catch(() => {});
+      if (yuklemeKip !== 'bitti') sure.tavanaVuran++;
+      sure.iskelet += Date.now() - z;
 
+      z = Date.now();
       const gecer  = await page.evaluate(OLC_GECERLILIK);
       const tasma  = await page.evaluate(OLC_TASMA);
       const sprite = await page.evaluate(OLC_SPRITE);
       const odakH  = await page.evaluate(OLC_ODAK_HAZIRLIK);
+      sure.olcum += Date.now() - z;
+      z = Date.now();
 
       /* Odak sırası: gerçekten Tab'la yürünür. İlk sekme skip link'e
          düşmeli (belgenin ilk odaklanabilir düğümü odur). */
@@ -450,6 +579,7 @@ const OLC_ODAK_HAZIRLIK = new Function(`
       }
       const odakIlerledi = odakZinciri.length >= Math.min(5, odakH.odaklanabilir);
       const odakGorunmez = odakZinciri.filter(o => !o.gorunur).length;
+      sure.odak += Date.now() - z;
 
       const bulgular = [];
 
@@ -458,6 +588,7 @@ const OLC_ODAK_HAZIRLIK = new Function(`
          yazılır ki ✗ bassın; sessizce yeşil geçmek, ölçmediğini ölçtüm
          sanmaktır. */
       const gecersiz = [];
+      if (yuklemeHatasi)                      gecersiz.push('sayfa YÜKLENEMEDİ — ' + yuklemeHatasi);
       if (ek.oturum && gecer.denied)          gecersiz.push('kabuk gv:denied attı — 403 yetki kapısı');
       if (ek.oturum && !gecer.ready)          gecersiz.push('gv:ready hiç atılmadı — ekran kodu koşmadı');
       if (gecer.yetkisizBaslik)               gecersiz.push(`belge başlığı "${gecer.baslik}"`);
@@ -510,7 +641,9 @@ const OLC_ODAK_HAZIRLIK = new Function(`
       for (const b of bulgular) console.log(`      · ${b}`);
       for (const d of disKaynak) console.log(`      ~ DIŞ KAYNAK (bu deponun kusuru değil) — ${d}`);
 
+      z = Date.now();
       await ctx.close();
+      sure.baglam += Date.now() - z;
     }
   }
 
@@ -531,6 +664,15 @@ const OLC_ODAK_HAZIRLIK = new Function(`
     (disToplam ? ` · ayrıca ${disToplam} dış kaynak isteği başarısız (Google Fonts CDN — depo kusuru değil)` : ''));
   console.log(`  NÖBETÇİ · geçerli ölçüm ${gecerliOlcum}/${sonuclar.length} · geçersiz ${gecersizOlcum} · ` +
     `gv:ready atan ${readySayisi}/${sonuclar.length} · ölçülen düğüm toplamı ${dugumToplam} ` +
-    `(en az ${Math.min(...dugumler)}, en çok ${Math.max(...dugumler)}, eşik ${GECERLILIK_ESIK})\n`);
+    `(en az ${Math.min(...dugumler)}, en çok ${Math.max(...dugumler)}, eşik ${GECERLILIK_ESIK})`);
+  /* HIZ DE ÖLÇÜLÜR. Yavaşlayan bir kapı koşturulmaz, koşturulmayan kapı
+     yoktur; hangi fazın yavaşladığı tahmin edilmesin diye faz faz basılır. */
+  const gecenSn = (Date.now() - basladi) / 1000;
+  const faz = Object.entries(sure).filter(([k]) => k !== 'tavanaVuran')
+    .map(([k, v]) => `${k} ${(v / sonuclar.length).toFixed(0)}ms`).join(' · ');
+  console.log(`  HIZ · ${gecenSn.toFixed(1)} sn · ölçüm başına ${(gecenSn * 1000 / sonuclar.length).toFixed(0)} ms · ` +
+    `dakikada ${(sonuclar.length / (gecenSn / 60)).toFixed(1)} ölçüm · yazı tipi kipi: ${yaziTipiKipi}`);
+  console.log(`  FAZ  · ${faz}` +
+    (sure.tavanaVuran ? `  ⚠️ ${sure.tavanaVuran} ölçümde yükleme iskeleti 4 sn'de kalkmadı` : '') + `\n`);
   process.exit(toplamBulgu ? 1 : 0);
 })();
