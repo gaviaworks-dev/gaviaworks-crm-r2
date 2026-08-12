@@ -39,8 +39,8 @@
 | KARAR BEKLİYOR | **0** | %0,0 | 0 |
 | **Toplam** | **148** | %100 | 148 |
 | YENİ yazılacak | **8** — altısı (Y1–Y6) **yayında**, ikisi kaldı | — | 8 |
-| **Bugün R2'de yayında** | **101** | %68,2 | 97 |
-| **Kalan** | **47** | %31,8 | 51 |
+| **Bugün R2'de yayında** | **102** | %68,9 | 97 |
+| **Kalan** | **46** | %31,1 | 51 |
 
 > **12 Ağustos · Dilim 6 — iki satır karar DEĞİŞTİRDİ, dokuzu yazılıyor.**
 > `KARŞILIĞI VAR` 43 → 41: rota **123** ve **124** (`app-dokuman.html` ve
@@ -320,7 +320,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 |---|---|---|---|
 | 87 | `app-izin.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI** — `app-zaman.html` › İzin yüzeyi. Sekmeler `DB.leaveStatuses`ten türetildi (7 talep). Bakiye kapısı hedefe taşındı: bakiyesi yetmeyen talep artık REDDEDİLEBİLİYOR |
 | 88 | `app-izin-detay.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI** (383 satır). Kuyruğun **2 ölü hedefini kapattı**. Bakiye kapısı hedefe bağlı: `IZN-2026-039` onaylanamıyor ama **reddedilebiliyor ve iptal edilebiliyor**; düğme devre dışı ve sebebi yazılı. Geçiş tablosunu ekran okumaz — `GV.flow.durumBilgi` bu turda motora eklendi |
-| 89 | `app-izin-form.html` | **KARŞILIĞI VAR** | — |
+| 89 | `app-izin-form.html` | **KARŞILIĞI VAR** ✅ | Doğum durumu `Taslak`. Bakiye kapısı FORMUN kapısı değil (`Onaylandı`ın `girisKapi`sı): aşan talep onaylanamaz ama TALEP EDİLEBİLİR, `Ücretsiz izin` muaf. `gun` `GV.calendar.isGunu`dan türer. K-38'in ilişki adımı burada görünür. **Çalışıyor.** |
 | 90 | `app-zaman.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** İki yüzey sekmesi (Zaman · İzin), tembel çizim, `#izin` derin bağlantısı. 131 zaman kaydı · 6 haftalık defter |
 | 91 | `app-zaman-onay.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — `app-zaman.html` › Zaman yüzeyinin "Onay bekleyen" kayıtlı görünümü (43 satır, `?t=onay`). Haftalık defter satırın onay merciidir; 41 satır kapsanıyor, 90 kapsanmıyor |
 | 92 | `app-kapasite.html` | **GÖMÜLÜYOR** ✅ | **GÖMÜLÜYOR** — kapasite ayrı ekran değil, "İş ve Kapasite" raporu (`app-rapor.html?r=is-kapasite`, yayında). Zaman ekranı oraya bağlanıyor |

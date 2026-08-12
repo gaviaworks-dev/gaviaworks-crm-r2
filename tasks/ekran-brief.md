@@ -2883,6 +2883,59 @@ bağlanır. Aynı sınıf: `app-varlik.html` `?t=<yuzey>` (§20.7) ·
 `.odl-gap-bolum` (backend payı listesi — adı ödeme linki modülüne ait, V2-05).
 Backend payı bloğunu bu üç sınıfla bas; `<style>` yazma.
 
+### 22.1d ÜÇÜNCÜ AJANIN brief'te BULAMADIĞI imzalar
+
+**1 · `GV.form` TÜRETİLMİŞ ALANI TAZELEYECEK BİR YOL SUNMUYOR.** Bileşen alan
+değişiminde yalnız `aside`ı yeniden çiziyor; `form.sync()` sadece `showIf`i
+değerlendiriyor. Bir alanın DEĞERİ türetilmişse (izin formunda `gun`) o değer
+bayat kalır. Bugünkü tek yol, alanın DOM sözleşmesine dokunmaktır:
+
+```js
+/* Alanlar `<form>` içinde `input[name="<key>"]` olarak yaşar; bileşen
+   `input` ve `change` olaylarını `<form>` üstünde dinler (delegasyon). */
+var el = form.el.querySelector('[name="gun"]');
+if(el && el.value !== String(v)) el.value = v;   /* değer yaz */
+```
+⚠️ Bu bir **kaçamaktır**, sözleşme değil: `GV.form` `setValue(key, deger)`
+taşımıyor (borç **V2-83**). Kullanırsan ekranda beyan et.
+
+**2 · `Gates.izinBakiye` EKSİK GİRDİDE `{ok:true}` DÖNER**, `olculemedi`
+DEĞİL. §22.1b bazı kapıların "ölçülemedi" döndüğünü yazıyor; bunun
+**dönmediğini** yazmıyordu. Personel/tür/tarih eksikken kapı "geçer" der.
+**Ekran onu "geçer" diye BASMAZ**: kendi ölçülebilirlik sorusunu sorar ve
+ölçemediğinde `—` + sebep basar (§10.1 · borç **V2-82**).
+
+**3 · ONAY ZİNCİRİ ÖRNEĞİ YALNIZ SATIN ALMADA VAR.** Ölçüldü: 8 onay tipinin
+**1'inde** `zincir` alanı tanımlı (`Satın alma talebi` → `purchaseApprovals`).
+Yani `GV.approval.adim('İzin talebi', kod)` **7/7 kayıtta `null`** döner ve
+bu doğru cevaptır. Ekran `0/0` BASMAZ, "bu tip için zincir örneği defteri
+tanımlı değil" der. `DB.approvals` (12 kayıt) kuyruk kaydıdır, zincir örneği
+değildir — izinde 3/7 talepte var ve salt okunur gösterilir.
+
+**4 · `DB.leaves` — 13 alanın tam envanteri:**
+`kod · personel · tur · baslangic · bitis · gun · vekil · gerekce · durum ·
+onaylayan · talepTarihi · onayTarihi · cakisma` (+ `ret` 1/7 · `aktif`
+**tuzaklı**). `onayTarihi` 5/7 · `vekil` 5/7.
+
+**5 · `DB.holidays` — şekil ve KAPSAM:** `{ tarih, ad, kaynak }` · **14
+kayıt** ve yalnız **iki yıl**: 2025 (7) · 2026 (7). Bu aralığın dışındaki bir
+tarih için `GV.calendar.isGunu` tatilleri **eksik** sayar — hafta sonunu
+bilir, resmî tatili bilmez. Bu aralığın dışına taşan bir hesap yapan ekran
+**bunu beyan eder**.
+
+**6 · `GV.flow.durumBilgi(tur, kod)`** (`domain.js:597`) — §7 listelemiyordu.
+Kaydın durumu HAKKINDA tek başvuru noktası (`adimlar()` yapılabilir geçişleri
+verir, bu durumun KENDİSİNİ anlatır):
+```js
+GV.flow.durumBilgi('leave', 'IZN-2026-038')
+//  → { durum, terminal, yetki:[…], kilit:null|{…} }
+```
+`terminal:true` → bu durumdan çıkış yok. İkisini ayrı ayrı `DB.transitions`
+okuyarak öğrenmek aynı kuralın ikinci okuyucusunu doğurur.
+
+**7 · `GV.fmt` — §21.11 listesinde olmayan üç yordam:**
+`GV.fmt.dateShort(iso)` · `GV.fmt.dateLong(iso)` · `GV.fmt.initials(ad)`.
+
 ### 22.2 KOD ÜRETİMİ — sıra GLOBAL, yıl damgası kayıt yılıdır
 
 ⚠️ Ölçüldü ve §13.2'deki desen **bu koleksiyonlarda yetersizdir.** `domain.js`
@@ -3192,10 +3245,22 @@ günü sayar (`DB.holidays` 14 resmî tatil + hafta sonu). Alan `readonly`
 basılır ve formülü altında yazılır. Ölçüldü: `2026-08-10 → 2026-08-14` = **5
 iş günü**.
 
-**`cakisma` TÜRETİLİR** — aynı personelin çakışan başka talebi (`durum` ∈
-`Taslak`/`Onay bekliyor`/`Onaylandı`) varsa `true`. Ekran çakışan kaydı
-**kodla** gösterir; boolean'ı tek başına basmak "neyle çakıştı" sorusunu
-cevapsız bırakır.
+⚠️ **DÜZELTME — `DB.leaves[].cakisma` PERSONEL ÇAKIŞMASI DEĞİLDİR.** Bu
+bölüm ilk yazımında öyle diyordu ve **yanlıştı**; bir ajan ölçtü ve
+düzeltti. Alanın anlamı `assets/data/hr.js:10`da açıkça yazılı: *"`cakisma`
+alanı **personel çakışmasını değil** proje takvimi çakışmasını işaretler"* —
+ve `app-izin-detay.html:173` o alanı **"Proje takvimi çakışması"** etiketiyle
+basıyor. Ölçülmüş kanıt: `IZN-2026-033`te `cakisma:true` ama sahibinin
+departmanında başka kimse yok.
+
+Sonuç iki kurallıdır:
+- **Form `cakisma` alanına YAZMAZ** (`null` bırakır). Personel ölçümünü oraya
+  yazmak, aynı alanı okuyan iki yayındaki ekranı yalan söyletirdi.
+- **Personel çakışması AYRI türetilir** ve alana yazılmaz: aynı personelin
+  terminal olmayan durumdaki (`Taslak` · `Onay bekliyor` · `Onaylandı` —
+  küme `DB.transitions.leave`den türetilir) başka bir talebiyle tarih
+  kesişmesi. Ekran çakışan kaydı **KODLA** gösterir; boolean'ı tek başına
+  basmak "neyle çakıştı" sorusunu cevapsız bırakır.
 
 ⚠️ **BAKİYE KAPISI FORMUN KAPISI DEĞİLDİR — ve bu bir "uyar ama engelleme"
 kaçamağı değildir.** `Gates.izinBakiye` `transitions.leave` içinde
