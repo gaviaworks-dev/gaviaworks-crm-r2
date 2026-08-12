@@ -134,7 +134,70 @@ const EKRANLAR = [
   { dosya: 'app-ayar-entegrasyon.html',           ad: 'Entegrasyon · DevOps',oturum: true, rol: 'devops' },
   { dosya: 'app-ayar-log.html',                   ad: 'Sistem Kayıtları',    oturum: true },
   { dosya: 'app-ayar-log.html#arsiv',             ad: 'Kayıtlar · Arşiv',    oturum: true },
-  { dosya: 'app-ayar-log.html#kalite',            ad: 'Kayıtlar · Kalite',   oturum: true }
+  { dosya: 'app-ayar-log.html#kalite',            ad: 'Kayıtlar · Kalite',   oturum: true },
+  /* ---- Dilim 6: rota defterinin son dokuz KARŞILIĞI VAR satırı --------
+     Kayıt seçimi ÖLÇÜMDEN geldi (brief §22.4), rastgele değil:
+
+       PRJ-2026-003  en kalabalık proje · PRJ-2026-007 tek `Plan` projesi
+       MUS-2026-008  `?hesap=` tohum yolu — V2-39'un bağlandığı adres
+       SAT-2026-014  186.000 ₺ · onay zinciri ÜÇ adım (eşik 100.000 aşılı)
+       SAT-2026-016  21.000 ₺ · `Taslak` · zincir İKİ adım (25.000 eşiği altı)
+       EMP-006       yedi sekmenin ALTISINDA kayıt taşıyan tek personel
+                     (1 performans · 2 eğitim · 2 zimmet · 47 zaman · 1 izin)
+       EMP-015       tek `Offboarding` personeli · İKİ onboarding kaydı
+                     (Giriş + Çıkış) · `saatlikUcret` dolu TEK kayıt (XOR)
+       EMP-011       yedi sekmenin YEDİSİ de boş — boş sekme yerleşimi
+                     ancak orada çizilir
+       IZN-2026-039  bakiyesi YETMEYEN talep · onay kapısı kapalı
+       DMB-2025-007  K-30'da zimmet iddiası DÜŞÜRÜLEN demirbaş
+       DMB-2025-004  `Zimmet bekliyor` · kabul BEKLEYEN tek tutanak
+       DMB-2023-011  `Hurda` + `arsiv:true` olan tek demirbaş
+       ARC-001       en kalabalık araç (2 bakım · 2 yakıt · 1 ceza · 4 gider)
+       ARC-002       `Kiralık` tek araç — form `showIf` bloğu orada çizilir
+       ARC-003       kaza kaydı OLAN tek araç · `Serviste`
+
+     ⚠️ İKİ ROL VARYANTI K-39'u (öz-erişim) GERÇEK Chromium'da iki yönden
+     ölçer. `?role=frontend` kabukta EMP-006'ya çözülüyor (ölçüldü,
+     `shell.js` `resolveSession`), yani:
+       · `?id=EMP-006&role=frontend` → KENDİ kaydı, ücret AÇIK
+       · `?id=EMP-005&role=frontend` → BAŞKASININ kaydı, ücret MASKELİ
+     Bir kapıyı yalnız reddettiği yönde ölçmek, kabul ettiği yönü hiç
+     çizmemektir. */
+  { dosya: 'app-proje-form.html',                       ad: 'Proje Formu',        oturum: true },
+  { dosya: 'app-proje-form.html?id=PRJ-2026-003',       ad: 'Proje Düzenle',      oturum: true },
+  { dosya: 'app-proje-form.html?hesap=MUS-2026-008',    ad: 'Proje · Tohumlu',    oturum: true },
+  { dosya: 'app-satinalma-form.html',                   ad: 'Satın Alma Formu',   oturum: true },
+  { dosya: 'app-satinalma-form.html?id=SAT-2026-014',   ad: 'Satın Alma · 3 Adım',oturum: true },
+  { dosya: 'app-satinalma-form.html?id=SAT-2026-016',   ad: 'Satın Alma · 2 Adım',oturum: true },
+  { dosya: 'app-personel-form.html',                    ad: 'Personel Formu',     oturum: true },
+  { dosya: 'app-personel-form.html?id=EMP-015',         ad: 'Personel · Saatlik', oturum: true },
+  { dosya: 'app-personel-form.html?id=EMP-006',         ad: 'Personel · Kapalı Form', oturum: true, rol: 'frontend' },
+  { dosya: 'app-personel-detay.html?id=EMP-006',        ad: 'Personel Detayı',    oturum: true },
+  { dosya: 'app-personel-detay.html?id=EMP-006#zimmet', ad: 'Personel · Zimmet',  oturum: true },
+  { dosya: 'app-personel-detay.html?id=EMP-015#yasamdongusu', ad: 'Personel · Çıkış', oturum: true },
+  { dosya: 'app-personel-detay.html?id=EMP-011',        ad: 'Personel · Boş',     oturum: true },
+  { dosya: 'app-personel-detay.html?id=EMP-006',        ad: 'Personel · Öz-erişim', oturum: true, rol: 'frontend' },
+  { dosya: 'app-personel-detay.html?id=EMP-005',        ad: 'Personel · Maskeli', oturum: true, rol: 'frontend' },
+  { dosya: 'app-izin-form.html',                        ad: 'İzin Formu',         oturum: true },
+  { dosya: 'app-izin-form.html?id=IZN-2026-039',        ad: 'İzin · Bakiyesiz',   oturum: true },
+  { dosya: 'app-demirbas-form.html',                    ad: 'Demirbaş Formu',     oturum: true },
+  { dosya: 'app-demirbas-form.html?id=DMB-2026-012',    ad: 'Demirbaş Düzenle',   oturum: true },
+  { dosya: 'app-demirbas-detay.html?id=DMB-2025-007',   ad: 'Demirbaş · Düşen İddia', oturum: true },
+  { dosya: 'app-demirbas-detay.html?id=DMB-2025-004',   ad: 'Demirbaş · Kabul Bekliyor', oturum: true },
+  { dosya: 'app-demirbas-detay.html?id=DMB-2023-011',   ad: 'Demirbaş · Hurda',   oturum: true },
+  { dosya: 'app-arac-form.html',                        ad: 'Araç Formu',         oturum: true },
+  { dosya: 'app-arac-form.html?id=ARC-002',             ad: 'Araç · Kiralık',     oturum: true },
+  /* ⚠️ `app-arac-detay.html` (rota 99) BU TURDA YAZILMADI ve girdileri
+     bilerek KAPALI. Var olmayan bir dosyayı ölçmek 404 ölçmektir ve
+     "403 veya boş kabuk ölçen koşum geçersizdir" kuralının aynı sınıfı:
+     koşum yeşil yanar ama ekranı hiç çizmemiştir. Ekran yazıldığında bu üç
+     satır açılır — kayıt seçimi ölçümden geldi: ARC-001 en kalabalık araç
+     (2 bakım · 2 yakıt · 1 ceza · 4 gider · 2 poliçe), ARC-003 kaza kaydı
+     OLAN tek araç ve `Serviste` durumunda.
+  { dosya: 'app-arac-detay.html?id=ARC-001',            ad: 'Araç Detayı',        oturum: true },
+  { dosya: 'app-arac-detay.html?id=ARC-001#yakit',      ad: 'Araç · Yakıt',       oturum: true },
+  { dosya: 'app-arac-detay.html?id=ARC-003#kaza',       ad: 'Araç · Kaza',        oturum: true }
+  */
 ];
 
 const MIME = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8',
