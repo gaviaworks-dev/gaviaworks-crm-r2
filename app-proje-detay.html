@@ -29,12 +29,17 @@
 <script src="assets/js/quicknote.js"></script>
 <script>
 /* =====================================================================
-   PROJE DETAYI — brief §18.7 (dokuz sekme) · §18.1 · §18.2 · §18.5
+   PROJE DETAYI — brief §18.7 (on sekme) · §18.1 · §18.2 · §18.5 · §23.2
 
-   TEK KAYIT, DOKUZ SEKME. Milestone, sprint, kalite, hata, değişiklik,
+   TEK KAYIT, ON SEKME. Milestone, sprint, kalite, hata, değişiklik,
    teslim ve belge AYRI EKRAN DEĞİLDİR (rota 33-47): hepsi bu ekranın bir
    sekmesidir. Proje bağlamı dışında bir alt kayıt tipini görmek gerekirse
    yeni ekran değil Operasyon filtresi kullanılır (brief §18.7 son paragraf).
+
+   BÜTÇE SEKMESİ (rota 79 · ADR-R2-12 · brief §23.2) — onuncu sekme, Özet'ten
+   hemen sonra. K-21 gereği maliyet kartı ve künyenin `Bütçe (iç maliyet
+   ekseni)` satırı Özet'ten BURAYA TAŞINDI (silinmedi); Özet'te yerine tek
+   satırlık bir bağ kaldı. Aynı sayı iki sekmede basılmaz.
 
    TEMBEL YÜKLEME ZORUNLU (risk R-04): R1'de bu ekran 111 KB'tı. Sekme
    gövdesi yalnız `gv:tab` olayında, yalnız bir kez çizilir. Dinleyici
@@ -149,6 +154,23 @@ document.addEventListener('gv:ready', function(){
      =================================================================== */
   var defterVar = !!(window.DB && DB.timelogs);
 
+  /* ---- Bütçeyi BESLEYEN ölçülmüş kayıt sayısı (sekme sayacı) --------
+     Bütçe sekmesinin sayacı uydurma bir rakam değil ÖLÇÜMDÜR: gerçekleşen
+     maliyeti üreten iki küme sayılır — onaylı zaman kaydı ve TESLİM ALINMIŞ
+     satın alma. `GV.proje.maliyet` tam olarak bu iki kümeyi topluyor
+     (domain.js "PROJE — maliyet ve kârlılık"). Talep aşamasındaki satın alma
+     henüz maliyet değildir, o yüzden sayılmaz.
+     ⚠️ Bu iki süzgeç ortak katmanda bir SAYAÇ yordamı olarak açık değil
+     (`GV.proje.maliyet` yalnız tutarı döndürüyor, kaç kayıttan geldiğini
+     değil); süzgeç burada tekrarlandı ve sapma rapora yazıldı. */
+  var butceLog = defterVar
+    ? (DB.timelogs || []).filter(function(l){
+        return l.proje === p.kod && l.onay === 'Onaylandı'; }).length
+    : 0;
+  var butceSat = (DB.purchases || []).filter(function(x){
+    return x.proje === p.kod && ['Tam Teslim','Kapandı'].indexOf(x.durum) !== -1; }).length;
+  var butceKayit = butceLog + butceSat;
+
   /* ===================================================================
      5. ÇİZİM YARDIMCILARI (ekran içi — ortak katmana dokunulmadı)
      =================================================================== */
@@ -188,16 +210,20 @@ document.addEventListener('gv:ready', function(){
   }
 
   /* ===================================================================
-     6. SEKME ŞERİDİ — brief §18.7 tablosu birebir, dokuz sekme
+     6. SEKME ŞERİDİ — brief §18.7 tablosu + §23.2 Bütçe, on sekme
 
      ⚠️ ŞERİTTE İKON YOK: dokuz ikonlu sekme 1440 px'te içerik sütununa
-     sığmıyor, `.gv-tabs` yatay kayıyor ama scrollbar'ı gizli — kesilen
-     sekme kullanıcıya işaret bırakmadan kaybolurdu. İkonlar kart
+     sığmıyordu, `.gv-tabs` yatay kayıyor ama scrollbar'ı gizli — kesilen
+     sekme kullanıcıya işaret bırakmadan kaybolurdu. Onuncu sekme bu kısıtı
+     daha da sıkıştırır; ikon KONMADI (§22.17.8 · §23.9.8). İkonlar kart
      başlıklarında yaşıyor. Her sekme ÖLÇÜLEN kayıt sayısını taşır.
      =================================================================== */
   var SEKME = [
     { key:'ozet', label:'Özet', sayac:GV.proje.kapanisKontrol(p.kod).length,
-      ipucu:'künye · süre · maliyet · kapanış kontrolü (8 madde) · bakım' },
+      ipucu:'künye · süre · kapanış kontrolü (8 madde) · bakım' },
+    { key:'butce', label:'Bütçe', sayac:butceKayit,
+      ipucu:butceLog + ' onaylı zaman kaydı · ' + butceSat + ' teslim alınmış satın alma — ' +
+        'gerçekleşen maliyeti besleyen ölçülmüş kayıt' },
     { key:'milestone', label:'Milestone', sayac:msler.length,
       ipucu:'DB.projectMilestones — proje kilometre taşı (ödeme taksiti değil)' },
     { key:'sprint', label:'Sprint', sayac:sprler.length,
@@ -279,7 +305,7 @@ document.addEventListener('gv:ready', function(){
      =================================================================== */
   function cizOzet(){
     return '<div class="gv-grid gv-grid-main">' +
-      '<div>' + kunyeKarti() + sureKarti() + maliyetKarti() + kapanisKarti() + bakimKarti() + '</div>' +
+      '<div>' + kunyeKarti() + sureKarti() + maliyetBagi() + kapanisKarti() + bakimKarti() + '</div>' +
       '<aside>' + durumKarti() + saglikKarti() + '</aside>' +
     '</div>';
   }
@@ -312,7 +338,9 @@ document.addEventListener('gv:ready', function(){
         : null],
       ['Gerçek bitiş',    p.gercekBitis ? gecmisTarih(p.gercekBitis) : null],
       ['Sözleşme tutarı', p.sozlesmeTutari == null ? null : para(p.sozlesmeTutari)],
-      ['Bütçe (iç maliyet ekseni)', p.butce == null ? null : para(p.butce)],
+      /* `Bütçe (iç maliyet ekseni)` satırı BURADAN KALDIRILMADI, BÜTÇE
+         SEKMESİNE TAŞINDI (K-21 · §23.2): plan rakamı gerçekleşenle aynı
+         yüzeyde okunmalı, künyede tek başına duran bir sayı olmamalı. */
       ['Tahmini süre',    p.tahminiSure == null ? null : saat(p.tahminiSure)],
       ['Teknoloji',       (p.teknoloji || []).length ? esc(p.teknoloji.join(' · ')) : null],
       ['Üçüncü taraf',    (p.ucuncuTaraf || []).length ? esc(p.ucuncuTaraf.join(' · ')) : null],
@@ -394,57 +422,20 @@ document.addEventListener('gv:ready', function(){
     '</section>';
   }
 
-  /* ---- 8.3 Maliyet — GV.proje.maliyet ------------------------------- */
-  function maliyetKarti(){
-    var m = GV.proje.maliyet(p.kod);
-
-    var uyari = '';
-    if(!m.kapsam){
-      uyari = '<div class="gc-body">' + GV.notice({ tone:'warn', icon:'i-alert',
-        title:'Maliyet ölçülemedi',
-        text:(defterVar
-              ? 'Bu projede onaylı zaman kaydı ve teslim alınmış satın alma kaydı yok. '
-              : 'Zaman defteri (DB.timelogs) bu ekranda yüklü değil ve bu projede teslim ' +
-                'alınmış satın alma kaydı da yok. ') +
-             'Maliyeti sıfır saymak, kârlılığı %100 göstermek olurdu — kâr ve ' +
-             'kârlılık bu yüzden BOŞ bırakıldı.' }) + '</div>';
-    }
-
-    var eksikP = (m.maliyetsizPersonel || []).map(function(k){ return DB.empName(k) || k; });
-    var guvenP = (m.oranGuvenilmez || []).map(function(k){ return DB.empName(k) || k; });
-    var notlar = '';
-    if(eksikP.length) notlar += '<div class="gc-body">' + GV.notice({ tone:'warn', icon:'i-user',
-      title:'Saatleri maliyete GİRMEYEN personel (' + eksikP.length + ')',
-      text:eksikP.join(' · ') + ' — bu kişilerin saatlik iç maliyeti türetilemedi, ' +
-           'saatleri toplama eklenmedi. Toplam bu kadar eksiktir.' }) + '</div>';
-    if(guvenP.length) notlar += '<div class="gc-body">' + GV.notice({ tone:'warn', icon:'i-percent',
-      title:'Kârlılık yüzdesi güvenilmez (' + guvenP.length + ' personel)',
-      text:guvenP.join(' · ') + ' — bu kişilerin zaman kaydı tarihinde geçerli maaş ' +
-           'kaydı yok, bugünkü oran kullanıldı. Yüzde bu yüzden kesin değildir.' }) + '</div>';
-
-    var satirlar = [
-      ['Gelir (sözleşme tutarı)', para(m.gelir)],
-      ['Personel maliyeti', m.kapsam || m.personel ? para(m.personel) : BOS + GV.cell.sub('ölçülemedi')],
-      ['Dış kaynak', m.kapsam || m.disKaynak ? para(m.disKaynak) : BOS + GV.cell.sub('ölçülemedi')],
-      ['Satın alma', para(m.satinAlma) + GV.cell.sub('yalnız teslim alınmış satın alma kaydı')],
-      ['Diğer gider', BOS + GV.cell.sub('bu depoda projeye bağlı gider koleksiyonu YOK — ' +
-        'sıfır bir ölçüm değil, kaynak boşluğudur')],
-      ['Toplam maliyet', m.kapsam ? para(m.toplam) : BOS + GV.cell.sub('ölçülemedi')],
-      ['Brüt kâr', m.brutKar == null ? BOS + GV.cell.sub('maliyet ölçülemedi') : para(m.brutKar)],
-      ['Kârlılık', m.karlilikYuzde == null
-        ? BOS + GV.cell.sub('maliyet ölçülemedi')
-        : (canFinans ? GV.cell.oran(m.karlilikYuzde, 20) : '<span class="cell-mask">' + MASK + '</span>')],
-      ['Değerlenen saat', m.kapsam ? saat(m.saat) : BOS + GV.cell.sub('zaman defteri okunamadı')]
-    ];
-
+  /* ---- 8.3 Maliyet ve bütçe — TEK SATIRLIK BAĞ (K-21 · §23.2) -------
+     Maliyet kartı BU EKRANDAN SİLİNMEDİ, Bütçe sekmesine TAŞINDI. İki
+     yüzey aynı defteri göstermez: dört gider kalemi, kârlılık ve planlanan
+     bütçe karşılaştırması tek bir yerde, Bütçe sekmesinde durur. Buradaki
+     düğme yeni bir yordam açmaz — kapanış kartındaki `data-git` deseninin
+     aynısıdır ve sekmeyi doğrudan açar. */
+  function maliyetBagi(){
     return '<section class="gv-card u-mt-4">' +
-      kartBasi('i-wallet', 'Maliyet ve kârlılık',
-        m.kapsam ? '' : '<span class="badge is-warn">ölçülemedi</span>') +
-      uyari +
-      '<div class="gc-body">' + GV.dl(satirlar) + '</div>' +
-      notlar +
-      (canFinans ? '' : '<div class="gc-body u-faint u-xs">Para alanları rolünüzde ' +
-        'maskelidir; sıfır değil, "göremezsiniz" demektir.</div>') +
+      kartBasi('i-wallet', 'Maliyet ve bütçe') +
+      '<div class="gc-body u-sm u-muted">Maliyet ve bütçe ayrıntısı ' +
+        '<b>Bütçe sekmesindedir</b>: dört gider kalemi, kârlılık ve planlanan ' +
+        'bütçe ile karşılaştırma orada tutulur. Aynı sayı iki sekmede basılmaz. ' +
+        '<button type="button" class="btn btn-ghost btn-xs" data-git="butce">' +
+        ico('i-arrow-right','ic-sm') + ' Bütçe sekmesine git</button></div>' +
     '</section>';
   }
 
@@ -614,14 +605,205 @@ document.addEventListener('gv:ready', function(){
         satir('Alt kayıt toplamı', '<span class="u-num">' + altToplam(p) + '</span>') +
       '</div></div>' +
       (buProjeBos
-        ? '<div class="gc-body u-faint u-xs">Bu projede hiçbir alt kayıt yok; sekmelerin ' +
-          'hepsi boş açılır. Sebebi sekmelerin içinde yazılıdır.</div>'
+        ? '<div class="gc-body u-faint u-xs">Bu projede hiçbir alt kayıt yok; alt kayıt ' +
+          'sekmelerinin hepsi boş açılır. Sebebi sekmelerin içinde yazılıdır.</div>'
         : '') +
     '</section>';
   }
 
   /* ===================================================================
-     9. SEKME 2 — MILESTONE (DB.projectMilestones)
+     9. SEKME 2 — BÜTÇE (rota 79 · ADR-R2-12 · brief §23.2)
+
+     İKİ EKSEN, İKİ KART, İKİ FARKLI GÜVENİLİRLİK:
+       · PLAN — `DB.projects[].butce` kayıtta ELLE YAZILI tek bir sayıdır
+         (14/14 kayıtta dolu). Ölçüm değil beyandır.
+       · GERÇEKLEŞEN — `GV.proje.maliyet` zaman defteri ve satın alma
+         defterinden TÜRETİR. Kalem dökümü ikinci kartta durur.
+     İkisini tek tabloda toplamak, beyanı ölçüm gibi göstermek olurdu.
+
+     ⚠️ `butce` alanının DÖNEMİ ve PARA BİRİMİ kayıtta YAZILI DEĞİL (§23.2
+     "Sapma"). Ekran bunu beyan eder; ne dönem uydurur ne para birimi.
+     ⚠️ `kapsam:false` ise bütçe/gerçekleşen KARŞILAŞTIRMASI BASILMAZ —
+     sıfır maliyet yazmak "bütçenin %0'ı kullanıldı" demek olurdu ve bu
+     ölçülmemişi ölçülmüş göstermektir (§23.2 · L-13).
+     ⚠️ Bütçe KALEM BAZINDA planlanmamıştır: dört gider kaleminin her biri
+     için ayrı plan rakamı kayıtta yok, o yüzden kalem bazında sapma
+     BASILMADI. Tek karşılaştırma toplam eksenindedir.
+
+     K-21: bu sekmedeki maliyet kartı Özet'ten TAŞINDI (silinmedi) ve
+     künyedeki `Bütçe (iç maliyet ekseni)` satırı buradaki ilk satırdır.
+     =================================================================== */
+  function butceKarti(){
+    var m = GV.proje.maliyet(p.kod);
+    var s = GV.proje.sure(p.kod);
+
+    /* Fark hücresi: `para()` maskeyi ve yetkiyi taşır ama işaretli biçimi
+       yok; eksi bütçe farkı "₺-133.941" diye basılırdı. İşaretli para
+       hücresi ortak katmanda VAR (`GV.cell.mny` · signed) — maske onun
+       üstüne bu ekranda konur. */
+    function paraFark(v){
+      if(!canFinans) return '<span class="cell-mask">' + MASK + '</span>';
+      return v == null ? BOS : GV.cell.mny(v, { signed:true });
+    }
+
+    var beyan = '<div class="gc-body">' + GV.notice({ tone:'info', icon:'i-info',
+      title:'Bütçe rakamının dönemi ve para birimi kayıtta yazılı değil',
+      text:'DB.projects[].butce tek bir sayıdır: hangi dönemi kapsadığı (proje ' +
+           'ömrü mü, yıllık mı, kalan mı) ve hangi para biriminde tutulduğu ' +
+           'kayıtta YOK — kayıtta ne dönem ne para birimi alanı var. Ekrandaki ' +
+           '₺ işareti ortak biçimlendiricinin varsayılanıdır, kaydın beyanı ' +
+           'değildir. Aşağıdaki oran bu yüzden bir DÖNEM oranı değil, kayıttaki ' +
+           'bütçe rakamı ile bugüne kadar ölçülmüş maliyetin oranıdır.' }) + '</div>';
+
+    var kalemNotu = '<div class="gc-body u-faint u-xs">Kalem bazında plan yok: bütçe ' +
+      'tek sayıdır, dört gider kaleminin (personel · dış kaynak · satın alma · ' +
+      'diğer) her birine ayrı plan rakamı kayıtta yazılı değil. Kalem bazında ' +
+      'sapma bu yüzden BOŞ bırakıldı; karşılaştırma yalnız toplam eksenindedir.</div>';
+
+    /* ---- kapsam:false → KARŞILAŞTIRMA BASILMAZ (§23.2) ---- */
+    if(!m.kapsam){
+      return '<section class="gv-card">' +
+        kartBasi('i-wallet', 'Planlanan bütçe ve gerçekleşen',
+          '<span class="badge is-warn">karşılaştırılamadı</span>') +
+        '<div class="gc-body">' + GV.notice({ tone:'warn', icon:'i-alert',
+          title:'Bütçe–gerçekleşen karşılaştırması BASILMADI',
+          text:(defterVar
+                ? 'Bu projede onaylı zaman kaydı ve teslim alınmış satın alma kaydı yok. '
+                : 'Zaman defteri (DB.timelogs) bu ekranda yüklü değil ve bu projede ' +
+                  'teslim alınmış satın alma kaydı da yok. ') +
+               'Gerçekleşen maliyet ÖLÇÜLEMEDİ; sıfır yazıp "bütçenin %0\'ı ' +
+               'kullanıldı" demek, ölçülmemişi ölçülmüş göstermek olurdu. Planlanan ' +
+               'bütçe kayıttan okunur ve aşağıda tek başına durur.' }) + '</div>' +
+        '<div class="gc-body">' + GV.dl([
+          ['Bütçe (iç maliyet ekseni)', para(p.butce) +
+            GV.cell.sub('proje kaydında yazılı plan rakamı — ölçüm değil beyan')],
+          ['Gerçekleşen toplam', BOS + GV.cell.sub('ölçülemedi — karşılaştırma basılmadı')],
+          ['Kalan / aşım', BOS + GV.cell.sub('gerçekleşen ölçülemediği için türetilemez')],
+          ['Bütçe kullanımı', BOS + GV.cell.sub('gerçekleşen ölçülemediği için türetilemez')]
+        ]) + '</div>' +
+        beyan + kalemNotu +
+      '</section>';
+    }
+
+    /* ---- kapsam:true → karşılaştırma türetilir ---- */
+    var kalan = p.butce == null ? null : p.butce - m.toplam;
+    var kullanim = (p.butce > 0) ? Math.round(m.toplam / p.butce * 100) : null;
+    var kullanimHtml;
+    if(!canFinans){
+      kullanimHtml = '<span class="cell-mask">' + MASK + '</span>';
+    }else if(kullanim == null){
+      kullanimHtml = BOS + GV.cell.sub('bütçe rakamı yok ya da sıfır — oran türetilemez');
+    }else{
+      kullanimHtml = '<span class="u-num ' +
+        (kullanim > 100 ? 'u-danger' : kullanim > 90 ? 'u-warn' : 'u-ok') + '">%' +
+        esc(F.num(kullanim)) + '</span>';
+    }
+
+    /* Ölçülen ortalama saatlik iç maliyet — `GV.proje.sure` ile birlikte
+       türetilir: (personel + dış kaynak) ÷ değerlenen saat. `maliyetsizPersonel`
+       doluysa PAY eksik ama PAYDA tam olurdu; ortalama olduğundan düşük
+       çıkardı — o durumda türetilmez, sebebi yazılır. */
+    var ortalama = null;
+    var ortalamaSebep = '';
+    if((m.maliyetsizPersonel || []).length){
+      ortalamaSebep = 'saatleri maliyete girmeyen personel var — ortalama düşük çıkardı';
+    }else if(!s.gerceklesen){
+      ortalamaSebep = 'değerlenen onaylı saat yok';
+    }else if(!(m.personel + m.disKaynak)){
+      ortalamaSebep = 'bu projede saat ekseninde maliyet yok (yalnız satın alma)';
+    }else{
+      ortalama = Math.round((m.personel + m.disKaynak) / s.gerceklesen);
+    }
+
+    return '<section class="gv-card">' +
+      kartBasi('i-wallet', 'Planlanan bütçe ve gerçekleşen',
+        sayacEtiketi(butceKayit, 'ölçülmüş kayıt')) +
+      '<div class="gc-body">' + GV.dl([
+        ['Bütçe (iç maliyet ekseni)', para(p.butce) +
+          GV.cell.sub('proje kaydında yazılı plan rakamı — ölçüm değil beyan')],
+        ['Gerçekleşen toplam maliyet', para(m.toplam) +
+          GV.cell.sub('aşağıdaki kalem dökümünün toplamı — zaman ve satın alma defterinden türetildi')],
+        ['Kalan / aşım', p.butce == null
+          ? BOS + GV.cell.sub('bütçe rakamı kayıtta yok')
+          : paraFark(kalan) + GV.cell.sub('bütçe − gerçekleşen' +
+              (kalan != null && kalan < 0 ? ' · bütçe AŞILDI' : ''))],
+        ['Bütçe kullanımı', kullanimHtml +
+          GV.cell.sub('gerçekleşen ÷ bütçe · dönemi olmayan bir orandır')],
+        ['Ölçülen ortalama saatlik iç maliyet', ortalama == null
+          ? BOS + GV.cell.sub(esc(ortalamaSebep))
+          : para(ortalama) + GV.cell.sub(esc(F.hours(s.gerceklesen)) +
+              ' değerlenen onaylı saat üzerinden türetildi')],
+        ['Bütçeyi besleyen kayıt', '<span class="u-num">' + butceKayit + '</span>' +
+          GV.cell.sub(butceLog + ' onaylı zaman kaydı · ' + butceSat +
+            ' teslim alınmış satın alma')]
+      ]) + '</div>' +
+      beyan + kalemNotu +
+    '</section>';
+  }
+
+  /* ---- 9.1 Maliyet — GV.proje.maliyet -------------------------------
+     ⚠️ BU BLOK ÖZET SEKMESİNDEN TAŞINDI (K-21 · §23.2). Tek satırı bile
+     değişmedi: aynı yordam, aynı satırlar, aynı sayılar. Değişen tek şey
+     hangi sekmede durduğudur. */
+  function maliyetKarti(){
+    var m = GV.proje.maliyet(p.kod);
+
+    var uyari = '';
+    if(!m.kapsam){
+      uyari = '<div class="gc-body">' + GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Maliyet ölçülemedi',
+        text:(defterVar
+              ? 'Bu projede onaylı zaman kaydı ve teslim alınmış satın alma kaydı yok. '
+              : 'Zaman defteri (DB.timelogs) bu ekranda yüklü değil ve bu projede teslim ' +
+                'alınmış satın alma kaydı da yok. ') +
+             'Maliyeti sıfır saymak, kârlılığı %100 göstermek olurdu — kâr ve ' +
+             'kârlılık bu yüzden BOŞ bırakıldı.' }) + '</div>';
+    }
+
+    var eksikP = (m.maliyetsizPersonel || []).map(function(k){ return DB.empName(k) || k; });
+    var guvenP = (m.oranGuvenilmez || []).map(function(k){ return DB.empName(k) || k; });
+    var notlar = '';
+    if(eksikP.length) notlar += '<div class="gc-body">' + GV.notice({ tone:'warn', icon:'i-user',
+      title:'Saatleri maliyete GİRMEYEN personel (' + eksikP.length + ')',
+      text:eksikP.join(' · ') + ' — bu kişilerin saatlik iç maliyeti türetilemedi, ' +
+           'saatleri toplama eklenmedi. Toplam bu kadar eksiktir.' }) + '</div>';
+    if(guvenP.length) notlar += '<div class="gc-body">' + GV.notice({ tone:'warn', icon:'i-percent',
+      title:'Kârlılık yüzdesi güvenilmez (' + guvenP.length + ' personel)',
+      text:guvenP.join(' · ') + ' — bu kişilerin zaman kaydı tarihinde geçerli maaş ' +
+           'kaydı yok, bugünkü oran kullanıldı. Yüzde bu yüzden kesin değildir.' }) + '</div>';
+
+    var satirlar = [
+      ['Gelir (sözleşme tutarı)', para(m.gelir)],
+      ['Personel maliyeti', m.kapsam || m.personel ? para(m.personel) : BOS + GV.cell.sub('ölçülemedi')],
+      ['Dış kaynak', m.kapsam || m.disKaynak ? para(m.disKaynak) : BOS + GV.cell.sub('ölçülemedi')],
+      ['Satın alma', para(m.satinAlma) + GV.cell.sub('yalnız teslim alınmış satın alma kaydı')],
+      ['Diğer gider', BOS + GV.cell.sub('bu depoda projeye bağlı gider koleksiyonu YOK — ' +
+        'sıfır bir ölçüm değil, kaynak boşluğudur')],
+      ['Toplam maliyet', m.kapsam ? para(m.toplam) : BOS + GV.cell.sub('ölçülemedi')],
+      ['Brüt kâr', m.brutKar == null ? BOS + GV.cell.sub('maliyet ölçülemedi') : para(m.brutKar)],
+      ['Kârlılık', m.karlilikYuzde == null
+        ? BOS + GV.cell.sub('maliyet ölçülemedi')
+        : (canFinans ? GV.cell.oran(m.karlilikYuzde, 20) : '<span class="cell-mask">' + MASK + '</span>')],
+      ['Değerlenen saat', m.kapsam ? saat(m.saat) : BOS + GV.cell.sub('zaman defteri okunamadı')]
+    ];
+
+    return '<section class="gv-card u-mt-4">' +
+      kartBasi('i-wallet', 'Maliyet ve kârlılık',
+        m.kapsam ? '' : '<span class="badge is-warn">ölçülemedi</span>') +
+      uyari +
+      '<div class="gc-body">' + GV.dl(satirlar) + '</div>' +
+      notlar +
+      (canFinans ? '' : '<div class="gc-body u-faint u-xs">Para alanları rolünüzde ' +
+        'maskelidir; sıfır değil, "göremezsiniz" demektir.</div>') +
+    '</section>';
+  }
+
+  function cizButce(el){
+    el.innerHTML = butceKarti() + maliyetKarti();
+  }
+
+  /* ===================================================================
+     10. SEKME 3 — MILESTONE (DB.projectMilestones)
      =================================================================== */
   function cizMilestone(el){
     if(!msler.length){
@@ -672,7 +854,7 @@ document.addEventListener('gv:ready', function(){
   }
 
   /* ===================================================================
-     10. SEKME 3 — SPRINT (DB.sprints)
+     11. SEKME 4 — SPRINT (DB.sprints)
      =================================================================== */
   function cizSprint(el){
     if(!sprler.length){
@@ -725,7 +907,7 @@ document.addEventListener('gv:ready', function(){
   }
 
   /* ===================================================================
-     11. SEKME 4 — KALİTE (DB.testCases + GV.test.*)
+     12. SEKME 5 — KALİTE (DB.testCases + GV.test.*)
 
      ⚠️ İKİ FARKLI GÜVENİLİRLİK, İKİ FARKLI BİÇİM (brief §18.6):
      `GV.test.sayac(...).turetilmis === false` ise sayılar kayıttaki sabit
@@ -856,7 +1038,7 @@ document.addEventListener('gv:ready', function(){
   }
 
   /* ===================================================================
-     12. SEKME 5 — HATALAR (DB.bugs · GV.flow tur:'bug')
+     13. SEKME 6 — HATALAR (DB.bugs · GV.flow tur:'bug')
      =================================================================== */
   function cizHata(el){
     if(!hatalar.length){
@@ -917,7 +1099,7 @@ document.addEventListener('gv:ready', function(){
   }
 
   /* ===================================================================
-     13. SEKME 6 — DEĞİŞİKLİK (DB.changeRequests · GV.flow tur:'change')
+     14. SEKME 7 — DEĞİŞİKLİK (DB.changeRequests · GV.flow tur:'change')
      =================================================================== */
   function cizDegisiklik(el){
     if(!degler.length){
@@ -979,7 +1161,7 @@ document.addEventListener('gv:ready', function(){
   }
 
   /* ===================================================================
-     14. SEKME 7 — TESLİM (DB.deliveries · GV.flow tur:'delivery' +
+     15. SEKME 8 — TESLİM (DB.deliveries · GV.flow tur:'delivery' +
                            GV.delivery.approve)
      =================================================================== */
   function cizTeslim(el){
@@ -1044,7 +1226,7 @@ document.addEventListener('gv:ready', function(){
   }
 
   /* ===================================================================
-     15. SEKME 8 — BELGELER (DB.documents · proje alanı)
+     16. SEKME 9 — BELGELER (DB.documents · proje alanı)
      =================================================================== */
   function cizBelge(el){
     var zorunlu = (DB.company || {}).zorunluProjeDokuman || [];
@@ -1128,7 +1310,7 @@ document.addEventListener('gv:ready', function(){
   }
 
   /* ===================================================================
-     16. SEKME 9 — AKTİVİTE (GV.audit.oku)
+     17. SEKME 10 — AKTİVİTE (GV.audit.oku)
      =================================================================== */
   function cizAktivite(el){
     el.innerHTML = '<section class="gv-card">' +
@@ -1141,7 +1323,7 @@ document.addEventListener('gv:ready', function(){
   }
 
   /* ===================================================================
-     17. ALT KAYIT ÇEKMECESİ — hata · değişiklik · teslim
+     18. ALT KAYIT ÇEKMECESİ — hata · değişiklik · teslim
 
      Alt kaydın durumu da TEK MUTASYON NOKTASINDAN geçer. Çekmece kendi
      durum listesini yazmaz; `GV.flow.adimlar(tur, kod)` ne veriyorsa onu
@@ -1290,7 +1472,7 @@ document.addEventListener('gv:ready', function(){
   }
 
   /* ===================================================================
-     18. BACKEND PAYI — brief §18.10 tablosundan KOPYALANIR (§10.2 (b))
+     19. BACKEND PAYI — brief §18.10 tablosundan KOPYALANIR (§10.2 (b))
      `BE-D1` yalnız destek ekranlarında yazılır; burada YOKTUR.
      =================================================================== */
   var BACKEND = [
@@ -1316,7 +1498,7 @@ document.addEventListener('gv:ready', function(){
   }
 
   /* ===================================================================
-     19. ÇİZİM
+     20. ÇİZİM
      =================================================================== */
   GV.pageHead({
     eyebrow:'Operasyon · Projeler',
@@ -1340,8 +1522,8 @@ document.addEventListener('gv:ready', function(){
       '<div class="u-mb-4">' + GV.notice({ tone:'warn', icon:'i-timer',
         title:'Zaman defteri bu ekranda yüklü değil',
         text:'Gerçekleşen süre ve personel maliyeti ÖLÇÜLEMEDİ; sıfır yazılmadı. ' +
-             'Özet sekmesindeki süre ve maliyet kartları hangi alanın neden boş ' +
-             'olduğunu tek tek söyler.' }) + '</div>') +
+             'Özet sekmesindeki süre kartı ile Bütçe sekmesindeki bütçe ve maliyet ' +
+             'kartları hangi alanın neden boş olduğunu tek tek söyler.' }) + '</div>') +
     '<div class="gv-card">' +
       '<div class="gv-tabs" id="projeSekme" role="tablist" ' +
         'aria-label="Proje detay sekmeleri">' + sekmeHtml + '</div>' +
@@ -1352,6 +1534,7 @@ document.addEventListener('gv:ready', function(){
   /* ---- Tembel çizim (risk R-04) ------------------------------------ */
   var PANEL = {
     ozet:function(el){ el.innerHTML = cizOzet(); },
+    butce:cizButce,
     milestone:cizMilestone, sprint:cizSprint, test:cizTest, hata:cizHata,
     degisiklik:cizDegisiklik, teslim:cizTeslim, belge:cizBelge, aktivite:cizAktivite
   };
@@ -1373,7 +1556,7 @@ document.addEventListener('gv:ready', function(){
   var tabApi = GV.tabs('#projeSekme');
 
   /* ===================================================================
-     20. EYLEMLER — mount içi delegasyon
+     21. EYLEMLER — mount içi delegasyon
      =================================================================== */
   GV.on(mount, 'click', function(ev){
     var git = ev.target.closest('[data-git]');
@@ -1385,7 +1568,7 @@ document.addEventListener('gv:ready', function(){
     if(bak){ bakimBagla(bak.dataset.bakim); return; }
   }, 'projeDetay-click');
 
-  /* ---- 20.1 Proje durum geçişi -------------------------------------- */
+  /* ---- 21.1 Proje durum geçişi -------------------------------------- */
   function durumGec(hedef){
     var a = (GV.flow.adimlar('project', p.kod) || []).filter(function(x){ return x.hedef === hedef; })[0];
     if(!a) return;
@@ -1413,7 +1596,7 @@ document.addEventListener('gv:ready', function(){
     });
   }
 
-  /* ---- 20.2 Kapanış akışı — GV.proje.kapat --------------------------
+  /* ---- 21.2 Kapanış akışı — GV.proje.kapat --------------------------
      KAPI REDDEDER: ölçülebilen ve geçmeyen madde varsa kapanış olmaz.
      Yalnız sahip / genel müdür neden kodu + açıklama + istisna ile geçer.
      Ölçülemeyen madde kilit saymaz ama gerekçe ister (brief §18.5).
@@ -1459,7 +1642,7 @@ document.addEventListener('gv:ready', function(){
     });
   }
 
-  /* ---- 20.3 Bakım paketi bağlama ------------------------------------ */
+  /* ---- 21.3 Bakım paketi bağlama ------------------------------------ */
   function bakimBagla(paketKod){
     var r = GV.proje.bakimBagla(p.kod, paketKod);
     if(!r || r.ok === false){ GV.toast(GV.flowHata(r || {}), 'danger'); return; }
