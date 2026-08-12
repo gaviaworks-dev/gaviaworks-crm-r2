@@ -39,8 +39,8 @@
 | KARAR BEKLİYOR | **0** | %0,0 | 0 |
 | **Toplam** | **148** | %100 | 148 |
 | YENİ yazılacak | **8** — altısı (Y1–Y6) **yayında**, ikisi kaldı | — | 8 |
-| **Bugün R2'de yayında** | **108** | %73,0 | 97 |
-| **Kalan** | **40** | %27,0 | 51 |
+| **Bugün R2'de yayında** | **117** | %79,1 | 97 |
+| **Kalan** | **31** | %20,9 | 51 |
 
 > **12 Ağustos · Dilim 6 — iki satır karar DEĞİŞTİRDİ, dokuzu yazılıyor.**
 > `KARŞILIĞI VAR` 43 → 41: rota **123** ve **124** (`app-dokuman.html` ve
@@ -309,10 +309,10 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | 80 | `app-personel.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** 5 sekme, hepsi geçiş tablosundan ve `GV.hr.*`ten TÜRETİLDİ. **K-18 kapandı**: `aktif` tuzağa çevrildi, `DB.ikBayat.sayac` her rolde 0. Kişisel veri kapısı SATIRA bakar (`GV.hr.ozlukGorebilir`), role değil — `muhasebe` maaşı görür özlüğü görmez |
 | 81 | `app-personel-detay.html` | **KARŞILIĞI VAR** ✅ | YEDİ SEKME (`ozet · performans · egitim · yasamdongusu · zaman · zimmet · aktivite`), tembel çizim bir kez koşuyor, `#hash` derin bağlantısı çalışıyor, şeritte ikon yok. K-39 öz-erişimi `depmudur` ile iki yönde ölçüldü: kendi kaydında ücret açık (`ozErisim`), başkasında kapalı, KÜME sorusu ikisinde de kapalı. **Çalışıyor.** |
 | 82 | `app-personel-form.html` | **KARŞILIĞI VAR** ✅ | Doğum durumu `Taslak`. `maas` XOR `saatlikUcret` radio + `showIf` ile; kapı kapalıysa alan HİÇ ÇİZİLMEZ (maskelenmiş input gerçek değeri ezer). K-39 öz-erişim iki yönde ölçüldü. **Çalışıyor.** |
-| 83 | `app-personel-giris.html` | **GÖMÜLÜYOR** | §3.1 "işe giriş/çıkış" birleştirilen içerik → personel detayı › Yaşam Döngüsü (`employee` 15. geçiş varlığı `domain.js`'te hazır) |
-| 84 | `app-performans.html` | **GÖMÜLÜYOR** | §3.1 aynı hüküm → personel detayı › Performans |
+| 83 | `app-personel-giris.html` | **GÖMÜLÜYOR** ✅ | §3.1 "işe giriş/çıkış" birleştirilen içerik → personel detayı › Yaşam Döngüsü (`employee` 15. geçiş varlığı `domain.js`'te hazır) · **GÖMÜLDÜ** → personel detayı › **Yaşam döngüsü** sekmesi. Yüzey bu turda gerçek Chromium'da doğrulandı (`EMP-016#yasamdongusu` 187 düğüm · `GV.flow.adimlar` 3 hedef); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
+| 84 | `app-performans.html` | **GÖMÜLÜYOR** ✅ | §3.1 aynı hüküm → personel detayı › Performans · **GÖMÜLDÜ** → personel detayı › **Performans** sekmesi. Yüzey bu turda gerçek Chromium'da doğrulandı (`EMP-002#performans` boş durumu §10.1'e uygun: "defterde 5 kayıt var, bu kişide yok"); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
 | 85 | `app-performans-form.html` | **GÖMÜLÜYOR** | drawer |
-| 86 | `app-egitim.html` | **GÖMÜLÜYOR** | §3.1 aynı hüküm → personel detayı › Eğitim |
+| 86 | `app-egitim.html` | **GÖMÜLÜYOR** ✅ | §3.1 aynı hüküm → personel detayı › Eğitim · **GÖMÜLDÜ** → personel detayı › **Eğitim** sekmesi. Yüzey bu turda gerçek Chromium'da doğrulandı (`EMP-006` 2 · `EMP-016` 1); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
 
 ### 6.2 Zaman ve İzin — tek menü girdisi
 
@@ -347,17 +347,17 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | R1 ekranı | Karar |
 |---|---|---|
-| 101 | `app-arac-bakim.html` | **GÖMÜLÜYOR** → araç detayı › Bakım |
+| 101 | `app-arac-bakim.html` | **GÖMÜLÜYOR** ✅ → araç detayı › Bakım · **GÖMÜLDÜ** → araç detayı › **Bakım** sekmesi. Yüzey bu turda gerçek Chromium'da doğrulandı (`ARC-001` Bakım 2 kayıt · `ARC-003` 1); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
 | 102 | `app-arac-bakim-form.html` | **GÖMÜLÜYOR** → drawer |
-| 103 | `app-arac-muayene.html` | **GÖMÜLÜYOR** → araç detayı › Muayene |
+| 103 | `app-arac-muayene.html` | **GÖMÜLÜYOR** ✅ → araç detayı › Muayene · **GÖMÜLDÜ** → araç detayı › **Muayene** sekmesi. Yüzey bu turda gerçek Chromium'da doğrulandı (`ARC-001` 1 · `ARC-003` 1 · `sonTarih` ile vade (`sonrakiTarih`) ayrı kolonlarda); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
 | 104 | `app-arac-muayene-form.html` | **GÖMÜLÜYOR** → drawer |
-| 105 | `app-arac-sigorta.html` | **GÖMÜLÜYOR** → araç detayı › Sigorta |
+| 105 | `app-arac-sigorta.html` | **GÖMÜLÜYOR** ✅ → araç detayı › Sigorta · **GÖMÜLDÜ** → araç detayı › Özet › **Sigorta ve poliçe** bloğu. Yüzey bu turda gerçek Chromium'da doğrulandı (`ARC-001` 2 poliçe · kasko ek alanları + yenileme uyarısı); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
 | 106 | `app-arac-sigorta-form.html` | **GÖMÜLÜYOR** → drawer |
-| 107 | `app-arac-yakit.html` | **GÖMÜLÜYOR** → araç detayı › Yakıt |
+| 107 | `app-arac-yakit.html` | **GÖMÜLÜYOR** ✅ → araç detayı › Yakıt · **GÖMÜLDÜ** → araç detayı › **Yakıt** sekmesi. Yüzey bu turda gerçek Chromium'da doğrulandı (`ARC-001` 2 dolum · türetilmiş Δkm kolonu); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
 | 108 | `app-arac-yakit-form.html` | **GÖMÜLÜYOR** → drawer |
-| 109 | `app-arac-gider.html` | **GÖMÜLÜYOR** → araç detayı › Giderler |
+| 109 | `app-arac-gider.html` | **GÖMÜLÜYOR** ✅ → araç detayı › Giderler · **GÖMÜLDÜ** → araç detayı › **Gider** sekmesi. Yüzey bu turda gerçek Chromium'da doğrulandı (`ARC-001` 4 · `ARC-003` 2 · tür dağılımı + toplam şeridi); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
 | 110 | `app-arac-gider-form.html` | **GÖMÜLÜYOR** → drawer |
-| 111 | `app-arac-kaza.html` | **GÖMÜLÜYOR** → araç detayı › Kaza ve Ceza |
+| 111 | `app-arac-kaza.html` | **GÖMÜLÜYOR** ✅ → araç detayı › Kaza ve Ceza · **GÖMÜLDÜ** → araç detayı › **Kaza** sekmesi (Ceza ayrı sekme). Yüzey bu turda gerçek Chromium'da doğrulandı (`ARC-003#kaza` 1 kayıt · 181 düğüm · 14 alanlık kaza dosyası kartı); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
 | 112 | `app-arac-kaza-form.html` | **GÖMÜLÜYOR** → drawer |
 
 ---
