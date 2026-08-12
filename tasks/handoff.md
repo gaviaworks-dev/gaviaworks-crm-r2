@@ -15,7 +15,7 @@
 
 | | |
 |---|---|
-| HEAD | `<son>` · **199 commit** (bu oturumda **11**) |
+| HEAD | `3e34efd` · **200 commit** (bu oturumda **12**) |
 | Ekran | **48 + index** (yeni ekran YAZILMADI — gömme dilimi) |
 | Rota | **127/148 yayında · kalan 21** (girişte 117/31) |
 | Kalanın dağılımı | **1** kapsam dışı (66) · **18** bloke · **2** gerçek iş (62 · 63) |
