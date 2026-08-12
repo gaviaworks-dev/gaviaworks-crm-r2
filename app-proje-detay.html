@@ -779,7 +779,14 @@ document.addEventListener('gv:ready', function(){
            'kaydı yok, bugünkü oran kullanıldı. Yüzde bu yüzden kesin değildir.' }) + '</div>';
 
     var satirlar = [
-      ['Gelir (sözleşme tutarı)', para(m.gelir)],
+      /* ⚠️ TEK AD (Beyar kararı, 13 Ağustos · K-21). Aynı alan
+         (`DB.projects[].sozlesmeTutari`) künyede "Sözleşme tutarı",
+         burada "Gelir (sözleşme tutarı)" diye geçiyordu — iki sekmede iki
+         ad. Bir alanın iki adı olması K-21'in yasakladığı şeydir: okuyan
+         iki ayrı sayı sanır. Ad künyedeki adla aynıdır; alanın bu
+         hesaptaki ROLÜ (gelir tarafı) alt satırda yazılır, ada karışmaz. */
+      ['Sözleşme tutarı', para(m.gelir) +
+        GV.cell.sub('hesabın gelir tarafı — künyedeki alanın ta kendisi')],
       ['Personel maliyeti', m.kapsam || m.personel ? para(m.personel) : BOS + GV.cell.sub('ölçülemedi')],
       ['Dış kaynak', m.kapsam || m.disKaynak ? para(m.disKaynak) : BOS + GV.cell.sub('ölçülemedi')],
       ['Satın alma', para(m.satinAlma) + GV.cell.sub('yalnız teslim alınmış satın alma kaydı')],
