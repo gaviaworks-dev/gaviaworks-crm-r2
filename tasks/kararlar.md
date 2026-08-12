@@ -1511,3 +1511,106 @@ bir geçişi taşıyor. Kapının kusuru değil, kuralın nihayet uygulanmasıd�
 `SBL-GIRIS-SATIS` · `SBL-GIRIS-STAJYER`) hiçbir örnek sürece uygulanmamış;
 kapı yalnız `temel` şablonu ölçer. Sınır kapının değil süreç kaydının
 borcudur ve kapının kendi yorumunda yazılıdır ki kapsamı görünsün.
+
+---
+
+## ADR-R2-47 · Kapı üç düzeyde sorulur: KAYIT · SATIR · KİMLİK
+
+**Bağlam.** R2'nin iki kapısı vardı ve ikisi de bir kaydın SAHİBİNİ soruyordu:
+
+```
+GV.guardRecord        → "bu KAYIT bu oturuma ait mi?"   (detay ekranı, ?id=)
+GV.list scopeField    → "bu SATIR bu oturuma ait mi?"   (liste ekranı)
+```
+
+Üçüncü bir soru hiç sorulmuyordu: **bu KİMLİK şirket içi veriyi görebilir mi?**
+Toplayan yüzey — panel kartı, KPI sayacı, `<select>` seçenek listesi — kayıt
+açmaz, defterin TAMAMINI okur. Sorulacak bir sahip yoktur, iki kapı da onu
+görmez.
+
+**Ölçülen kusur (V2-100).** Gerçek Chromium, `YTK-001` (`emp:null`,
+`musteri:MUS-2024-001`) oturumu, müşterinin ulaşabildiği **14 yüzeyin
+5'inde** iç veri basılıyordu — toplam **50 kişi adı** ve **130 iç/yabancı
+kayıt**:
+
+| yüzey | ne basılıyordu |
+|---|---|
+| `app-panel.html` | 5 iç bildirim · 6 iç proje (3'ü adıyla) · 15 personel sayısı · 2 izin talebi İSMİYLE · "Bekleyen onay 10" · `SAT-2026-014` satın alma talebi 186.000 ₺ ile |
+| `app-gorev-form.html` | 16 personel ADIYLA · 14 proje (başka firmaların) `<option>` olarak — **yeni kayıt kipinde**, yani kayıt kapısı hiç çalışmıyordu |
+| `app-proje-form.html` | 15 personel adıyla · bütün hesaplar |
+| `app-destek-form.html` | 16 personel adıyla · 14 proje · 20 hesap · bütün firmaların yetkilileri · elle yazılmış defter istatistikleri (`DST-2026-117` kodu dahil) |
+| `app-proje-detay.html?id=…` | kapı REDDEDİYOR ama sayfa başlığına yabancı projenin ADINI basıyordu (`Marmara Enerji Mobil Operasyon ERP — Faz 1`) |
+
+⚠️ Sızıntının bir kısmı `display:none` bir sekme panelinde duruyordu.
+**CSS görünürlüğü kapı değildir**: DOM'a yazılan veri istemciye gitmiştir ve
+bir tıklama uzaktadır. Eksen bu yüzden GÖRÜNÜR metni değil **BASILAN** metni
+ölçer.
+
+**Karar.** Üçüncü kapı ortak katmana yazıldı ve gerekçesi de yordamın
+içindedir:
+
+```
+GV.perm.icVeri()      → true: personel oturumu · false: portal kimliği
+GV.perm.icVeriNeden() → kapalıysa GEREKÇE cümlesi (ekran kendi cümlesini kurmaz)
+GV.perm.icKume(rows)  → iç deftere dayanan küme; portal kimliğinde BOŞ
+GV.perm.kapsa(rows,m) → satır kapsamı süzgeci — `GV.list` afterScope'un
+                        çağrılabilir hâli; ARTIK TEK UYGULAMA (V2-101/3)
+GV.guardIcEkran({…})  → şirket içi bir kayıt YÜZEYİNİN kimlik kapısı
+```
+
+Gerekçe cümlesi neden yordamda: kapalı bir yüzeyin sebebini ekran kendi
+cümlesiyle anlatırsa kural iki yerde yaşar ve yordam değişince cümle sessizce
+bayatlar — dilim 7'de dört kez ölçülen kusurun ta kendisi (L-40).
+
+**`guardRecord`un kendi sözünü tutması.** Yordamın yorumu *"yetkisiz ekran
+yabancı kayıttan HİÇBİR ŞEY yazmaz"* diyordu; başlığı ise ÇAĞIRANIN gönderdiği
+`title` dolduruyordu ve dört çağıran oraya kaydın okunur adını koyuyordu
+(`p.ad` · `h.unvan` · `rec.ad` · `rec.baslik`). Kapı artık başlığı kendi
+üretir: ziyaretçinin adres çubuğuna YAZDIĞI kod yankılanır, başka hiçbir şey.
+Kural bir yerde durduğu için 26 detay ekranının hiçbiri kendi başlığını
+denetlemek zorunda değildir.
+
+**Neden `SCREEN_DENY`e satır eklenmedi.** `SCREEN_DENY` `data-screen` ile
+anahtarlıdır ve liste · detay · form ekranları AYNI ekran adını taşır
+(`app-proje.html` · `app-proje-detay.html` · `app-proje-form.html` üçü de
+`proje`). Formu kapatmak için oraya satır eklemek listeyi ve detayı da
+kapatırdı — oysa müşterinin kendi projesini GÖRMESİ doğrudur. `shell.js`in
+kendi uyarısı ikinci bir dosya listesi açmayı yasaklıyor; kapı bu yüzden
+ekranın kendi başında, tek yordam çağrısıyla duruyor.
+
+**`app-destek-form.html` bilerek AÇIK bırakıldı.** Müşteri yetkilisinin kendi
+talebini açması portalın işidir — ölçüldü: yayındaki 7 talebin 7'si
+`kanal:'Müşteri portalı'` ve açan 7/7 bir `YTK-*`. Ekran kapatılmadı,
+**seçenek kaynakları kapsandı**: müşteri ekseni olan defter `kapsa` ile
+süzülür, kadro `icKume` ile boşalır ve boşalmanın sebebi basılır.
+
+**Ölçüm (iki yönlü).**
+* **Onarım öncesi/sonrası:** aynı eksen, aynı 60 ölçüm vakası, `HEAD` kopyası
+  ile onarılmış ağaç. Önce **5 sızan yüzey · 12 bulgu · 50 isim · 130 kayıt**;
+  sonra **0 sızan yüzey · 0 bulgu · 0 isim · 0 kayıt**.
+* **Dedektör sağırlığı:** `GV_BOZ=1` sayfaya bilerek bir personel adı, bir iç
+  defter kodu ve bir yabancı proje kodu enjekte eder. Üç sınıfın **üçü de**
+  yakalandı — eksen sağır değil.
+* **Personel tarafı bozulmadı:** panel **10 rolde** (sahip · pm · ik ·
+  muhasebe · frontend · satismudur · takimlideri · depmudur · stajyer ·
+  musteri) önce/sonra karşılaştırıldı; dokuz personel rolünde çıktı
+  **birebir aynı**, tek fark müşteri rolündedir.
+
+**Yeni eksen: `tasks/qa/musteri-kapisi.js`.** Üç sınıf ölçer — S1 personel
+kimliği (`EMP-\d+` ve `DB.employees[].ad`) · S2 yabancı kayıt (müşteri
+ekseni olan defterlerde başkasının KODU ya da ADI) · S3 iç defter (müşteri
+ekseni hiç olmayan defterlerin kodları). Sözlüğünü `DB`den kurar, elle liste
+taşımaz; ekran listesini `GV.built`ten okur.
+
+**Susturma yok, KARAR VAR.** Müşterinin KENDİ talebinde, talebi üstlenen
+uzmanın adı ve denetim izindeki iç aktörler basılıyor (`DST-2026-120` →
+`Ayşe Kaplan`, 1 künye + 2 aktivite satırı). Bu başka bir firmanın verisi
+değil, toplayan bir iç defter de değil — müşterinin kendi kaydının taraflarıdır
+ve portal ürünlerinde genelde İSTENEN davranıştır. Karar verilmediği için
+**ne kapatıldı ne susturuldu**: eksenin `KARARA_AÇIK` listesinde sebebiyle
+yazılı ve her koşumda basılıyor (**V2-105**).
+
+**Reddedilen seçenek.** Sızıntıyı beş ekranda tek tek yamamak. Kural beş yerde
+yaşardı ve altıncı ekran yazıldığında yine unutulurdu — nitekim `guardRecord`
+ve `scopeField` VARDI, panel yine de sızdırıyordu. Eksik olan yama değil,
+sorunun kendisiydi.
