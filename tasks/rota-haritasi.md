@@ -158,7 +158,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | 20 | `app-teklif-form.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** İlk görünüm 6 alan; ara toplam kalem satırlarından TÜRETİLİR ve o hâlde salt okunur olur. Yeni teklif tablonun ilk durumunda (`Taslak`) doğar. |
 | 21 | `app-onanaliz.html` | **GÖMÜLÜYOR** ✅ | → fırsat detayı › Ön analiz bloğu — **çalışıyor**; 12 fırsatın 4'ünde analiz kaydı var, kalanında boş durum yazılı |
 | 22 | `app-onanaliz-detay.html` | **GÖMÜLÜYOR** ✅ | → aynı blokta kayıt görünümü + `GV.flow.adimlar('analysis')` ile durum ilerletme |
-| 23 | `app-onanaliz-form.html` | **GÖMÜLÜYOR** | → drawer · ⚠️ **YAZILMADI**: ön analiz OLUŞTURMA yüzeyi bu dilimde açılmadı, okuma ve durum ilerletme var. V2 borcu (`tasks/v2-borc.md` V2-04) |
+| 23 | `app-onanaliz-form.html` | **GÖMÜLÜYOR** | → drawer · ⚠️ **YAZILMADI**: ön analiz OLUŞTURMA yüzeyi bu dilimde açılmadı, okuma ve durum ilerletme var. V2 borcu (`tasks/v2-borc.md` V2-04) | · ⛔ **BLOKE — yazma yordamı yok.** `DB.analyses` defterine kayıt EKLEYEN yordam ortak katmanda YOK (13 Ağustos, ajan açılmadan ÖNCE ölçüldü; iki yönlü sınandı). Kaydetmesi olmayan drawer basmak §14.6 "sahte buton" yasağının form ölçeğidir. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-99**
 
 ### 3.5 Referans ve komisyon — şartname sessiz
 
@@ -169,7 +169,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | 26 | `app-referans-form.html` | **GÖMÜLÜYOR** ✔ ✅ | → aynı alan; ayrı form açılmadı |
 | 27 | `app-komisyon.html` | **GÖMÜLÜYOR** ✔ | **ADR-R2-04:** komisyon Finans raporunda **satır** olur. Finans'ın dört girdisi dolu; beşinci girdi 18 sınırını zorlardı. |
 | 28 | `app-komisyon-detay.html` | **GÖMÜLÜYOR** ✔ | → Nakit ve Tahsilat raporu drill-down |
-| 29 | `app-komisyon-form.html` | **GÖMÜLÜYOR** ✔ | → drawer |
+| 29 | `app-komisyon-form.html` | **GÖMÜLÜYOR** ✔ | → drawer | · ⛔ **BLOKE — yazma yordamı yok.** `DB.commissions` defterine kayıt EKLEYEN yordam ortak katmanda YOK (13 Ağustos, ajan açılmadan ÖNCE ölçüldü; iki yönlü sınandı). Kaydetmesi olmayan drawer basmak §14.6 "sahte buton" yasağının form ölçeğidir. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-99**
 
 ---
 
@@ -192,19 +192,19 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 |---|---|---|---|
 | 33 | `app-proje-milestone.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — proje detayı › Milestone sekmesi. `DB.projectMilestones` (12) · `DB.milestones` ödeme taksitidir, sekmede ayrıca uyarılıyor |
 | 34 | `app-proje-sprint.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — proje detayı › Sprint sekmesi · `DB.sprints` (6) |
-| 35 | `app-proje-sprint-form.html` | **GÖMÜLÜYOR** | drawer |
+| 35 | `app-proje-sprint-form.html` | **GÖMÜLÜYOR** | drawer | · ⛔ **BLOKE — yazma yordamı yok.** `DB.sprints` defterine kayıt EKLEYEN yordam ortak katmanda YOK (13 Ağustos, ajan açılmadan ÖNCE ölçüldü; iki yönlü sınandı). Kaydetmesi olmayan drawer basmak §14.6 "sahte buton" yasağının form ölçeğidir. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-99**
 | 36 | `app-proje-test.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — proje detayı › Kalite sekmesi · `DB.testCases` (5, hepsi PRJ-2026-001) |
 | 37 | `app-proje-test-detay.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — aynı sekmede kayıt görünümü |
-| 38 | `app-proje-test-form.html` | **GÖMÜLÜYOR** | drawer |
+| 38 | `app-proje-test-form.html` | **GÖMÜLÜYOR** | drawer | · ⛔ **BLOKE — yazma yordamı yok.** `DB.testCases` defterine kayıt EKLEYEN yordam ortak katmanda YOK (13 Ağustos, ajan açılmadan ÖNCE ölçüldü; iki yönlü sınandı). Kaydetmesi olmayan drawer basmak §14.6 "sahte buton" yasağının form ölçeğidir. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-99**
 | 39 | `app-proje-hata.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — proje detayı › Hatalar sekmesi · `DB.bugs` (6) |
 | 40 | `app-proje-hata-detay.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — aynı sekme |
-| 41 | `app-proje-hata-form.html` | **GÖMÜLÜYOR** | drawer |
+| 41 | `app-proje-hata-form.html` | **GÖMÜLÜYOR** | drawer | · ⛔ **BLOKE — yazma yordamı yok.** `DB.bugs` defterine kayıt EKLEYEN yordam ortak katmanda YOK (13 Ağustos, ajan açılmadan ÖNCE ölçüldü; iki yönlü sınandı). Kaydetmesi olmayan drawer basmak §14.6 "sahte buton" yasağının form ölçeğidir. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-99**
 | 42 | `app-proje-degisiklik.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — proje detayı › Değişiklik sekmesi · `DB.changeRequests` (5). Kuyruğun onay satırı `#degisiklik` çapasına bağlandı |
 | 43 | `app-proje-degisiklik-detay.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — aynı sekme |
-| 44 | `app-proje-degisiklik-form.html` | **GÖMÜLÜYOR** | drawer |
+| 44 | `app-proje-degisiklik-form.html` | **GÖMÜLÜYOR** | drawer | · ⛔ **BLOKE — yazma yordamı yok.** `DB.changeRequests` defterine kayıt EKLEYEN yordam ortak katmanda YOK (13 Ağustos, ajan açılmadan ÖNCE ölçüldü; iki yönlü sınandı). Kaydetmesi olmayan drawer basmak §14.6 "sahte buton" yasağının form ölçeğidir. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-99**
 | 45 | `app-proje-teslim.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — proje detayı › Teslim sekmesi · `DB.deliveries` (5) |
 | 46 | `app-proje-teslim-detay.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — aynı sekme |
-| 47 | `app-proje-teslim-form.html` | **GÖMÜLÜYOR** | drawer |
+| 47 | `app-proje-teslim-form.html` | **GÖMÜLÜYOR** | drawer | · ⛔ **BLOKE — yazma yordamı yok.** `DB.deliveries` defterine kayıt EKLEYEN yordam ortak katmanda YOK (13 Ağustos, ajan açılmadan ÖNCE ölçüldü; iki yönlü sınandı). Kaydetmesi olmayan drawer basmak §14.6 "sahte buton" yasağının form ölçeğidir. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-99**
 
 ### 4.3 Görev — 9 menü girdisi 1'e indi
 
@@ -223,7 +223,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 |---|---|---|---|
 | 51 | `app-istalebi.html` | **GÖMÜLÜYOR** | → `/operasyon?tip=istalebi`. §6.2 kuyruk tipleri arasında adı geçmiyor ama "ortak tipte gösterilebilir" hükmüne düşer. **Çıkarım** — şartnamede birebir yazmıyor. |
 | 52 | `app-istalebi-detay.html` | **GÖMÜLÜYOR** | Operasyon sağ paneli + tam kayıt |
-| 53 | `app-istalebi-form.html` | **GÖMÜLÜYOR** | drawer |
+| 53 | `app-istalebi-form.html` | **GÖMÜLÜYOR** | drawer | · ⛔ **BLOKE — yazma yordamı yok.** `DB.deptRequests` defterine kayıt EKLEYEN yordam ortak katmanda YOK (13 Ağustos, ajan açılmadan ÖNCE ölçüldü; iki yönlü sınandı). Kaydetmesi olmayan drawer basmak §14.6 "sahte buton" yasağının form ölçeğidir. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-99**
 
 ### 4.5 Destek
 
@@ -247,7 +247,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | 61 | `app-ajanda.html` | **GÖMÜLÜYOR** ✅ | Üst çubuk takvim çekmecesi — R2'de **çalışıyor** (`gvCal`). R1'de menüde **iki kez** listeliydi (`panel › Ajanda`, `toplanti › Takvim`); ikisi de düştü. |
 | 62 | `app-toplanti.html` | **GÖMÜLÜYOR** | panel takvimi + müşteri/proje detayı aktivitesi |
 | 63 | `app-toplanti-detay.html` | **GÖMÜLÜYOR** | bağlamsal aktivite kaydı |
-| 64 | `app-toplanti-form.html` | **GÖMÜLÜYOR** | drawer |
+| 64 | `app-toplanti-form.html` | **GÖMÜLÜYOR** | drawer | · ⛔ **BLOKE — yazma yordamı yok.** `DB.meetings` defterine kayıt EKLEYEN yordam ortak katmanda YOK (13 Ağustos, ajan açılmadan ÖNCE ölçüldü; iki yönlü sınandı). Kaydetmesi olmayan drawer basmak §14.6 "sahte buton" yasağının form ölçeğidir. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-99**
 | 65 | `app-toplanti-karar.html` | **GÖMÜLÜYOR** | kararlar göreve bağlanır (`app-gorev.html` kayıtlı görünümü) |
 
 ### 4.7 Sohbet
@@ -311,7 +311,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | 82 | `app-personel-form.html` | **KARŞILIĞI VAR** ✅ | Doğum durumu `Taslak`. `maas` XOR `saatlikUcret` radio + `showIf` ile; kapı kapalıysa alan HİÇ ÇİZİLMEZ (maskelenmiş input gerçek değeri ezer). K-39 öz-erişim iki yönde ölçüldü. **Çalışıyor.** |
 | 83 | `app-personel-giris.html` | **GÖMÜLÜYOR** ✅ | §3.1 "işe giriş/çıkış" birleştirilen içerik → personel detayı › Yaşam Döngüsü (`employee` 15. geçiş varlığı `domain.js`'te hazır) · **GÖMÜLDÜ** → personel detayı › **Yaşam döngüsü** sekmesi. Yüzey bu turda gerçek Chromium'da doğrulandı (`EMP-016#yasamdongusu` 187 düğüm · `GV.flow.adimlar` 3 hedef); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
 | 84 | `app-performans.html` | **GÖMÜLÜYOR** ✅ | §3.1 aynı hüküm → personel detayı › Performans · **GÖMÜLDÜ** → personel detayı › **Performans** sekmesi. Yüzey bu turda gerçek Chromium'da doğrulandı (`EMP-002#performans` boş durumu §10.1'e uygun: "defterde 5 kayıt var, bu kişide yok"); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
-| 85 | `app-performans-form.html` | **GÖMÜLÜYOR** | drawer |
+| 85 | `app-performans-form.html` | **GÖMÜLÜYOR** | drawer | · ⛔ **BLOKE — yazma yordamı yok.** `DB.performance` defterine kayıt EKLEYEN yordam ortak katmanda YOK (13 Ağustos, ajan açılmadan ÖNCE ölçüldü; iki yönlü sınandı). Kaydetmesi olmayan drawer basmak §14.6 "sahte buton" yasağının form ölçeğidir. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-99**
 | 86 | `app-egitim.html` | **GÖMÜLÜYOR** ✅ | §3.1 aynı hüküm → personel detayı › Eğitim · **GÖMÜLDÜ** → personel detayı › **Eğitim** sekmesi. Yüzey bu turda gerçek Chromium'da doğrulandı (`EMP-006` 2 · `EMP-016` 1); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
 
 ### 6.2 Zaman ve İzin — tek menü girdisi
@@ -348,17 +348,17 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | # | R1 ekranı | Karar |
 |---|---|---|
 | 101 | `app-arac-bakim.html` | **GÖMÜLÜYOR** ✅ → araç detayı › Bakım · **GÖMÜLDÜ** → araç detayı › **Bakım** sekmesi. Yüzey bu turda gerçek Chromium'da doğrulandı (`ARC-001` Bakım 2 kayıt · `ARC-003` 1); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
-| 102 | `app-arac-bakim-form.html` | **GÖMÜLÜYOR** → drawer |
+| 102 | `app-arac-bakim-form.html` | **GÖMÜLÜYOR** → drawer | · ⛔ **BLOKE — yazma yordamı yok.** Araç alt defterine kayıt EKLEYEN yordam ortak katmanda yok (ölçüldü). **Beyar kararı (13 Ağustos):** yazma yordamı YAZILMAYACAK, kapsam donduruldu; drawer SALT OKUNUR açılır, kaydetme düğmesi gizlenmez **devre dışı bırakılır** ve sebebi ekranda yazılır. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-98**
 | 103 | `app-arac-muayene.html` | **GÖMÜLÜYOR** ✅ → araç detayı › Muayene · **GÖMÜLDÜ** → araç detayı › **Muayene** sekmesi. Yüzey bu turda gerçek Chromium'da doğrulandı (`ARC-001` 1 · `ARC-003` 1 · `sonTarih` ile vade (`sonrakiTarih`) ayrı kolonlarda); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
-| 104 | `app-arac-muayene-form.html` | **GÖMÜLÜYOR** → drawer |
+| 104 | `app-arac-muayene-form.html` | **GÖMÜLÜYOR** → drawer | · ⛔ **BLOKE — yazma yordamı yok.** Araç alt defterine kayıt EKLEYEN yordam ortak katmanda yok (ölçüldü). **Beyar kararı (13 Ağustos):** yazma yordamı YAZILMAYACAK, kapsam donduruldu; drawer SALT OKUNUR açılır, kaydetme düğmesi gizlenmez **devre dışı bırakılır** ve sebebi ekranda yazılır. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-98**
 | 105 | `app-arac-sigorta.html` | **GÖMÜLÜYOR** ✅ → araç detayı › Sigorta · **GÖMÜLDÜ** → araç detayı › Özet › **Sigorta ve poliçe** bloğu. Yüzey bu turda gerçek Chromium'da doğrulandı (`ARC-001` 2 poliçe · kasko ek alanları + yenileme uyarısı); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
-| 106 | `app-arac-sigorta-form.html` | **GÖMÜLÜYOR** → drawer |
+| 106 | `app-arac-sigorta-form.html` | **GÖMÜLÜYOR** → drawer | · ⛔ **BLOKE — yazma yordamı yok.** Araç alt defterine kayıt EKLEYEN yordam ortak katmanda yok (ölçüldü). **Beyar kararı (13 Ağustos):** yazma yordamı YAZILMAYACAK, kapsam donduruldu; drawer SALT OKUNUR açılır, kaydetme düğmesi gizlenmez **devre dışı bırakılır** ve sebebi ekranda yazılır. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-98**
 | 107 | `app-arac-yakit.html` | **GÖMÜLÜYOR** ✅ → araç detayı › Yakıt · **GÖMÜLDÜ** → araç detayı › **Yakıt** sekmesi. Yüzey bu turda gerçek Chromium'da doğrulandı (`ARC-001` 2 dolum · türetilmiş Δkm kolonu); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
-| 108 | `app-arac-yakit-form.html` | **GÖMÜLÜYOR** → drawer |
+| 108 | `app-arac-yakit-form.html` | **GÖMÜLÜYOR** → drawer | · ⛔ **BLOKE — yazma yordamı yok.** Araç alt defterine kayıt EKLEYEN yordam ortak katmanda yok (ölçüldü). **Beyar kararı (13 Ağustos):** yazma yordamı YAZILMAYACAK, kapsam donduruldu; drawer SALT OKUNUR açılır, kaydetme düğmesi gizlenmez **devre dışı bırakılır** ve sebebi ekranda yazılır. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-98**
 | 109 | `app-arac-gider.html` | **GÖMÜLÜYOR** ✅ → araç detayı › Giderler · **GÖMÜLDÜ** → araç detayı › **Gider** sekmesi. Yüzey bu turda gerçek Chromium'da doğrulandı (`ARC-001` 4 · `ARC-003` 2 · tür dağılımı + toplam şeridi); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
-| 110 | `app-arac-gider-form.html` | **GÖMÜLÜYOR** → drawer |
+| 110 | `app-arac-gider-form.html` | **GÖMÜLÜYOR** → drawer | · ⛔ **BLOKE — yazma yordamı yok.** Araç alt defterine kayıt EKLEYEN yordam ortak katmanda yok (ölçüldü). **Beyar kararı (13 Ağustos):** yazma yordamı YAZILMAYACAK, kapsam donduruldu; drawer SALT OKUNUR açılır, kaydetme düğmesi gizlenmez **devre dışı bırakılır** ve sebebi ekranda yazılır. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-98**
 | 111 | `app-arac-kaza.html` | **GÖMÜLÜYOR** ✅ → araç detayı › Kaza ve Ceza · **GÖMÜLDÜ** → araç detayı › **Kaza** sekmesi (Ceza ayrı sekme). Yüzey bu turda gerçek Chromium'da doğrulandı (`ARC-003#kaza` 1 kayıt · 181 düğüm · 14 alanlık kaza dosyası kartı); ekran YAZILMADI, var olan sekme ölçüldü ve işaretlendi. |
-| 112 | `app-arac-kaza-form.html` | **GÖMÜLÜYOR** → drawer |
+| 112 | `app-arac-kaza-form.html` | **GÖMÜLÜYOR** → drawer | · ⛔ **BLOKE — yazma yordamı yok.** Araç alt defterine kayıt EKLEYEN yordam ortak katmanda yok (ölçüldü). **Beyar kararı (13 Ağustos):** yazma yordamı YAZILMAYACAK, kapsam donduruldu; drawer SALT OKUNUR açılır, kaydetme düğmesi gizlenmez **devre dışı bırakılır** ve sebebi ekranda yazılır. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-98**
 
 ---
 
@@ -372,10 +372,10 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | 116 | `app-satinalma-teklif.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** (K-24). Satın Alma › Teklif Toplama sekmesi · 9 satır · iki puan ekseni ayrı etiketli |
 | 117 | `app-siparis.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** (K-24). Satın Alma › Siparişler sekmesi · 4 satır · net/KDV/brüt üç kolon |
 | 118 | `app-siparis-detay.html` | **GÖMÜLÜYOR** ✅ | aynı sekmede satır görünümü; `teslimTarihi` çift anlamı (planlanan/gerçekleşen) hücrede yazılı |
-| 119 | `app-siparis-form.html` | **GÖMÜLÜYOR** | drawer |
+| 119 | `app-siparis-form.html` | **GÖMÜLÜYOR** | drawer | · ⛔ **BLOKE — yazma yordamı yok.** `DB.orders` defterine kayıt EKLEYEN yordam ortak katmanda YOK (13 Ağustos, ajan açılmadan ÖNCE ölçüldü; iki yönlü sınandı). Kaydetmesi olmayan drawer basmak §14.6 "sahte buton" yasağının form ölçeğidir. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-99**
 | 120 | `app-tedarikci.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** (K-24). Satın Alma › Tedarikçiler sekmesi · 7 satır · ömür boyu sayaç kart değeri ile sistemden hesaplanan AYRI satırda |
 | 121 | `app-tedarikci-detay.html` | **GÖMÜLÜYOR** ✅ | aynı sekmede satır görünümü |
-| 122 | `app-tedarikci-form.html` | **GÖMÜLÜYOR** | drawer |
+| 122 | `app-tedarikci-form.html` | **GÖMÜLÜYOR** | drawer | · ⛔ **BLOKE — yazma yordamı yok.** `DB.suppliers` defterine kayıt EKLEYEN yordam ortak katmanda YOK (13 Ağustos, ajan açılmadan ÖNCE ölçüldü; iki yönlü sınandı). Kaydetmesi olmayan drawer basmak §14.6 "sahte buton" yasağının form ölçeğidir. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-99**
 
 ---
 

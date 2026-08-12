@@ -4052,3 +4052,237 @@ olarak vaat edilmez) ve raporunda madde olarak yazar:
 5. Basmadığı düğme ve sebebi (§22.16 maddelerinden hangisi).
 6. Ortak katmanda bulduğu kusur — **düzeltmeden** rapor eder.
 
+
+---
+
+## 23. Dilim 7 — GÖMME DİLİMİ (rota defterinin kalan 30 `GÖMÜLÜYOR` satırı)
+
+> 13 Ağustos 2026 · **ölçülerek** yazıldı. Gruplama `tasks/gomme-plani.md`de.
+> Bu bölüm bir plan değil, ajanın okuyacağı **sözleşmedir**.
+>
+> ⚠️ Gömme, **çalışan bir ekranı değiştirir**. Her ajan hedef ekranın eski
+> davranışını bozmamakla yükümlüdür: var olan sekme · kart · liste · kapı
+> aynen kalır, üstüne eklenir.
+
+### 23.1 YAZMA YORDAMI ÖLÇÜMÜ — 12 satır BLOKE (ajan açılmadı)
+
+Dilim 6'nın GRUP 1 blokajı ölçülmeden bulunmuştu; bu turda **aynı soru
+diğer 12 drawer satırına da ajan açılmadan ÖNCE soruldu**. Ölçüm: ortak
+katmanda bir deftere kayıt EKLEYEN yordam `push`/`unshift`/`splice` ile
+görünür. İki yönlü sınandı — yordamı olduğu bilinen defterlerde ölçüm
+pozitif döndü (`DB.tasks` 2 · `DB.tickets` 1 · `DB.quotes` 1 ·
+`DB.personalNotes` 3 · `DB.contracts` 1 · `DB.projects` 1).
+
+| rota | drawer | yazacağı defter | ekleyen yordam |
+|---|---|---|---|
+| 23 | ön analiz | `DB.analyses` | **YOK** |
+| 29 | komisyon | `DB.commissions` | **YOK** |
+| 35 | sprint | `DB.sprints` | **YOK** |
+| 38 | test senaryosu | `DB.testCases` | **YOK** |
+| 41 | hata | `DB.bugs` | **YOK** |
+| 44 | değişiklik talebi | `DB.changeRequests` | **YOK** |
+| 47 | teslim | `DB.deliveries` | **YOK** |
+| 53 | departman talebi | `DB.deptRequests` | **YOK** |
+| 64 | toplantı | `DB.meetings` | **YOK** |
+| 85 | performans | `DB.performance` | **YOK** |
+| 119 | sipariş | `DB.orders` | **YOK** |
+| 122 | tedarikçi | `DB.suppliers` | **YOK** |
+
+**Sonuç:** bu 12 satır için ajan AÇILMADI. Kaydetmesi olmayan bir drawer
+basmak "sahte buton" yasağının (§14.6) form ölçeğidir. Satırlar rotada
+`⛔ bloke — yazma yordamı yok` işaretlidir ve `tasks/v2-borc.md`ye yazıldı.
+Bu, dilim 6'nın 102·104·106·108·110·112 satırlarıyla **aynı sınıftır**.
+
+### 23.2 Rota 79 — proje detayı › **Bütçe sekmesi** (ADR-R2-12)
+
+Hedef: `app-proje-detay.html`. Sekme şeridi dokuzdan **ona** çıkar
+(`data-tab="butce"`, Özet ile Milestone arasına DEĞİL, **Özet'ten hemen
+sonra**). Şeritte ikon YOKTUR (§18.7 · §22.17.8).
+
+**Veri — ölçüldü:** `DB.projects[].butce` 14/14 kayıtta dolu ·
+`DB.projects[].sozlesmeTutari` 14/14 dolu.
+
+**Yordam:** `GV.proje.maliyet(kod)` — dört kalem (`personel` · `disKaynak` ·
+`satinAlma` · `diger`) + `toplam` · `gelir` · `brutKar` · `karlilikYuzde` ·
+`kapsam` · `saat` · `maliyetsizPersonel` · `oranGuvenilmez`.
+`GV.proje.sure(kod)` süre eksenini verir.
+
+⚠️ **`diger` kalemi HER ZAMAN 0'dır ve bu bir ölçüm değil KAYNAK boşluğudur**
+(projeye bağlı ayrı gider koleksiyonu bilerek açılmadı). Sekme bunu yazmak
+zorundadır.
+⚠️ **`kapsam:false` ise bütçe/gerçekleşen karşılaştırması BASILMAZ.** Sıfır
+maliyet yazmak, ölçülmemişi ölçülmüş göstermektir.
+
+**K-21 (iki yüzey aynı defteri göstermez):** Özet sekmesindeki maliyet kartı
+ve künyedeki `Bütçe (iç maliyet ekseni)` satırı **Bütçe sekmesine taşınır**;
+Özet'te yerine tek satırlık bir bağ bırakılır. Aynı sayı iki sekmede
+basılmaz.
+
+**Sapma:** `butce` alanının **dönemi ve para birimi kayıtta yazılı değil**;
+ekran bunu beyan eder, uydurmaz.
+
+### 23.3 Rota 27 · 28 — komisyon (ADR-R2-04)
+
+Hedef: `app-rapor.html` › **Nakit ve Tahsilat** raporu.
+
+**TAVAN DOLU — ölçüldü:** `GV.rapor.TAVAN` en fazla 4 KPI · 2 grafik ·
+1 tablo. Bu raporda bugün KPI 4/4 (DOLU) · grafik 1/2 · tablo 1/1 (DOLU).
+Yani komisyon için **yeni KPI ve yeni tablo YERİ YOKTUR**.
+
+**Uygulanan yorum (Beyar onayına açık):** `DB.commissions[].musteri` 6/6
+kayıtta dolu → komisyon, tek tablonun müşteri ekseninde **iki kolon** olur:
+`Komisyon` (tutar) ve `Komisyon durumu`. ADR-R2-04'ün "komisyon bir finansal
+**satırdır**" hükmü böyle karşılanır; yeni tablo, yeni KPI, yeni menü girdisi
+açılmaz.
+**Rota 28 (drill-down):** `GV.rapor` satır tıklamasıyla derinleşme
+YORDAMI TAŞIMIYOR (ölçüldü: `bagla()` yalnız `[data-rp]` · `[data-cikti]` ·
+filtre değişimini dinler). Hücre `html` alanı serbest olduğu için derinleşme
+hücrenin İÇİNDE `<details>` ile verilir — ortak katmana dokunulmaz.
+Her `<details>` o müşterinin komisyon kayıtlarını (`kod` · `kisi` · `ciro` ·
+`oran` · `tutar` · `durum`) basar.
+
+⚠️ `DB.commissions[].oran` bir kayıtta **0** ve `ciro` bir kayıtta **0**;
+`tutar` yine de dolu. Oran × ciro ile `tutar` TÜRETİLMEZ — kayıttaki `tutar`
+okunur ve tutarsızlık ekranda beyan edilir.
+⚠️ Komisyon **finans kapısındadır**: `GV.perm.can('finans')` yoksa kolonlar
+maskelenir (rapordaki diğer para KPI'ları gibi).
+
+### 23.4 Rota 60 — memnuniyet anketi (`DB.surveys`)
+
+Hedef: `app-rapor.html` › **Hizmet ve Destek** raporu.
+
+⚠️ **BUGÜN YANLIŞ DEFTER OKUNUYOR.** Rapor `DB.tickets[].memnuniyet`
+okuyor (7 talebin **3'ünde** dolu). Rota 60'ın kaynağı
+`app-destek-memnuniyet.html` yani **`DB.surveys`** — 24 kayıt, 21'inde
+`puan`, 21'inde `tavsiye` dolu, üç tür (`Proje teslimi` · `Dönemsel` ·
+`Destek talebi`), iki durum (`Yanıtlandı` · `Bekliyor`).
+
+**Sözleşme:** anket defteri **talep memnuniyetinin yerine geçmez**, yanına
+gelir; ikisi farklı şeydir ve aynı kolonda toplanmaz.
+`ui.js:278` NPS gruplamasını (`9-10 / 7-8 / 0-6`) zaten tanımlıyor —
+yeniden yazılmaz, o kırılım kullanılır.
+KPI tavanı bu raporda da ölçülmeli; **dolu ise yeni KPI EKLENMEZ**, anket
+ikinci grafik yuvasına ve/veya tablo kolonuna düşer.
+
+### 23.5 Rota 5 — duyuru widget'ı
+
+Hedef: `app-panel.html`. `DB.announcements` **3 kayıt** ·
+alanlar `kod · baslik · ozet · icerik · yazan · tarih · oncelik · dep ·
+aktif · okuyanlar`. Öncelikler bugün `Yüksek` (2) · `Orta` (1).
+
+Panel kartı deseni ekranda zaten var (`kart(baslik, ikon, alt, govde)`);
+yeni desen kurulmaz. İkon `i-megaphone` sprite'ta VAR.
+`okuyanlar` bir dizidir → "okundu" rozeti oturum personeline göre türetilir;
+**okundu İŞARETLEME düğmesi BASILMAZ** — `DB.announcements[].okuyanlar`a
+yazan yordam yok (§23.1 sınıfı).
+`dep` alanı departman süzgecidir; oturumun departmanı dışındaki duyuru
+gizlenmez ama `dep` etiketi basılır (şartname duyuruyu departmanla
+sınırlamıyor).
+
+### 23.6 Rota 65 — toplantı kararları → `app-gorev.html` kayıtlı görünümü
+
+`DB.decisions` **12 kayıt** · alanlar `kod · toplanti · karar · sorumlu ·
+termin · durum · gorev · aktif`. **12'nin 3'ü** bir göreve bağlı
+(`gorev` alanı dolu).
+
+**Sözleşme:** görev listesine **yeni bir kayıt tipi eklenmez**; kayıtlı
+görünüm `gorev` alanı üzerinden `DB.tasks` içinde **karar kaynaklı görevleri**
+süzer. Görev listesi tek listedir (§18.8) ve kayıtlı görünüm sözleşmesi
+§20.5'tir.
+⚠️ **Bağı olmayan 9 karar bu görünümde GÖRÜNMEZ** ve bu bir eksiklik değil
+ölçümdür: kararı göreve çeviren yordam yok (`DB.decisions[].gorev`e yazan
+yordam yok — §23.1 sınıfı). Görünümün boş durumu bunu YAZAR.
+
+### 23.7 Rota 62 · 63 — toplantı bağlamı
+
+`DB.meetings` **9 kayıt** · alanlar `kod · ad · tur · musteri · proje ·
+tarih · sure · yer · katilimci · disKatilimci · gundem · durum · aktif`.
+**5'inde `musteri` · 5'inde `proje` dolu.** Dört tür:
+`Müşteri toplantısı` · `Satış görüşmesi` · `Departman toplantısı` ·
+`Proje toplantısı`.
+
+**Panel ayağı ZATEN YAYINDA:** `app-panel.html` "Günün ajandası" kartı
+`DB.meetings`i bugüne göre süzüyor. Yeniden yazılmaz.
+**Yazılacak olan:** `app-musteri-detay.html` ve `app-proje-detay.html`
+aktivite yüzeyinde toplantının **bağlamsal kaydı** (rota 63) — ayrı ekran
+değil, o kaydın kendi aktivite/geçmiş yüzeyinde satır.
+`katilimci` ve `disKatilimci` dizidir; `disKatilimci` boşsa satır basılmaz.
+**Toplantı OLUŞTURMA düğmesi BASILMAZ** (rota 64 bloke).
+
+### 23.8 AJAN GEREKMEYEN SATIRLAR — yüzey ZATEN yayında (ölç ve işaretle)
+
+| rota | yüzey | nerede ölçüldü |
+|---|---|---|
+| 2 | panel rol özet kartları (`OZET_BY_ROLE` · dört özet yordamı) | `app-panel.html` |
+| 51 | Operasyon kuyruğunun **altıncı** tipi `istalebi` (ADR-R2-14) | `kuyruk.js:36` |
+| 52 | departman talebinin tam kaydı sağ panelin KENDİSİ (`tam:null` + `tamNot`) | `kuyruk.js:166` |
+| 125 | Ayarlar › Sistem Kayıtları › **Belge Arşivi** › `Süresi geçmiş` kayıtlı görünümü (`kalanGun < 0`) | `app-ayar-log.html:437` |
+
+⚠️ **Rota 51-52'de ÖLÇÜLEN KUSUR:** kuyruk satırının `iliski` alanı
+`d.hedefDep || d.dep` okuyordu; **`DB.deptRequests` bu iki alanı TAŞIMIYOR**
+(gerçek alanlar `talepEdenDep` · `talepEdilenDep`), dolayısıyla altı talebin
+altısında `iliski` null kalıyordu. Ortak satır modelinin sözleşmesi
+`iliski`yi "müşteri / proje bağı" diye tanımlıyor ve diğer beş tip öyle
+dolduruyor — bu yüzden `d.proje || d.musteri` yazıldı, departman kodu bu
+kolona konmadı (bir kolona iki farklı birim yazmak olurdu).
+
+### 23.9 Yasaklar — bu dilime özel (§14 ve §22.17'ye EK)
+
+1. Ajan **`assets/` altına dokunmaz.** Ortak katmanda eksik gördüğünü
+   yazmaz, **rapor eder**.
+2. **Yeni menü girdisi açılmaz.** Ölçülen tavan: en yüksek günlük girdi
+   **17** ve bu dilimde DEĞİŞMEZ.
+3. Hedef ekranın **var olan sekmesi · kartı · listesi · kapısı silinmez**.
+4. Kaydetmesi olmayan hiçbir form/drawer basılmaz (§23.1).
+5. Rapor tavanı aşılmaz (4 KPI · 2 grafik · 1 tablo); tavan doluysa
+   içerik var olan yuvaya girer, yeni yuva AÇILMAZ.
+6. Aynı sayı iki yüzeyde basılmaz (K-21).
+7. `GV.tabs` panelleri belge genelinde arar — ikinci sekme kümesi kurulmaz.
+8. Sekme şeridine ikon konmaz.
+
+### 23.10 Ajan raporunda ZORUNLU olanlar
+
+§22.18 aynen geçerlidir. Ek olarak her ajan şunu **alan alan** bildirir:
+
+* Dokunduğu ekranın **gömme ÖNCESİ** davranışı ile **SONRASI** karşılaştırması:
+  aynı kayıt, aynı işlem, hangi alanlar birebir aynı kaldı.
+* Taşıdığı (silmediği, TAŞIDIĞI) her blok ve nereye taşındığı.
+
+### 23.11 Araç alt defterleri — SALT OKUNUR ÇEKMECE (Beyar kararı 2, 13 Ağustos)
+
+Rota 102·104·106·108·110·112 **kapatılmadı** (yazma yordamı yok, §23.1).
+Beyar kararı yüzeyi yine de açtı ve duruşu TERSİNE ÇEVİRDİ:
+
+| önceki duruş | yeni duruş |
+|---|---|
+| "yapılamayan iş devre dışı bir düğmeyle bile vaat edilmez" → hiçbir düğme basılmadı | kaydetme düğmesi **gizlenmez**, `disabled` basılır ve **sebebi ekranda yazılır** |
+
+`app-arac-detay.html` uygulaması:
+* Altı listenin (`bakim` · `yakit` · `ceza` · `muayene` · `kaza` · `gider`)
+  hepsinde `GV.list` `rowOpen` yuvası kullanıldı — satıra tıklamak kaydın
+  tamamını **salt okunur** bir `GV.drawer` içinde açar. Hiçbir `<input>`
+  basılmaz.
+* Çekmecede kolon sözlüğü olan alanlar ekrandaki **etiketleriyle**, sözlüğü
+  olmayanlar **ham anahtar adıyla** ve ayrı bir grupta basılır — etiket
+  UYDURULMAZ.
+* Kaydetme düğmesi ve sebebi TEK yordamdan (`kaydetmeYok`) üretilir; yedi
+  yüzey aynı cümleyi kopyalamaz.
+* **Poliçe (rota 106) çekmece ALMADI** ve sebebi ölçüldü: poliçenin tamamı
+  Özet'teki blokta zaten satır satır basılı; ikinci yüzey K-21 ihlali
+  olurdu. Karardan uygulanan kısım yalnız devre dışı düğme + sebeptir.
+* **Ceza defterinin ayrı rota satırı yok** (rota 111 Kaza + Ceza'yı birlikte
+  sayıyor) ama aynı mekanizmayı paylaştığı için aynı kural uygulandı;
+  altı listeden birinin açılmaması tutarsız bir yüzey bırakırdı.
+* "Yeni … ekle" düğmesi **HİÇ basılmadı**: olmayan bir kaydı doğuracak
+  yüzey, devre dışı bile olsa açılmıyor. Karar var olan kaydın
+  görüntülenmesini istedi, yeni kayıt doğurmayı değil.
+
+⚠️ **BEYAN BAYATLAMASI — aynı turda yakalandı.** Ekrandaki `salt()` cümlesi
+*"devre dışı bir düğme bile vaat sayılır"* diyordu; karar uygulandığı anda o
+cümle ekranda yanlışa döndü ve aynı turda düzeltildi. Dilim 6'nın `EMP-016`
+dersinin birebir tekrarı: **bir kuralın hâlini anlatan cümle, kuralın
+KENDİSİNDEN türetilmeli.**
+
+⚠️ `GV.notice` `text` alanını **kaçırır** (`esc`) — içine işaretleme konmaz.
+Ölçüldü: `<span>` konsa kullanıcıya harf harf basılırdı. `aria-describedby`
+hedefi bu yüzden notice'in DIŞINDAKİ sarmalayıcıya kondu.
