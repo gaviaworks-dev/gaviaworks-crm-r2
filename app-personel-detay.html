@@ -1,0 +1,1819 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Personel Kartı — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="ekip" data-screen="personel">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/hr.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   PERSONEL KARTI — brief §22.14 (rota 81) · §20.1 · §20.2 · §20.3 · §20.5
+
+   TEK KAYIT, YEDİ SEKME: ozet · performans · egitim · yasamdongusu ·
+   zaman · zimmet · aktivite. Performans, eğitim, kapasite, işe giriş/çıkış
+   ve zimmet AYRI EKRAN AİLESİ DEĞİLDİR (brief §20.5) — hepsi bu kartın bir
+   sekmesidir. Sekme mekaniği `app-proje-detay.html` deseninin birebir
+   aynısıdır (brief §18.7).
+
+   ── ÖNCE KAPI, SONRA ALAN (brief §20.1 · §22.14) ──
+   Personel kaydı ÜÇ ayrı hassasiyette alan taşır ve üçü aynı kapıdan
+   geçmez:
+     · genel  → kapı yok
+     · özlük  → `GV.hr.ozlukGorebilir(e)` (kendi kaydı her zaman açık)
+     · maaş   → `GV.hr.maasKapi(e)` / `GV.hr.maasGorebilir(e)` (öz-erişim
+                açık — K-39 · ADR-R2-39)
+   Kapı kapalıysa alan `••••••` basılır; BOŞ ya da `0` DEĞİL. Boş "veri yok"
+   demektir, oysa veri var ve görülemiyor — ikisi ayrı şeydir (UID-11).
+   Maskelenmiş değeri okuyan tek yer ortak yordamdır (`GV.hr.ozluk` ·
+   `GV.hr.maas`); ekran kapıyı kendi lehine gevşetmez, ikinci bir maske
+   cümlesi kurmaz.
+
+   ⚠️ KÜME ile KAYIT sorusu ayrıdır (brief §22.1): tek kayıt basılırken
+   argümanlı (`maasGorebilir(e)`), küme sayılırken argümansız
+   (`maasGorebilir()`) çağrılır. Kişinin kendi ücretini görmesi 16 kişilik
+   bir toplamı açmaz.
+
+   ── TEMBEL ÇİZİM ZORUNLU ──
+   Sekme gövdesi yalnız `gv:tab` olayında ve yalnız BİR KEZ çizilir.
+   Dinleyici `document`a bağlıdır (`GV.refresh()`te ölmeyen kalıcı düğüm)
+   ve `GV.on` ile tekil anahtar üzerinden bağlanır (brief §2.6 · L-16).
+   `#hash` derin bağlantısı SÖZLEŞMEDİR:
+   `app-personel-detay.html?id=EMP-006#zimmet` doğrudan o sekmeyi açar.
+
+   ⚠️ ŞERİTTE İKON YOK (brief §22.13 · V2-04): ikonlu yedi/dokuz sekme
+   1440 px'te içerik sütununa sığmıyor, `.gv-tabs` yatay kayıyor ama
+   scrollbar'ı gizli — kesilen sekme kullanıcıya işaret bırakmadan
+   kaybolurdu. İkonlar kart başlıklarında yaşıyor. Her sekme ÖLÇÜLEN kayıt
+   sayısını taşır (`.gv-tab-cnt`).
+
+   ── YASAKLAR (brief §22.17) ──
+   · `e.durum = …` YOK → geçişler YALNIZ `GV.flow.gec('employee', …)`.
+   · `e.aktif` okunmaz · yazılmaz · süzülmez (tuzak, K-18 → K-33).
+   · `DB.salaryHistory` ve `DB.assignments`e satır YAZILMAZ (§22.16).
+   · Çizim anında `scrollIntoView` çağrılmaz (K-37 · §21.11).
+   · Sekme içindeki her `GV.list` `urlSync:false` bildirir (§18.9).
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var F     = GV.fmt;
+  var esc   = GV.esc;
+  var ico   = GV.ico;
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var MASK = '••••••';
+  var BOS  = '<span class="u-faint">—</span>';
+  var kod  = new URLSearchParams(location.search).get('id');
+
+  /* `GV.hr.kayit` kod da kayıt da kabul eder; bulunamazsa null döner
+     (K-42: `kod` alanı olmayan nesne kayıt DEĞİLDİR). */
+  var e = GV.hr.kayit(kod);
+
+  /* ---- 1. KAYIT YOK (brief §6 adım 1) ------------------------------ */
+  if(!e){
+    GV.pageHead({
+      eyebrow:'Ekip ve Kaynaklar · Personel', title:'Kayıt bulunamadı', sub:kod || '—',
+      actions:[{ label:'Personel listesine dön', icon:'i-arrow-left', href:'app-personel.html' }]
+    });
+    mount.innerHTML = '<div class="gv-card">' + GV.errorState({
+      title:'Personel kaydı bulunamadı',
+      desc:'Aradığınız personel kaydı silinmiş ya da adres hatalı olabilir. ' +
+           'Doğru kaydı personel listesinden seçebilirsiniz.',
+      action:'<a class="btn btn-acc" href="app-personel.html">Personel listesine dön</a>'
+    }) + '</div>';
+    return;
+  }
+
+  /* ---- 2. KAYIT SAHİPLİĞİ KAPISI (brief §6 adım 2 · §22.14) ---------
+     `GV.guardRecord` müşteri oturumuna karşı kayıt kapısıdır. Personel
+     kaydının `musteri` alanı YOKTUR — yani müşteri oturumu hiçbir personel
+     kartını açamaz ve yordam yetkisiz durumunu kendisi basar. `false`
+     dönerse ekran bastı, biz çıkarız.
+
+     ⚠️ KAYIT BAZLI DÜZENLEME KAPSAMI YORDAMI YOK (brief §22.1e.2 · borç
+     V2-85): "bu kullanıcı BU kaydı düzenleyebilir mi" sorusunun ortak bir
+     cevabı yazılmamış. Ekran kendi kuralını UYDURMAZ — `GV.perm.can`
+     ile yetinir ve eksiği aşağıda beyan eder. */
+  if(!GV.guardRecord({ mount:'#rec', kod:e.kod,
+                       eyebrow:'Ekip ve Kaynaklar · Personel', title:e.ad,
+                       geriHref:'app-personel.html',
+                       geriLabel:'Personel listesine dön' })) return;
+
+  /* ===================================================================
+     3. KİŞİSEL VERİ KAPILARI — ALANDAN ÖNCE (brief §20.1)
+     =================================================================== */
+  var ozlukAcik = GV.hr.ozlukGorebilir(e);          /* SATIR sorusu */
+  var maasKapi  = GV.hr.maasKapi(e);                /* { acik, kaynak, neden } */
+  var maasAcik  = GV.hr.maasGorebilir(e);           /* SATIR sorusu — öz-erişim açık */
+  var kumeAcik  = GV.hr.maasGorebilir();            /* KÜME sorusu — öz-erişimden etkilenmez */
+  var canFinans = GV.perm.can('finans');
+  var canDuzen  = GV.perm.can('duzenle');
+  var canOnay   = GV.perm.can('onay');
+  var me        = GV.session.emp || null;
+  var kendisi   = !!(me && me === e.kod);
+
+  /* Kapının İKİ YÖNÜ de ölçülür ve ekranda yazılır: bir kapı yalnız
+     "bana açık mı" ile anlatılırsa kapsamı görünmez kalır. */
+  var tumu       = DB.employees || [];
+  var OZLUK_N    = tumu.filter(function(x){ return GV.hr.ozlukGorebilir(x); }).length;
+  var MAAS_N     = tumu.filter(function(x){ return GV.hr.maasGorebilir(x); }).length;
+  var ozlukKapsam= GV.perm.scope('personel');       /* tum | departman | proje | yok */
+
+  /* ===================================================================
+     4. BAĞLAR — hepsi `personel` alanı üzerinden; tarih yakınlığı bağ
+        değildir. Her sayı ölçülür, hiçbiri varsayılmaz.
+     =================================================================== */
+  function byPersonel(list){
+    return (list || []).filter(function(x){ return x.personel === e.kod; });
+  }
+
+  var perfKayit  = byPersonel(DB.performance);
+  /* `katilimci` DİZİDİR — `indexOf` ile süzülür (brief §22.14). */
+  var egitimler  = (DB.trainings || []).filter(function(t){
+                     return (t.katilimci || []).indexOf(e.kod) !== -1; });
+  var surecler   = byPersonel(DB.onboarding);
+  var zamanlar   = byPersonel(DB.timelogs);
+  var defterler  = byPersonel(DB.timesheets);
+  var izinler    = byPersonel(DB.leaves);
+  var kapasite   = byPersonel(DB.capacity)[0] || null;
+  var astlar     = tumu.filter(function(x){ return x.yonetici === e.kod; });
+  var izler      = GV.audit.oku(e.kod, 20) || [];
+
+  /* Açık zimmetler ORTAK yordamdan gelir; ekran ikinci bir süzgeç yazmaz. */
+  var acikZimmet = (GV.varlik.zimmetliler(e.kod) || []);
+  /* Geçmiş (iade edilmiş) tutanaklar — defterin kendisinden okunur; açık
+     zimmet yordamı bilerek yalnız yaşayanları döndürür (brief §20.3). */
+  var gecmisZimmet = (DB.assignments || []).filter(function(z){
+    return z.personel === e.kod && acikZimmet.indexOf(z) === -1; });
+
+  /* DÜŞEN ZİMMET İDDİASI (K-30) — envanterin bir zamanlar BU KİŞİ için
+     söylediği ama defterin doğrulamadığı iddia. `GV.varlik` tarafında
+     demirbaş ekseninde bir yordam var (`dusenIddiaSatiri`), KİŞİ ekseninde
+     yok; defter `iddiaPersonel` alanını taşıdığı için burada o alandan
+     süzülüyor ve SATIRIN KENDİSİ yine ortak yordamdan alınıyor — metin
+     ekranda kurulmaz. Eksik imza raporlandı. */
+  var iddialar = (DB.assetClaimDrops || []).filter(function(d){
+    return d.iddiaPersonel === e.kod; });
+
+  /* Defterin YÜKLÜ OLMAMASI ile defterin BU KİŞİYİ KAPSAMAMASI ayrı
+     şeylerdir (L-13); ekran hangisini söylediğini bilsin diye ayrı ölçülür. */
+  var zamanDefteri = !!(DB.timelogs && DB.timelogs.length);
+  var perfDefteri  = !!(DB.performance && DB.performance.length);
+  var egtDefteri   = !!(DB.trainings && DB.trainings.length);
+  var kapDefteri   = !!(DB.capacity && DB.capacity.length);
+  var surecDefteri = !!(DB.onboarding && DB.onboarding.length);
+  var zimmetDefteri= !!(DB.assignments && DB.assignments.length);
+
+  /* Defter kapsamı — "5 kayıt 16 personelin 4'ünü kapsıyor" cümlesinin
+     kaynağı. Sayılar ölçülür, yazılmaz. */
+  function kapsananKisi(list, alan){
+    var s = [];
+    (list || []).forEach(function(r){
+      var v = r[alan];
+      if(v && s.indexOf(v) === -1) s.push(v);
+    });
+    return s.length;
+  }
+  var perfKisi = kapsananKisi(DB.performance, 'personel');
+  var kapKisi  = kapsananKisi(DB.capacity, 'personel');
+  var egtKisi  = (function(){
+    var s = [];
+    (DB.trainings || []).forEach(function(t){
+      (t.katilimci || []).forEach(function(k){ if(s.indexOf(k) === -1) s.push(k); });
+    });
+    return s.length;
+  })();
+
+  /* ===================================================================
+     5. ÇİZİM YARDIMCILARI (ekran içi — ortak katmana dokunulmadı)
+     =================================================================== */
+  function kartBasi(ikon, baslik, sag){
+    return '<div class="gc-head"><h3 class="gc-title">' + ico(ikon) + esc(baslik) + '</h3>' +
+      (sag ? '<div class="gc-head-acts">' + sag + '</div>' : '') + '</div>';
+  }
+  function sayacEtiketi(n, birim){
+    return '<span class="u-faint u-sm">' + n + ' ' + esc(birim) + '</span>';
+  }
+  function kart(ikon, baslik, sag, govde, ek){
+    return '<section class="gv-card' + (ek ? ' ' + ek : '') + '">' + kartBasi(ikon, baslik, sag) +
+      '<div class="gc-body">' + govde + '</div></section>';
+  }
+  function dolu(v){ return v != null && v !== '' && v !== '—'; }
+  /* Maskelenmiş değer bir DEĞER değil bir CEVAPTIR: `••••••` geldiğinde
+     hücre maske sınıfıyla basılır ve çıktıya girmez. */
+  function maskeli(v){
+    return '<span class="cell-mask">' + esc(String(v)) + '</span>';
+  }
+  function metin(v, bosSebep){
+    if(v === MASK) return maskeli(v);
+    return dolu(v) ? esc(String(v))
+                   : BOS + (bosSebep ? GV.cell.sub(esc(bosSebep)) : '');
+  }
+  /* Dizi alanı `join(' · ')` ile basılır, tekil sanılmaz (brief §21.11). */
+  function dizi(v, bosSebep){
+    if(v === MASK) return maskeli(v);
+    if(!v || !v.length) return BOS + (bosSebep ? GV.cell.sub(esc(bosSebep)) : '');
+    return esc(v.join(' · ')) + GV.cell.sub(v.length + ' kayıt · dizi alanı');
+  }
+  function tarih(iso, bosSebep){
+    if(iso === MASK) return maskeli(iso);
+    return iso ? '<span class="cell-date">' + esc(F.date(iso)) + '</span>'
+               : BOS + (bosSebep ? GV.cell.sub(esc(bosSebep)) : '');
+  }
+  function kisi(k, bosSebep){
+    return k ? GV.user(k, { sm:true }) : BOS + (bosSebep ? GV.cell.sub(esc(bosSebep)) : '');
+  }
+  function kodEt(v){ return v ? '<span class="cell-code">' + esc(v) + '</span>' : BOS; }
+  function rolAd(k){ return (k && DB.roleName) ? DB.roleName(k) : (k || ''); }
+  function empAd(k){ return (k && DB.empName) ? (DB.empName(k) || k) : (k || ''); }
+  /* Sözlüğü OLMAYAN alanda `GV.badge` UYDURULMAZ — düz metin basılır ve
+     değerin nereden türetildiği yazılır (brief §21.11 son madde · §22.17.12). */
+  function sozluksuz(v, kaynakNotu){
+    if(!dolu(v)) return BOS;
+    return '<span class="u-sm">' + esc(v) + '</span>' +
+      (kaynakNotu ? GV.cell.sub(esc(kaynakNotu)) : '');
+  }
+  function bosKart(ikon, baslik, cumle, sebep){
+    return '<section class="gv-card">' + kartBasi(ikon, baslik, sayacEtiketi(0, 'kayıt')) +
+      '<div class="gc-body">' + GV.empty({ icon:ikon, title:cumle, desc:sebep }) +
+      '</div></section>';
+  }
+
+  /* Kıdem — `girisTarihi` ve `DB.today`den türetilir; `new Date()` ile
+     "bugün" alınmaz (brief §13.2). `GV.fmt.days(iso)` = `iso − DB.today`,
+     yani GELECEK POZİTİF (brief §22.1g.2) — geçmiş bir giriş tarihinde
+     dönen sayı negatiftir ve kıdem onun ters işaretidir. */
+  function kidemGun(){
+    var g = F.days(e.girisTarihi);
+    return (g == null || isNaN(g)) ? null : -g;
+  }
+
+  /* ===================================================================
+     6. KÜNYE ALAN ENVANTERİ — özet sekmesinin sayacı buradan gelir
+
+     Yalnız GENEL (kapısız) alanlar sayılır: özlük ve ücret alanları kapı
+     arkasındadır ve doluluklarını saymak, kapının arkasındaki verinin
+     VARLIĞINI dolaylı olarak bildirmek olurdu.
+     =================================================================== */
+  var GENEL_ALAN = ['kod','ad','ini','rol','roller','dep','depAd','pozisyon','yonetici',
+                    'girisTarihi','durum','lokasyon','uzmanlik','yetkinlik','teknoloji',
+                    'calismaTipi','izinBakiye','doluluk'];
+  var doluGenel = GENEL_ALAN.filter(function(a){
+    var v = e[a];
+    if(Array.isArray(v)) return v.length > 0;
+    return v != null && v !== '' && v !== '—';
+  }).length;
+
+  /* ===================================================================
+     7. SEKME ŞERİDİ — brief §22.14 sözleşmesi birebir, YEDİ sekme
+        ⚠️ İKON YOK (§22.13). Sayaçlar ÖLÇÜLDÜ.
+     =================================================================== */
+  var SEKME = [
+    { key:'ozet', label:'Özet', sayac:doluGenel,
+      ipucu:GENEL_ALAN.length + ' genel künye alanının ' + doluGenel + ' tanesi dolu · ' +
+            'özlük ve ücret blokları kapı arkasında, sayıma girmez' },
+    { key:'performans', label:'Performans', sayac:perfKayit.length,
+      ipucu:'DB.performance · bu kişiye ait değerlendirme kaydı (defterde toplam ' +
+            (DB.performance || []).length + ' kayıt, ' + perfKisi + ' kişiyi kapsıyor)' },
+    { key:'egitim', label:'Eğitim', sayac:egitimler.length,
+      ipucu:'DB.trainings · katilimci dizisi bu kodu içeren eğitim (defterde toplam ' +
+            (DB.trainings || []).length + ' kayıt, ' + egtKisi + ' kişiyi kapsıyor)' },
+    { key:'yasamdongusu', label:'Yaşam döngüsü', sayac:surecler.length,
+      ipucu:'DB.onboarding · bu kişiye ait giriş/çıkış süreç kaydı · ' +
+            'yapılabilir geçişler GV.flow.adimlar ile üretilir' },
+    { key:'zaman', label:'Zaman', sayac:zamanlar.length + defterler.length,
+      ipucu:zamanlar.length + ' zaman kaydı · ' + defterler.length + ' haftalık defter · ' +
+            izinler.length + ' izin talebi' },
+    { key:'zimmet', label:'Zimmet', sayac:acikZimmet.length + gecmisZimmet.length + iddialar.length,
+      ipucu:acikZimmet.length + ' açık zimmet · ' + gecmisZimmet.length + ' iade edilmiş tutanak · ' +
+            iddialar.length + ' düşürülmüş envanter iddiası' },
+    { key:'aktivite', label:'Aktivite', sayac:izler.length,
+      ipucu:'denetim izi ve sistem günlüğü kaydı' }
+  ];
+
+  var sekmeHtml = SEKME.map(function(s){
+    return '<button type="button" class="gv-tab" role="tab" data-tab="' + s.key + '" ' +
+      'aria-selected="false" title="' + esc(s.ipucu) + '">' + esc(s.label) +
+      '<span class="gv-tab-cnt">' + s.sayac + '</span></button>';
+  }).join('');
+
+  var panelHtml = SEKME.map(function(s){
+    return '<div class="gv-tabpanel u-mt-4" role="tabpanel" data-panel="' + s.key + '" ' +
+      'aria-label="' + esc(s.label) + '" hidden></div>';
+  }).join('');
+
+  /* ===================================================================
+     8. SEKME 1 — ÖZET
+     =================================================================== */
+  function cizOzet(){
+    return '<div class="gv-grid gv-grid-main">' +
+      '<div>' + kunyeKarti() + ozlukKarti() + ucretKarti() + '</div>' +
+      '<aside>' + durumKarti() + kapiKarti() + ekipKarti() + '</aside>' +
+    '</div>';
+  }
+
+  /* ---- 8.1 Künye — GENEL alanlar, kapı yok ------------------------- */
+  function kunyeKarti(){
+    var kd = kidemGun();
+    var satirlar = [
+      ['Personel kodu', kodEt(e.kod)],
+      ['Ad', '<span class="cell-main">' + esc(e.ad) + '</span>' +
+             GV.cell.sub('kısaltma: ' + esc(e.ini || '—'))],
+      ['Pozisyon', metin(e.pozisyon, 'pozisyon yazılmamış')],
+      ['Departman', dolu(e.depAd)
+        ? '<span class="cell-main">' + esc(e.depAd) + '</span>' + GV.cell.sub(esc(e.dep || ''))
+        : kodEt(e.dep)],
+      ['Rol', dolu(e.rol)
+        ? '<span class="cell-main">' + esc(rolAd(e.rol)) + '</span>' + GV.cell.sub(esc(e.rol))
+        : BOS],
+      ['Tüm roller', dizi(e.roller, 'rol dizisi boş')],
+      ['Yönetici', kisi(e.yonetici, 'yöneticisi tanımlı değil (organizasyonun tepesi)')],
+      ['Lokasyon', metin(e.lokasyon, 'lokasyon yazılmamış')],
+      ['Giriş tarihi', tarih(e.girisTarihi, 'giriş tarihi yazılmamış') +
+        (kd != null ? GV.cell.sub(F.num(kd) + ' gün kıdem · ' + F.date(DB.today) + ' gününe göre') : '')],
+      ['İstihdam ilişkisi', dolu(e.calismaTipi)
+        ? sozluksuz(e.calismaTipi, 'DB.workTypes (' + (DB.workTypes || []).length + ' değer)') +
+          GV.cell.sub(GV.hr.disKaynak(e.kod)
+            ? 'GV.hr.disKaynak: DIŞ KAYNAK — proje maliyetinde personel değil dış kaynak kalemine yazılır'
+            : 'GV.hr.disKaynak: kadrolu istihdam')
+        : BOS + GV.cell.sub('istihdam ilişkisi yazılmamış')],
+      ['Uzmanlık', metin(e.uzmanlik, 'uzmanlık alanı yazılmamış (16 kayıttan 9\'unda dolu)')],
+      ['Yetkinlik', dizi(e.yetkinlik, 'yetkinlik kaydı yok')],
+      ['Teknoloji', dizi(e.teknoloji, 'teknoloji kaydı yok')],
+      ['İzin bakiyesi', e.izinBakiye != null
+        ? GV.cell.num(e.izinBakiye) + GV.cell.sub('gün · kayıtta yazılı bakiye')
+        : BOS + GV.cell.sub('bakiye alanı boş')],
+      ['Doluluk', e.doluluk != null
+        ? GV.cell.oran(e.doluluk, 90) +
+          GV.cell.sub('⚠️ bir SAYAÇ DEĞİL — kayıtta yazılı plandır (brief §22.14). ' +
+            'Zaman defterinden türetilmiş bir gerçekleşme oranı değildir; ' +
+            'kapasite karşılaştırması Zaman sekmesinde.')
+        : BOS + GV.cell.sub('doluluk planı yazılmamış')]
+    ];
+    return kart('i-user', 'Künye', sayacEtiketi(doluGenel + '/' + GENEL_ALAN.length, 'genel alan'),
+      GV.dl(satirlar, { skipEmpty:false }) +
+      '<p class="u-sm u-faint u-mt-4">Bu bloktaki alanların hiçbiri kapı arkasında değildir ' +
+      '(brief §20.1 · genel sınıf). Özlük ve ücret alanları ayrı bloklarda ve ayrı kapılardadır.</p>');
+  }
+
+  /* ---- 8.2 Özlük — `GV.hr.ozlukGorebilir` kapısı ------------------- */
+  function ozlukKarti(){
+    /* Değerler DOĞRUDAN kayıttan değil `GV.hr.ozluk(e, alan)`dan okunur:
+       kapı TEK YERDE kalsın (L-40) ve yetkisizde `••••••` dönsün. */
+    function oz(alan){ return GV.hr.ozluk(e, alan); }
+    /* Kayıtta kan grubu / acil kişi yerine "—" yazılı olabiliyor: bu bir
+       DEĞER değil, "bilgi verilmemiş" demektir; öyle söylenir. */
+    function ozMetin(alan, bosSebep){
+      var v = oz(alan);
+      if(v === MASK) return maskeli(v);
+      return dolu(v) ? esc(String(v)) : BOS + GV.cell.sub(esc(bosSebep));
+    }
+    var sert = oz('sertifika');
+    var satirlar = [
+      ['Doğum tarihi', (function(){
+        var v = oz('dogum');
+        return v === MASK ? maskeli(v) : tarih(v, 'doğum tarihi yazılmamış');
+      })()],
+      ['Kan grubu', ozMetin('kanGrubu', 'kan grubu bildirilmemiş')],
+      ['Acil durumda aranacak', ozMetin('acilKisi', 'acil durum kişisi yazılmamış')],
+      ['Telefon', ozMetin('tel', 'telefon yazılmamış')],
+      ['E-posta', ozMetin('eposta', 'e-posta yazılmamış')],
+      ['Eğitim', ozMetin('egitim', 'eğitim kaydı yok')],
+      ['Sertifika', sert === MASK ? maskeli(sert) : dizi(sert, 'sertifika kaydı yok')],
+      ['Sözleşme türü', ozMetin('sozlesme', 'sözleşme türü yazılmamış') +
+        GV.cell.sub('sözlüğü YOK (contractTypes) — değer kayıttan okunur')],
+      ['Mesai türü', ozMetin('calismaTuru', 'mesai türü yazılmamış') +
+        GV.cell.sub('sözlüğü YOK (calismaTuru) — değer kayıttan okunur')]
+    ];
+    var not = ozlukAcik
+      ? 'Kapı AÇIK — kaynak: ' + (kendisi ? 'kendi kaydınız (öz-erişim)' :
+          'personel veri kapsamınız "' + esc(ozlukKapsam) + '"') + '.'
+      : 'Kapı KAPALI. Alanlar boş değil, GÖRÜLEMİYOR — bu yüzden ' + MASK +
+        ' basıldı, boş bırakılmadı (UID-11). Personel veri kapsamınız "' +
+        esc(ozlukKapsam) + '" ve bu kayıt sizin değil.';
+    return kart('i-shield', 'Özlük ve sağlık',
+      ozlukAcik ? GV.badge('Kapı açık','is-ok') : GV.badge('Maskeli','is-neutral'),
+      GV.dl(satirlar, { skipEmpty:false }) +
+      '<p class="u-sm u-muted u-mt-4">' + not + ' Kapı yordamı <b>GV.hr.ozlukGorebilir(e)</b>; ' +
+      'değerler <b>GV.hr.ozluk(e, alan)</b> üzerinden okundu. ' +
+      'Bugünkü ölçüm: ' + tumu.length + ' personel kaydının <b>' + OZLUK_N +
+      '</b> tanesinde bu oturum özlüğü görebiliyor.</p>');
+  }
+
+  /* ---- 8.3 Ücret — `GV.hr.maasKapi` kapısı, XOR beyanı ------------- */
+  function ucretKarti(){
+    /* XOR SÖZLEŞMESİ (brief §22.8) — ÖLÇÜM defterin tamamı üzerindedir ve
+       tek bir kaydın ücretini açığa vurmaz, o yüzden kapıdan bağımsız
+       basılır: 16 personelin 15'i `maas`, 1'i `saatlikUcret` ekseninde;
+       ikisi birlikte dolu olan kayıt YOKTUR. */
+    var aylikN = tumu.filter(function(x){ return !(x.saatlikUcret > 0) && x.maas > 0; }).length;
+    var saatN  = tumu.filter(function(x){ return x.saatlikUcret > 0; }).length;
+    var ikiN   = tumu.filter(function(x){ return x.saatlikUcret > 0 && x.maas > 0; }).length;
+    var xor = '<p class="u-sm u-muted">XOR sözleşmesi (ölçüldü): ' + tumu.length +
+      ' kaydın <b>' + aylikN + '</b> tanesi aylık maaş, <b>' + saatN +
+      '</b> tanesi saatlik ücret ekseninde; ikisi birlikte dolu olan kayıt sayısı <b>' +
+      ikiN + '</b>. İki eksen aynı kayıtta asla birlikte dolmaz — ' +
+      '<b>GV.hr.icMaliyet</b> bu varsayımla çalışır.</p>';
+
+    if(!maasAcik){
+      /* Kapı kapalı: alan BASILMAZ ama boş da bırakılmaz — maskelenmiş
+         değer ve kapının SEBEBİ basılır (sebep ortak yordamdan gelir). */
+      var satirlarK = [
+        ['Aylık brüt maaş', maskeli(GV.hr.maas(e, 'maas'))],
+        ['Saatlik ücret', maskeli(GV.hr.maas(e, 'saatlikUcret'))],
+        ['Şirkete saatlik iç maliyet', maskeli(MASK) +
+          GV.cell.sub('GV.hr.icMaliyet çıktısı maaş türevidir ve formülü ham tutarı taşır — kapı arkasındadır')]
+      ];
+      return kart('i-wallet', 'Ücret ve iç maliyet', GV.badge('Maskeli','is-neutral'),
+        GV.dl(satirlarK, { skipEmpty:false }) +
+        '<p class="u-sm u-muted u-mt-4">' + esc(maasKapi.neden || 'Kapı kapalı.') +
+        ' Kapı kaynağı: <b>' + esc(maasKapi.kaynak || '—') + '</b>. ' +
+        'Değer <b>0 değil</b>, ' + MASK + ' — ücret var ve görülemiyor (UID-11).</p>' + xor +
+        '<p class="u-sm u-faint u-mt-4">Küme sorusu (<b>GV.hr.maasGorebilir()</b> argümansız): ' +
+        (kumeAcik ? 'AÇIK' : 'KAPALI') + '. Bugünkü ölçüm: ' + tumu.length +
+        ' kaydın <b>' + MAAS_N + '</b> tanesinde bu oturum ücreti görebiliyor.</p>');
+    }
+
+    var maas = GV.hr.maas(e, 'maas');
+    var saat = GV.hr.maas(e, 'saatlikUcret');
+    var eksen = (e.saatlikUcret > 0) ? 'saatlik' : 'aylık';
+    var im = GV.hr.icMaliyet(e.kod);      /* tarih verilmez → BUGÜNKÜ oran */
+
+    var satirlar = [
+      ['Ücret ekseni', sozluksuz(eksen === 'saatlik' ? 'Saatlik ücret' : 'Aylık brüt maaş',
+        'eksen kayıttan türetildi: saatlikUcret > 0 → saatlik, aksi hâlde aylık')],
+      ['Aylık brüt maaş', eksen === 'aylik'
+        ? GV.cell.mny(maas)
+        : (maas > 0 ? GV.cell.mny(maas) : BOS +
+            GV.cell.sub('kayıt saatlik eksende · aylık maaş yazılmaz (XOR)'))],
+      ['Saatlik ücret', saat > 0
+        ? GV.cell.mny(saat) + GV.cell.sub('sözleşmeli saat ücreti · iç maliyet ile aynı şey değildir')
+        : BOS + GV.cell.sub('kayıt aylık maaş ekseninde · saatlik ücret alanı hiç yazılmamış')]
+    ];
+
+    /* İÇ MALİYET — `guvenilir` bayrağı ve `formul` BASILIR (brief §22.14).
+       Tek bir "iç maliyet: X ₺/saat" satırı basıp güvenilirliği yutmak
+       yasaktır. */
+    if(im){
+      satirlar.push(['Şirkete saatlik iç maliyet',
+        GV.cell.mny(im.saat) + GV.cell.sub('kaynak: ' + esc(im.kaynak) +
+          ' · güvenilir: ' + (im.guvenilir === false ? 'HAYIR' : 'evet') +
+          (im.donem ? ' · dönem: ' + esc(im.donem) : '') +
+          ' · yordama TARİH VERİLMEDİ, yani bu BUGÜNKÜ orandır (' +
+          esc(F.date(DB.today)) + '); geçmiş bir tarihin oranı bu defterden ' +
+          'türetilemez çünkü maaş geçmişi yok')]);
+      satirlar.push(['Formül', '<span class="u-sm">' + esc(im.formul) + '</span>' +
+        GV.cell.sub('GV.hr.icMaliyet · şirket katsayısı ' +
+          esc(String((DB.company || {}).isverenMaliyetKatsayisi)) + ' ve aylık ' +
+          esc(String((DB.company || {}).aylikCalismaSaati)) +
+          ' saat DB.company kaydından okundu; ekran ikinci bir maliyet formülü kurmaz')]);
+    } else {
+      satirlar.push(['Şirkete saatlik iç maliyet', BOS +
+        GV.cell.sub('GV.hr.icMaliyet null döndü — iki ücret ekseninin ikisi de boş, ' +
+                    'maliyet UYDURULMAZ (0 basılmaz)')]);
+    }
+
+    /* MAAŞ GEÇMİŞİ TABLOSU BASILMAZ (brief §22.14 · §22.4 · V2-44 eki). */
+    var gozlem = (DB.salaryHistory || []).filter(function(h){ return h.personel === e.kod; });
+    var toplamGozlem = (DB.salaryHistory || []).length;
+    var bugunN = (DB.salaryHistory || []).filter(function(h){ return h.baslangic === DB.today; }).length;
+    var bitisN = (DB.salaryHistory || []).filter(function(h){ return h.bitis; }).length;
+    var gecmisNot = '<p class="u-sm u-muted u-mt-4">Maaş defterinde bu kişi için <b>' +
+      gozlem.length + ' gözlem kaydı</b> var' +
+      (gozlem.length ? ' (' + esc(F.date(gozlem[0].baslangic)) + ', kaynak: ' +
+        esc(gozlem[0].kaynak || '—') + ')' : '') +
+      '; geçmiş dönem kaydı yok, o yüzden bir değişim çizelgesi türetilemiyor. ' +
+      'Ölçüldü: <code>DB.salaryHistory</code> ' + toplamGozlem + ' kaydın <b>' + bugunN +
+      '</b> tanesinde <code>baslangic = DB.today</code> ve <b>' + bitisN +
+      '</b> tanesinde <code>bitis</code> dolu. Defterde tek bir AN vardır, bir zaman ' +
+      'serisi yoktur — bu yüzden <b>maaş geçmişi tablosu basılmaz</b>. ' +
+      'Ekran bu deftere satır da YAZMAZ (brief §22.17.11).</p>';
+
+    return kart('i-wallet', 'Ücret ve iç maliyet',
+      GV.badge('Kapı açık','is-ok') + ' <span class="u-faint u-xs">' +
+      esc(maasKapi.kaynak === 'ozErisim' ? 'öz-erişim' : 'permMatrix.maas') + '</span>',
+      GV.dl(satirlar, { skipEmpty:false }) + xor + gecmisNot +
+      '<p class="u-sm u-faint u-mt-4">Küme sorusu (<b>GV.hr.maasGorebilir()</b> argümansız): ' +
+      (kumeAcik ? 'AÇIK' : 'KAPALI') + ' — kendi kaydını görmek başkalarının toplamını açmaz ' +
+      '(brief §22.1). Bugünkü ölçüm: ' + tumu.length + ' kaydın <b>' + MAAS_N +
+      '</b> tanesinde bu oturum ücreti görebiliyor.</p>');
+  }
+
+  /* ---- 8.4 Durum — rozet uydurulmaz ------------------------------- */
+  function durumKarti(){
+    var d = GV.hr.durum(e);
+    var bilgi = GV.flow.durumBilgi('employee', e.kod) || {};
+    var adm   = GV.flow.adimlar('employee', e.kod) || [];
+    var satirlar = [
+      ['Durum', GV.badge(d) +
+        GV.cell.sub('DB.employeeStatuses (' + (DB.employeeStatuses || []).length +
+                    ' değer) · rozet tonu ui.js sözlüğünden gelir; bu durumun tonu "' +
+                    esc(GV.tone ? GV.tone(d) : '?') + '". Ekran ton UYDURMAZ — ' +
+                    'nötr basan bir durumu renklendirmeye çalışmak, sözlükte olmayanı ' +
+                    'varmış gibi göstermek olurdu.')],
+      ['İstihdam ilişkisi', GV.hr.istihdamda(e)
+        ? GV.badge('Bordroda','is-ok') + GV.cell.sub('GV.hr.istihdamda')
+        : GV.badge('Bordroda değil','is-neutral') + GV.cell.sub('GV.hr.istihdamda')],
+      ['Yeni iş atanabilir mi', GV.hr.atanabilir(e)
+        ? GV.badge('Atanabilir','is-ok') + GV.cell.sub('GV.hr.atanabilir — yalnız "Aktif"')
+        : GV.badge('Atanamaz','is-warn') + GV.cell.sub('GV.hr.atanabilir — bu durumda iş verilmez')],
+      ['Son durak mı', bilgi.terminal
+        ? GV.badge('Terminal','is-neutral') + GV.cell.sub('bu durumdan çıkış yok')
+        : '<span class="u-sm">Hayır</span>' +
+          GV.cell.sub(adm.length + ' yapılabilir geçiş · GV.flow.durumBilgi')],
+      ['Geçiş yetkisi', (bilgi.yetki || []).length
+        ? '<span class="u-sm">' + esc((bilgi.yetki || []).join(' · ')) + '</span>' +
+          GV.cell.sub('DB.transitions.employee · yedi geçişte de aynı küme')
+        : BOS]
+    ];
+    if(e.cikisTarihi || e.cikisNedenKodu){
+      satirlar.push(['Çıkış kaydı', tarih(e.cikisTarihi, 'çıkış tarihi yazılmamış') +
+        GV.cell.sub(e.cikisNedenKodu
+          ? 'neden kodu: ' + esc(nedenAd(e.cikisNedenKodu)) + ' (' + esc(e.cikisNedenKodu) + ')'
+          : 'çıkış neden kodu yazılmamış')]);
+    }
+    return kart('i-flag', 'Durum ve yaşam döngüsü',
+      '<a class="btn btn-line btn-xs" href="#yasamdongusu" data-git="yasamdongusu">Sekmeye git</a>',
+      GV.dl(satirlar, { skipEmpty:false }) +
+      '<p class="u-sm u-faint u-mt-4">Durum bu ekranda <b>yazılmaz</b>: geçişlerin tek kapısı ' +
+      '<b>GV.flow.gec(\'employee\', …)</b> ve düğmeler Yaşam döngüsü sekmesinde ' +
+      '<b>GV.flow.adimlar</b> ne veriyorsa odur.</p>');
+  }
+
+  /* ---- 8.5 Kişisel veri kapısı — İKİ YÖNLÜ ölçüm ------------------ */
+  function kapiKarti(){
+    var satirlar = [
+      ['Özlük kapısı', (ozlukAcik ? GV.badge('Açık','is-ok') : GV.badge('Kapalı','is-neutral')) +
+        GV.cell.sub('GV.hr.ozlukGorebilir(e) · bu karar: ' +
+          (kendisi ? 'kendi kaydı' : 'personel kapsamı "' + esc(ozlukKapsam) + '"'))],
+      ['Maaş kapısı (bu kayıt)', (maasAcik ? GV.badge('Açık','is-ok') : GV.badge('Kapalı','is-neutral')) +
+        GV.cell.sub('GV.hr.maasKapi(e) · kaynak ' + esc(maasKapi.kaynak || '—'))],
+      ['Maaş kapısı (küme)', (kumeAcik ? GV.badge('Açık','is-ok') : GV.badge('Kapalı','is-neutral')) +
+        GV.cell.sub('GV.hr.maasGorebilir() argümansız — "başkalarının ücreti". ' +
+                    'Öz-erişimden ETKİLENMEZ')],
+      ['Kapsam ölçümü', '<span class="u-sm">Özlük: ' + OZLUK_N + '/' + tumu.length +
+        ' · Ücret: ' + MAAS_N + '/' + tumu.length + '</span>' +
+        GV.cell.sub('bu oturumun bugünkü kapsamı — kapının İKİNCİ YÖNÜ')],
+      ['Düzenleme yetkisi', (canDuzen ? GV.badge('Var','is-ok') : GV.badge('Yok','is-neutral')) +
+        GV.cell.sub('GV.perm.can(\'duzenle\') · kapsam "' + esc(GV.perm.scope('duzenle')) + '"')]
+    ];
+    return kart('i-key', 'Kişisel veri kapısı', null,
+      GV.dl(satirlar, { skipEmpty:false }) +
+      '<p class="u-sm u-muted u-mt-4">Kapılar ALANDAN ÖNCE kurulur (brief §20.1) ve ' +
+      'yetkisizde <b>' + MASK + '</b> basılır — <b>0</b> ya da boş değil. ' +
+      'Maskelenen hücre çıktıya da girmez.</p>' +
+      '<p class="u-sm u-faint u-mt-4">⚠️ Ortak katman borcu <b>V2-85</b>: ' +
+      '"bu kullanıcı BU kaydı düzenleyebilir mi" sorusunu bir KAYIT üstünde ölçen yordam ' +
+      'yazılmamış (<code>permMatrix.duzenle</code> kapsam taşıyor, karşılığı yok). ' +
+      'Ekran kendi kuralını uydurmaz, <code>GV.perm.can(\'duzenle\')</code> ile yetinir ve ' +
+      'eksiği burada beyan eder.</p>');
+  }
+
+  /* ---- 8.6 Ekip bağı ---------------------------------------------- */
+  function ekipKarti(){
+    var govde;
+    if(astlar.length){
+      govde = '<ul class="gv-checklist">' + astlar.map(function(a){
+        return '<li><span>' + GV.user(a.kod, { sm:true }) + '</span>' +
+          '<span class="cell-sub">' + esc(a.pozisyon || '') + '</span></li>';
+      }).join('') + '</ul>' +
+      '<p class="u-sm u-faint u-mt-4">Kaynak: <code>DB.employees</code> · ' +
+      '<code>yonetici === ' + esc(e.kod) + '</code> süzgeci.</p>';
+    } else {
+      govde = GV.empty({ icon:'i-users', title:'Bu kişiye bağlı ast kaydı yok',
+        desc:'DB.employees içinde `yonetici` alanı bu kodu gösteren kayıt bulunamadı — ' +
+             'ekip lideri değil demektir, eksik veri değil.' });
+    }
+    var ust = e.yonetici
+      ? '<p class="u-sm u-muted">Yönetici: ' + GV.user(e.yonetici, { sm:true }) +
+        ' <a class="cell-code" href="app-personel-detay.html?id=' + esc(e.yonetici) + '">' +
+        esc(e.yonetici) + '</a></p>'
+      : '<p class="u-sm u-muted">Bu kaydın yöneticisi tanımlı değil.</p>';
+    return kart('i-users', 'Ekip bağı', sayacEtiketi(astlar.length, 'ast'), ust + govde);
+  }
+
+  function nedenAd(k){
+    var r = (DB.reasonCodes || []).filter(function(x){ return x.kod === k; })[0];
+    return r ? r.ad : (k || '');
+  }
+
+  /* ===================================================================
+     9. SEKME 2 — PERFORMANS
+
+     Ölçüldü: 5 kayıt, 16 personel → çoğu kişide kayıt YOK. O zaman `0`
+     yazılmaz, "defterde kayıt yok" yazılır (§10.1 · L-13). `Açık` durumdaki
+     kayıtta 12 ölçüt alanı `null` → her biri "ölçülemedi"dir, `0` değil.
+
+     Bu sekme `GV.list` KURMAZ: 12 ölçüt alanı satır değil BLOKtur, bir
+     tabloya 12 kolon açmak kaydın kendisini okunmaz yapardı. Blok deseni
+     `GV.dl` + kart (brief §22.11 deseni).
+     =================================================================== */
+  var OLCUT = [
+    ['ozDegerlendirme','Öz değerlendirme','puan'],
+    ['yoneticiDegerlendirme','Yönetici değerlendirmesi','puan'],
+    ['pmDegerlendirme','PM değerlendirmesi','puan'],
+    ['kaliteSonucu','Kalite sonucu','puan'],
+    ['problemCozme','Problem çözme','puan'],
+    ['teknikGelisim','Teknik gelişim','puan'],
+    ['ekipCalismasi','Ekip çalışması','puan'],
+    ['iletisim','İletişim','puan'],
+    ['musteriGeriBildirim','Müşteri geri bildirimi','puan'],
+    ['zamanindaTeslim','Zamanında teslim','yuzde'],
+    ['revizyonOrani','Revizyon oranı','yuzde'],
+    ['gorevSayisi','Görev sayısı','adet']
+  ];
+
+  function cizPerformans(el){
+    if(!perfDefteri){
+      el.innerHTML = '<div class="gv-card"><div class="gc-body">' + GV.notice({
+        tone:'warn', icon:'i-alert', title:'Performans defteri bu ekranda yüklü değil',
+        text:'DB.performance koleksiyonu bulunamadı; performans ÖLÇÜLEMEDİ — sıfır yazılmadı.'
+      }) + '</div></div>';
+      return;
+    }
+    if(!perfKayit.length){
+      el.innerHTML = bosKart('i-star', 'Performans değerlendirmesi',
+        'Bu kişi için performans defterinde kayıt yok',
+        'Ölçüldü: DB.performance ' + (DB.performance || []).length + ' kayıt taşıyor ve ' +
+        perfKisi + ' personeli kapsıyor (' + tumu.length + ' kayıttan). Bu bir eksiklik ' +
+        'değil ÖLÇÜMDÜR: defter bu kişi için hiç açılmamış. "0 puan" yazmak, ' +
+        'ölçülmemişi ölçülmüş göstermek olurdu.') + perfSozlukNotu();
+      return;
+    }
+
+    /* Kod biçimi dönem taşır: `PRF-2026-Q2-005` (⚠️ PREFIX-YIL-NNN DEĞİL). */
+    var siralı = perfKayit.slice().sort(function(a, b){
+      return String(b.donem || '').localeCompare(String(a.donem || ''));
+    });
+
+    el.innerHTML = siralı.map(function(p){
+      var olculen = OLCUT.filter(function(o){ return p[o[0]] != null; }).length;
+      var satirlar = OLCUT.map(function(o){
+        var v = p[o[0]];
+        if(v == null){
+          return [o[1], BOS + GV.cell.sub('ölçülemedi — kayıtta alan `null`, sıfır DEĞİL')];
+        }
+        if(o[2] === 'yuzde') return [o[1], GV.cell.oran(v, 80)];
+        if(o[2] === 'adet')  return [o[1], GV.cell.num(v)];
+        return [o[1], GV.cell.num(v, { basamak:1 }) + GV.cell.sub('5 üzerinden')];
+      });
+      satirlar.unshift(['Dönem', sozluksuz(p.donem, 'kod ve dönem kayıttan okundu')]);
+      satirlar.unshift(['Kayıt', kodEt(p.kod)]);
+      satirlar.push(['Eğitim ihtiyacı', dizi(p.egitimIhtiyaci, 'eğitim ihtiyacı yazılmamış')]);
+      satirlar.push(['Gelişim planı', metin(p.gelisimPlani, 'gelişim planı yazılmamış')]);
+
+      return kart('i-star', 'Değerlendirme · ' + (p.donem || p.kod),
+        sozluksuz(p.durum, 'performanceStatuses sözlüğü YOK') + ' ' +
+        sayacEtiketi(olculen + '/' + OLCUT.length, 'ölçüt ölçüldü'),
+        GV.dl(satirlar, { skipEmpty:false }) +
+        (olculen < OLCUT.length
+          ? '<p class="u-sm u-muted u-mt-4">' + (OLCUT.length - olculen) +
+            ' ölçüt alanı <code>null</code>. Bu kayıt "' + esc(p.durum) +
+            '" durumunda ve alanlar henüz doldurulmamış — her biri ' +
+            '<b>ölçülemedi</b>dir, <b>0 değil</b>.</p>'
+          : ''), 'u-mt-4');
+    }).join('') + perfSozlukNotu();
+  }
+
+  function perfSozlukNotu(){
+    var durumlar = [];
+    (DB.performance || []).forEach(function(p){
+      if(p.durum && durumlar.indexOf(p.durum) === -1) durumlar.push(p.durum);
+    });
+    return '<div class="gv-card u-mt-4"><div class="gc-body">' + GV.notice({
+      tone:'neutral', icon:'i-info',
+      title:'`performanceStatuses` sözlüğü YOKTUR — değerler defterden türetildi',
+      text:'Ekranda görülen durum değerleri (' + durumlar.join(' · ') + ') ' +
+           (DB.performance || []).length + ' performans kaydından türetildi, bir sözlükten ' +
+           'gelmiyor. Bu yüzden rozet UYDURULMAZ, düz metin basılır (brief §22.17.12). ' +
+           'Kod biçimi dönem taşır: PRF-YYYY-QN-NNN.'
+    }) + '</div></div>';
+  }
+
+  /* ===================================================================
+     10. SEKME 3 — EĞİTİM
+
+     `katilimci` DİZİDİR ve `indexOf(e.kod)` ile süzülür. Liste `GV.list`tir
+     ve `urlSync:false` bildirir (brief §18.9 · iki yönlü bayrak).
+     =================================================================== */
+  function cizEgitim(el){
+    if(!egtDefteri){
+      el.innerHTML = '<div class="gv-card"><div class="gc-body">' + GV.notice({
+        tone:'warn', icon:'i-alert', title:'Eğitim defteri bu ekranda yüklü değil',
+        text:'DB.trainings koleksiyonu bulunamadı; eğitim kaydı ÖLÇÜLEMEDİ.' }) +
+        '</div></div>';
+      return;
+    }
+    var sertVar = (DB.trainings || []).filter(function(t){ return t.sertifika === true; }).length;
+    var aciklama =
+      '<section class="gv-card">' +
+        kartBasi('i-graduation', 'Eğitim ve gelişim',
+          '<span class="gc-meta" id="pdSay-egitim">' + egitimler.length + ' kayıt</span>') +
+        '<div class="gc-body u-sm u-muted">' +
+          'Kaynak: <code>DB.trainings</code> · <code>katilimci</code> <b>DİZİ</b> alanıdır ve ' +
+          '<code>indexOf(' + esc(e.kod) + ')</code> ile süzüldü. Defterde ' +
+          (DB.trainings || []).length + ' eğitim var ve ' + egtKisi + ' personeli kapsıyor. ' +
+          'Sertifika alanı bir <b>boolean</b>dır ve defterin ' + sertVar + '/' +
+          (DB.trainings || []).length + ' kaydında <code>true</code> — ' +
+          (sertVar ? 'sertifika verilen eğitimler var.' : 'yani bugün hiçbir eğitim sertifika vermiyor.') +
+          ' <code>trainingStatuses</code> sözlüğü <b>YOKTUR</b>; durum ve tür değerleri ' +
+          'kayıtlardan türetildi, bu yüzden rozet uydurulmadı.' +
+        '</div>' +
+      '</section>' +
+      '<div class="u-mt-4" id="pdEgitimListe"></div>';
+    el.innerHTML = aciklama;
+
+    var turler = benzersiz(DB.trainings, 'tur');
+    var durumlar = benzersiz(DB.trainings, 'durum');
+
+    liste({
+      mount:'#pdEgitimListe', id:'pdEgitim', key:'kod',
+      source:function(){
+        return (DB.trainings || []).filter(function(t){
+          return (t.katilimci || []).indexOf(e.kod) !== -1; });
+      },
+      exportName:'egitim-' + e.kod, exportTitle:'Eğitim kayıtları — ' + e.ad,
+      countTarget:'#pdSay-egitim',
+      defaultSort:'baslangic', defaultDir:'desc',
+      views:['table','card'],
+      search:{ placeholder:'Eğitim adı, sağlayıcı ya da kod ara',
+               fields:['kod','ad','saglayici','tur'] },
+      columns:[
+        GV.cols.kod('kod','Kayıt', { sub:function(t){ return t.donem || t.tur || ''; } }),
+        { key:'ad', label:'Eğitim', width:'26%', cellClass:'cell-wrap',
+          render:function(t){
+            return '<span class="cell-main">' + esc(t.ad) + '</span>' +
+              GV.cell.sub(esc(t.saglayici || 'sağlayıcı yazılmamış')); } },
+        { key:'tur', label:'Tür', sortable:true,
+          render:function(t){ return sozluksuz(t.tur, 'sözlüğü yok — defterden türetildi'); } },
+        GV.cols.date('baslangic','Başlangıç', { plain:true, bosMetin:'planlanmadı' }),
+        GV.cols.date('bitis','Bitiş', { plain:true, bosMetin:'planlanmadı' }),
+        GV.cols.num('sure','Süre (saat)', { basamak:0 }),
+        GV.cols.money('maliyet','Maliyet', { perm:'finans', cur:'₺',
+          sub:function(){ return 'eğitim bütçesi · perm:finans kapısı'; } }),
+        { key:'durum', label:'Durum',
+          render:function(t){ return sozluksuz(t.durum, 'trainingStatuses sözlüğü YOK'); } },
+        { key:'sertifika', label:'Sertifika', visible:false,
+          exportValue:function(t){ return t.sertifika ? 'Veriliyor' : 'Verilmiyor'; },
+          render:function(t){
+            return t.sertifika
+              ? '<span class="u-ok u-sm">Veriliyor</span>'
+              : '<span class="u-sm">Verilmiyor</span>' +
+                GV.cell.sub('boolean alan · kayıtta false'); } },
+        { key:'kazanim', label:'Kazanım', visible:false, cellClass:'cell-wrap',
+          exportValue:function(t){ return (t.kazanim || []).join(' · '); },
+          render:function(t){ return dizi(t.kazanim, 'kazanım yazılmamış'); } },
+        { key:'katilimci', label:'Katılımcılar', visible:false, cellClass:'cell-wrap',
+          exportValue:function(t){ return (t.katilimci || []).join(' · '); },
+          render:function(t){
+            return '<span class="u-sm">' +
+              esc((t.katilimci || []).map(empAd).join(' · ')) + '</span>' +
+              GV.cell.sub((t.katilimci || []).length + ' katılımcı · dizi alanı'); } }
+      ],
+      filters:[
+        { key:'tur', label:'Tür', type:'multi', options:turler },
+        { key:'durum', label:'Durum', type:'multi', options:durumlar }
+      ],
+      mobile:function(t){
+        return GV.cell.mrow('<span class="cell-main">' + esc(t.ad) + '</span>', t.kod,
+          [esc(t.tur || ''), esc(t.saglayici || ''), F.date(t.baslangic)],
+          '<span class="u-sm">' + esc(t.durum || '') + '</span>');
+      },
+      emptyState:{ icon:'i-graduation', title:'Bu kişi için eğitim defterinde kayıt yok',
+        desc:'DB.trainings ' + (DB.trainings || []).length + ' eğitim taşıyor ve ' +
+             egtKisi + ' personeli kapsıyor; `katilimci` dizisi bu kodu içeren kayıt ' +
+             'bulunamadı. Eğitim almamış demektir, veri eksik demek değil.' }
+    });
+  }
+
+  /* ===================================================================
+     11. SEKME 4 — YAŞAM DÖNGÜSÜ
+
+     Bu sekmenin işi `GV.flow`dur. Ekran KENDİ DURUM LİSTESİNİ YAZMAZ;
+     `GV.flow.adimlar('employee', kod)` ne veriyorsa onu basar. `eksik`
+     listesi HEDEF BAŞINA okunur — tek liste bütün hedeflere basılmaz (K-31).
+     =================================================================== */
+  function cizYasam(el){
+    var adm = GV.flow.adimlar('employee', e.kod) || [];
+    var kilit = GV.flow.kilit ? GV.flow.kilit('employee', e.kod) : null;
+
+    el.innerHTML =
+      (kilit ? '<div class="u-mb-4">' + GV.notice({ tone:'warn', icon:'i-lock',
+        title:'Bu kayıt kilitli', text:kilit.why }) + '</div>' : '') +
+      gecisKarti(adm) +
+      kapiKartiYasam() +
+      surecKarti() +
+      nedenKoduKarti();
+  }
+
+  /* ---- 11.1 Yapılabilir geçişler ---------------------------------- */
+  function gecisKarti(adm){
+    if(!adm.length){
+      return kart('i-flag', 'Yapılabilir geçiş', sayacEtiketi(0, 'geçiş'),
+        GV.empty({ icon:'i-flag', title:'Bu durumdan çıkış yok',
+          desc:'"' + GV.hr.durum(e) + '" durumu DB.transitions.employee tablosunda ' +
+               'terminal (son durak) ya da hedefi olmayan bir durumdur. Ekran kendi ' +
+               'durum listesini yazmaz — GV.flow.adimlar boş döndü.' }));
+    }
+    var govde = '<div class="lh-acts">' + adm.map(function(a){
+      var engel = (!a.izin ? 'Bu geçiş için yetkiniz yok — gereken: ' + (a.yetki || []).join(', ') : '') ||
+                  (a.eksik && a.eksik.length && !ayrilisFormuMu(a)
+                    ? 'Eksik alan: ' + a.eksik.join(', ') : '');
+      return '<button type="button" class="btn ' + (a.birincil ? 'btn-acc' : (a.tone || 'btn-line')) +
+        ' btn-sm" data-hedef="' + esc(a.hedef) + '"' +
+        (engel ? ' disabled title="' + esc(engel) + '"' : '') + '>' + esc(a.etiket) + '</button>';
+    }).join('') + '</div>';
+
+    /* Her hedefin KENDİ koşulu ayrı yazılır — tek liste bütün hedeflere
+       basılmaz (brief §22.14 · K-31). */
+    var satirlar = adm.map(function(a){
+      var parcalar = [];
+      if(a.eksik && a.eksik.length) parcalar.push('zorunlu alan: ' + a.eksik.join(' · '));
+      if(a.gerekce) parcalar.push('neden kodu + açıklama zorunlu');
+      if(a.kapi){
+        var g = GV.gates && GV.gates[a.kapi] ? GV.gates[a.kapi](e) : null;
+        parcalar.push('kapı <b>' + esc(a.kapi) + '</b>: ' + (
+          !g ? 'yordamı yok — <b>ölçülemedi</b> (geçer DEMEZ)'
+             : g.olculemedi ? 'ÖLÇÜLEMEDİ — ' + esc(g.why)
+             : g.ok ? 'bugün geçiyor' : 'REDDEDİYOR — ' + esc(g.why)));
+        if((a.istisnaRol || []).length)
+          parcalar.push('istisna rolleri: ' + a.istisnaRol.join(' · '));
+      }
+      if(!parcalar.length) parcalar.push('ek koşul yok');
+      return ['→ ' + a.hedef,
+        '<span class="u-sm">' + (a.izin ? 'yetki VAR' : 'yetki YOK') + '</span>' +
+        GV.cell.sub(parcalar.join(' · '))];
+    });
+
+    var geriDonus = adm.filter(function(a){ return a.hedef === 'Aktif'; })[0];
+    var ayrildi   = adm.filter(function(a){ return a.hedef === 'Ayrıldı'; })[0];
+    var asimetri = (geriDonus && ayrildi)
+      ? '<p class="u-sm u-muted u-mt-4"><b>Geri dönüş kenarı VARDIR (K-31).</b> ' +
+        'Yanlışlıkla çıkış sürecine alınan personel <b>gerekçe ile</b> geri döndürülür ve ' +
+        'düğmesi yukarıda basılı. İki yönün koşulu FARKLIDIR ve fark <b>hedefte</b> durur: ' +
+        '"Ayrıldı" hedefi çıkış tarihi + neden kodu + zimmet kapısı ister; "Aktif" hedefi ' +
+        'yalnız gerekçe ister. <b>Geri almak, ileri gitmekten ağır değildir.</b></p>'
+      : '';
+
+    return kart('i-flag', 'Yapılabilir geçişler', sayacEtiketi(adm.length, 'hedef'),
+      '<p class="u-sm u-muted">Durum: ' + GV.badge(GV.hr.durum(e)) + ' · düğmeler ' +
+      '<b>GV.flow.adimlar(\'employee\', ' + esc(e.kod) + ')</b> ne veriyorsa odur; ' +
+      'ekran kendi durum listesini yazmaz. Mutasyonun tek kapısı ' +
+      '<b>GV.flow.gec</b>, hata metni <b>GV.flowHata</b>.</p>' +
+      govde + '<div class="u-mt-4">' + GV.dl(satirlar, { skipEmpty:false }) + '</div>' + asimetri);
+  }
+
+  /* `Ayrıldı` hedefinin eksikleri BU SEKMENİN işidir (brief §22.8):
+     `cikisTarihi` ve `cikisNedenKodu` formun alanları değildir. Eksik varsa
+     düğme devre dışı bırakılmaz, çekmecede toplanır. */
+  function ayrilisFormuMu(a){
+    if(a.hedef !== 'Ayrıldı') return false;
+    var izinli = ['cikisTarihi','cikisNedenKodu'];
+    return (a.eksik || []).every(function(k){ return izinli.indexOf(k) !== -1; });
+  }
+
+  /* ---- 11.2 Kapılar — İKİSİ AYRI ŞEY ----------------------------- */
+  function kapiKartiYasam(){
+    var evrak  = GV.gates.personelEvrak(e);
+    var zimmet = GV.gates.personelZimmet(e);
+
+    /* `Onboarding` durumunda kimse yok → kapının çalıştığı kenar bugün
+       ULAŞILAMAZ. Bu, kapının UYGULANMAMASINDAN (V2-47) AYRI bir şeydir ve
+       ikisi ayrı ayrı beyan edilir (brief §22.1e.3). */
+    var onbN = tumu.filter(function(x){ return GV.hr.durum(x) === 'Onboarding'; }).length;
+    var durumDagilim = (DB.employeeStatuses || []).map(function(d){
+      return d + ' ' + tumu.filter(function(x){ return GV.hr.durum(x) === d; }).length;
+    }).filter(function(s){ return !/ 0$/.test(s); }).join(' · ');
+
+    var girisSurec = surecler.filter(function(o){ return o.tur === 'Giriş'; })[0] || null;
+    var zorunluTasiyan = girisSurec
+      ? (girisSurec.adimlar || []).filter(function(a){ return a.zorunlu != null; }).length : 0;
+
+    var satirlar = [
+      ['personelEvrak — bugünkü kararı', (evrak.ok ? GV.badge('Geçiyor','is-ok')
+        : GV.badge('Reddediyor','is-warn')) + GV.cell.sub(esc(evrak.why || 'ek koşul yok'))],
+      ['personelZimmet — bugünkü kararı', (zimmet.ok ? GV.badge('Geçiyor','is-ok')
+        : GV.badge('Reddediyor','is-warn')) + GV.cell.sub(esc(zimmet.why || 'açık zimmet yok'))],
+      ['Açık zimmet', acikZimmet.length
+        ? '<span class="u-sm">' + esc(acikZimmet.map(function(z){ return z.kod; }).join(' · ')) +
+          '</span>' + GV.cell.sub('GV.varlik.zimmetliler(' + esc(e.kod) + ') · ' +
+            'Ayrıldı hedefinin girisKapi koşulu')
+        : '<span class="u-sm">Yok</span>' + GV.cell.sub('GV.varlik.zimmetliler boş döndü')]
+    ];
+
+    return kart('i-shield-check', 'Kapılar', null,
+      '<p class="u-sm u-muted">Kapıların bugünkü hâli ekranda GÖSTERİLİYOR, o yüzden ' +
+      'koşulları yeniden okunmadı: karar <b>GV.gates[ad](kayit)</b> yordamından alındı ' +
+      '(brief §22.1b.1). Bir ayna yazmak, aynı kuralın ikinci okuyucusunu doğururdu.</p>' +
+      GV.dl(satirlar, { skipEmpty:false }) +
+      '<div class="u-mt-4">' + GV.notice({ tone:'warn', icon:'i-alert',
+        title:'personelEvrak kapısı — İKİ AYRI ölçüm, ikisi de beyan edilir',
+        text:'(1) ULAŞILAMAZ: kapının çalıştığı kenar `Onboarding → Aktif`, ama bugün ' +
+             onbN + ' kayıt Onboarding durumunda (dağılım: ' + durumDagilim + '). ' +
+             'Yani kenar bugünkü veride hiçbir kayıtta görünmüyor. ' +
+             '(2) UYGULANMIYOR (V2-47): yordam `adim.zorunlu && adim.durum !== "Tamamlandı"` ' +
+             'okuyor, oysa ÖRNEK adımları bu iki alanı taşımıyor — yalnız ŞABLON adımları ' +
+             '(DB.onboardingTemplates) `zorunlu` taşır. Bu kaydın giriş sürecinde ' +
+             '`zorunlu` alanı taşıyan adım sayısı: ' + zorunluTasiyan + '. Sonuç: süreç kaydı ' +
+             'olan her personelde kapı her zaman geçiyor. Bu ikisi AYRI şeydir; ' +
+             'karıştırmak "kapı çalışıyor" izlenimi verirdi. Kapsam dondurulmuş, ekran ' +
+             'düzeltmeye çalışmaz.' }) + '</div>', 'u-mt-4');
+  }
+
+  /* ---- 11.3 Süreç defteri — GİRİŞ VE ÇIKIŞ AYNI DEFTERDE --------- */
+  function surecKarti(){
+    if(!surecDefteri){
+      return '<div class="gv-card u-mt-4"><div class="gc-body">' + GV.notice({
+        tone:'warn', icon:'i-alert', title:'İşe giriş/çıkış defteri yüklü değil',
+        text:'DB.onboarding koleksiyonu bulunamadı; süreç ÖLÇÜLEMEDİ.' }) + '</div></div>';
+    }
+    if(!surecler.length){
+      return '<div class="u-mt-4">' + bosKart('i-clipboard-check', 'İşe giriş / çıkış süreci',
+        'Bu kişi için süreç defterinde kayıt yok',
+        'Ölçüldü: DB.onboarding ' + (DB.onboarding || []).length + ' kayıt taşıyor ve ' +
+        'giriş ile çıkış AYNI DEFTERDEDİR (`tur` alanı: Giriş / Çıkış). Bu kişi için ' +
+        'ne giriş ne çıkış süreci açılmış — kayıt eksik değil, süreç hiç başlatılmamış.') + '</div>';
+    }
+
+    return surecler.map(function(o){
+      var ad = o.adimlar || [];
+      var tamam = ad.filter(function(a){ return a.tamam === true; }).length;
+      var oran = ad.length ? Math.round(tamam / ad.length * 100) : null;
+      var liste = '<ul class="gv-checklist">' + ad.map(function(a){
+        return '<li><span>' + (a.tamam === true
+            ? '<span class="u-ok">' + ico('i-check-circle','ic-sm') + '</span> '
+            : '<span class="u-faint">' + ico('i-dot','ic-sm') + '</span> ') +
+          esc(a.ad) + '</span><span class="cell-sub">' +
+          (a.sorumlu ? esc(empAd(a.sorumlu)) : 'sorumlu yazılmamış') + '</span></li>';
+      }).join('') + '</ul>';
+      var satirlar = [
+        ['Kayıt', kodEt(o.kod)],
+        ['Tür', sozluksuz(o.tur, 'giriş ve çıkış aynı defterde · `tur` alanı')],
+        ['Tarih', tarih(o.tarih, 'tarih yazılmamış')],
+        ['Durum', sozluksuz(o.durum, 'sözlüğü yok — defterden türetildi')],
+        ['Sorumlu', kisi(o.sorumlu, 'sorumlu atanmamış')],
+        ['İlerleme', oran == null ? BOS + GV.cell.sub('adım listesi boş')
+          : GV.progress(oran) + GV.cell.sub(tamam + '/' + ad.length +
+              ' adım `tamam` işaretli · yüzde bu iki sayıdan türetildi')],
+        ['Not', metin(o.not, 'not yazılmamış')]
+      ];
+      return kart('i-clipboard-check', 'Süreç · ' + o.tur,
+        sayacEtiketi(tamam + '/' + ad.length, 'adım'),
+        GV.dl(satirlar, { skipEmpty:false }) + '<div class="u-mt-4">' + liste + '</div>' +
+        '<p class="u-sm u-faint u-mt-4">Adım nesnesi <code>{ad, tamam, sorumlu}</code> ' +
+        'taşır; ilerleme <code>tamam</code> üzerinden ölçüldü. ⚠️ ÖRNEK adımları ' +
+        '<code>zorunlu</code> alanı taşımaz (yalnız ŞABLON adımları taşır) — ' +
+        'personelEvrak kapısının V2-47 kusuru buradan doğuyor.</p>', 'u-mt-4');
+    }).join('');
+  }
+
+  /* ---- 11.4 Çıkış neden kodları — alan bir DİZİDİR --------------- */
+  function nedenKoduKarti(){
+    /* ⚠️ `DB.reasonCodes[].tur` BİR DİZİDİR (brief §20.2 düzeltmesi):
+       `c.tur === 'cikis'` SIFIR kod bulur, `indexOf` yedisini bulur. */
+    var CIKIS = (DB.reasonCodes || []).filter(function(c){
+      return (c.tur || []).indexOf('cikis') !== -1; });
+    return kart('i-list', 'Çıkış neden kodları', sayacEtiketi(CIKIS.length, 'kod'),
+      (CIKIS.length
+        ? '<ul class="gv-checklist">' + CIKIS.map(function(c){
+            return '<li><span>' + esc(c.ad) + '</span><span class="cell-sub">' +
+              esc(c.kod) + '</span></li>'; }).join('') + '</ul>'
+        : GV.empty({ icon:'i-list', title:'Çıkış neden kodu bulunamadı',
+            desc:'DB.reasonCodes içinde `tur` dizisi "cikis" içeren kod yok.' })) +
+      '<p class="u-sm u-faint u-mt-4"><code>DB.reasonCodes[].tur</code> bir <b>DİZİDİR</b> ' +
+      '(bir kod birden çok türe hizmet eder) ve <code>indexOf(\'cikis\')</code> ile okundu. ' +
+      '<code>=== \'cikis\'</code> yazmak <b>sıfır</b> kod bulur ve "Ayrıldı" geçişini ' +
+      'tamamlanamaz hâle getirirdi (brief §20.2 düzeltmesi). Kodlar ' +
+      '"Ayrılışı Tamamla" çekmecesinde seçenek olarak sunulur.</p>', 'u-mt-4');
+  }
+
+  /* ===================================================================
+     12. SEKME 5 — ZAMAN (okuma yüzeyi)
+
+     Onay yordamları (`GV.zaman.onayla` · `.iade` · `.onaylaKayit`) BURADA
+     TEKRAR EDİLMEZ (brief §22.14): sekme okuma yüzeyidir ve
+     `app-zaman.html`e derin bağlantı verir. Maliyet oranı `GV.hr.kayitOrani`
+     tek kaynağından okunur ve kapı SATIR bazlıdır
+     (`GV.hr.maasGorebilir(l.personel)` — K-39).
+     =================================================================== */
+  function cizZaman(el){
+    if(!zamanDefteri){
+      el.innerHTML = '<div class="gv-card"><div class="gc-body">' + GV.notice({
+        tone:'warn', icon:'i-timer', title:'Zaman defteri bu ekranda yüklü değil',
+        text:'DB.timelogs koleksiyonu bulunamadı; süre ve maliyet ÖLÇÜLEMEDİ — ' +
+             'sıfır yazılmadı.' }) + '</div></div>';
+      return;
+    }
+
+    var toplam = zamanlar.reduce(function(a, l){ return a + (l.sure || 0); }, 0);
+    var fatura = zamanlar.filter(function(l){ return l.faturalanabilir; })
+                         .reduce(function(a, l){ return a + (l.sure || 0); }, 0);
+    var onayDagilim = {};
+    zamanlar.forEach(function(l){ onayDagilim[l.onay] = (onayDagilim[l.onay] || 0) + 1; });
+    var dagilimMetni = Object.keys(onayDagilim).map(function(k){
+      return k + ' ' + onayDagilim[k]; }).join(' · ') || 'kayıt yok';
+
+    el.innerHTML =
+      ozetKarti(toplam, fatura, dagilimMetni) +
+      defterKarti() +
+      kapasiteKarti() +
+      izinKarti() +
+      '<section class="gv-card u-mt-4">' +
+        kartBasi('i-timer', 'Zaman kayıtları',
+          '<span class="gc-meta" id="pdSay-zaman">' + zamanlar.length + ' kayıt</span>') +
+        '<div class="gc-body u-sm u-muted">' +
+          'Kaynak: <code>DB.timelogs</code> · <code>personel</code> süzgeci. Defterde toplam ' +
+          (DB.timelogs || []).length + ' kayıt var, bu kişiye düşen ' + zamanlar.length + '. ' +
+          'Bu sekme <b>okuma yüzeyidir</b>: onay ve iade yordamları burada tekrar edilmez, ' +
+          'işlem <code>app-zaman.html</code> ekranındadır. ' +
+          '<code>timelogStatuses</code> sözlüğü <b>YOKTUR</b>; onay değerleri (' +
+          esc(dagilimMetni) + ') kayıtlardan türetildi.' +
+        '</div>' +
+      '</section>' +
+      '<div class="u-mt-4" id="pdZamanListe"></div>';
+
+    var projeler = benzersiz(zamanlar, 'proje');
+    var onaylar  = benzersiz(DB.timelogs, 'onay');
+
+    liste({
+      mount:'#pdZamanListe', id:'pdZaman', key:'kod',
+      source:function(){
+        return (DB.timelogs || []).filter(function(l){ return l.personel === e.kod; });
+      },
+      exportName:'zaman-' + e.kod, exportTitle:'Zaman kayıtları — ' + e.ad,
+      countTarget:'#pdSay-zaman',
+      defaultSort:'tarih', defaultDir:'desc',
+      pageSize:10,
+      search:{ placeholder:'Kayıt kodu, açıklama, proje ya da görev ara',
+               fields:['kod','aciklama','proje','gorev','modul'] },
+      /* KAPSAM: `kendi` ekseni `personel` alanına eşlenir. `departman` ve
+         `musteri` eşlenmez — zaman kaydında departman alanı yok, müşteri
+         ekseni ise `ekip` bölümüne kapalı bir oturum için anlamsız. Bileşen
+         eşlenmemiş kapsamı kendi şeridinde söyler, sessiz kalmaz. */
+      scopeField:{ kendi:'personel' },
+      columns:[
+        GV.cols.kod('kod','Kayıt', { sub:function(l){ return l.aciklama || ''; } }),
+        GV.cols.date('tarih','Tarih', { plain:true }),
+        GV.cols.num('sure','Süre', { basamak:1 }),
+        { key:'faturalanabilir', label:'Faturalanabilir', sortable:true,
+          exportValue:function(l){ return l.faturalanabilir ? 'Faturalanabilir' : 'İç iş'; },
+          render:function(l){ return l.faturalanabilir
+            ? GV.badge('Faturalanabilir','is-ok') : GV.badge('İç iş','is-neutral'); } },
+        { key:'proje', label:'Proje', cellClass:'cell-wrap',
+          exportValue:function(l){ return l.proje || ''; },
+          render:function(l){
+            if(!l.proje) return BOS + GV.cell.sub(l.gorev
+              ? 'kayıt projesiz bir göreve yazılmış'
+              : 'iç iş kaydı · projeye de göreve de bağlı değil');
+            var p = (DB.projects || []).filter(function(x){ return x.kod === l.proje; })[0];
+            return '<a class="cell-main" href="app-proje-detay.html?id=' + esc(l.proje) + '">' +
+              esc(p ? p.ad : l.proje) + '</a>' + GV.cell.sub(esc(l.proje)); } },
+        { key:'gorev', label:'Görev', visible:false, cellClass:'cell-wrap',
+          exportValue:function(l){ return l.gorev || ''; },
+          render:function(l){ return l.gorev
+            ? '<a class="cell-main" href="app-gorev-detay.html?id=' + esc(l.gorev) + '">' +
+              esc(l.gorev) + '</a>'
+            : BOS + GV.cell.sub(l.modul ? 'modül kaydı · göreve bağlı değil' : 'göreve bağlanmamış'); } },
+        { key:'onay', label:'Onay',
+          render:function(l){ return sozluksuz(l.onay, 'timelogStatuses sözlüğü YOK'); } },
+        { key:'defter', label:'Haftalık defter', visible:false, sortable:false,
+          exportValue:function(l){ var t = GV.zaman.timesheetOf(l); return t ? t.kod : ''; },
+          render:function(l){
+            var t = GV.zaman.timesheetOf(l);
+            if(!t) return BOS + GV.cell.sub('bu tarihi kapsayan defter yok');
+            return kodEt(t.kod) + GV.cell.sub('GV.zaman.timesheetOf · ' + esc(t.durum)); } },
+        /* MALİYET ORANI — kapı SATIR bazlıdır (K-39): kendi kaydının oranını
+           kişi görür, başkasının kaydında `permMatrix.maas` geçerlidir.
+           `perm:'maas'` DEĞİL `mask:function(l)` kullanılır. */
+        GV.cols.money('oran','Maliyet oranı', { visible:false, cur:'₺',
+          mask:function(l){ return !GV.hr.maasGorebilir(l.personel); },
+          deger:function(l){ var o = GV.hr.kayitOrani(l); return o ? o.saat : null; },
+          sub:function(l){
+            var o = GV.hr.kayitOrani(l);
+            if(!o) return 'maaş da saat ücreti de kayıtlı değil — oran türetilemedi';
+            return 'saat başına · kaynak: ' + o.kaynak +
+              (o.guvenilir === false ? ' · ⚠ bu tarih için maaş geçmişi yok' : ''); } })
+      ],
+      filters:[
+        { key:'onay', label:'Onay durumu', type:'multi', options:onaylar },
+        { key:'proje', label:'Proje', type:'select',
+          options:projeler.map(function(k){
+            var p = (DB.projects || []).filter(function(x){ return x.kod === k; })[0];
+            return { value:k, label:p ? p.ad : k }; }) },
+        { key:'tarih', label:'Tarih aralığı', type:'daterange' }
+      ],
+      mobile:function(l){
+        return GV.cell.mrow('<span class="cell-main">' + esc(l.aciklama || l.kod) + '</span>',
+          l.kod, [F.date(l.tarih), F.hours(l.sure), esc(l.proje || 'projesiz')],
+          '<span class="u-sm">' + esc(l.onay || '') + '</span>');
+      },
+      emptyState:{ icon:'i-timer', title:'Bu kişi için zaman defterinde kayıt yok',
+        desc:'DB.timelogs ' + (DB.timelogs || []).length + ' kayıt taşıyor; `personel` ' +
+             'alanı bu kodu gösteren satır bulunamadı. Saat girilmemiş demektir, ' +
+             '"0 saat çalıştı" demek değil.' }
+    });
+  }
+
+  function ozetKarti(toplam, fatura, dagilimMetni){
+    var oran = toplam > 0 ? Math.round(fatura / toplam * 100) : null;
+    var tarihler = zamanlar.map(function(l){ return l.tarih; }).sort();
+    var satirlar = [
+      ['Kayıt sayısı', GV.cell.num(zamanlar.length) +
+        GV.cell.sub('defterin ' + (DB.timelogs || []).length + ' kaydından bu kişiye düşen')],
+      ['Toplam süre', zamanlar.length
+        ? '<span class="u-num">' + esc(F.hours(toplam)) + '</span>' +
+          GV.cell.sub('kayıtların `sure` alanı toplamı')
+        : BOS + GV.cell.sub('kayıt yok — 0 saat DEĞİL, ölçülecek satır yok')],
+      ['Faturalanabilir', zamanlar.length
+        ? '<span class="u-num">' + esc(F.hours(fatura)) + '</span>' +
+          (oran != null ? GV.cell.sub(oran + '% · `faturalanabilir` bayrağı taşıyan satırların toplamı') : '')
+        : BOS],
+      ['Onay dağılımı', '<span class="u-sm">' + esc(dagilimMetni) + '</span>' +
+        GV.cell.sub('`onay` alanından sayıldı · sözlüğü yok')],
+      ['Kayıt aralığı', tarihler.length
+        ? '<span class="cell-date">' + esc(F.date(tarihler[0])) + ' → ' +
+          esc(F.date(tarihler[tarihler.length - 1])) + '</span>' +
+          GV.cell.sub('ilk ve son kayıt tarihi')
+        : BOS]
+    ];
+    return kart('i-gauge', 'Zaman özeti', sayacEtiketi(zamanlar.length, 'kayıt'),
+      GV.dl(satirlar, { skipEmpty:false }) +
+      '<p class="u-sm u-faint u-mt-4">Sayılar bu ekranda TÜRETİLDİ (kaynak: ' +
+      '<code>DB.timelogs</code>) ve kayıtta yazılı bir sayaç değildir. ' +
+      'Onay/iade işlemleri bu yüzeyde değil <code>app-zaman.html</code> ekranındadır.</p>' +
+      '<div class="lh-acts u-mt-4">' +
+        '<a class="btn btn-line btn-sm" href="app-zaman.html">' + ico('i-timer','ic-sm') +
+        ' Zaman ekranını aç</a>' +
+      '</div>');
+  }
+
+  function defterKarti(){
+    if(!defterler.length){
+      var kapsam = (DB.timesheets || []).map(function(t){ return t.hafta; })
+        .filter(function(h, i, a){ return a.indexOf(h) === i; }).join(' · ');
+      return '<div class="u-mt-4">' + bosKart('i-sheet', 'Haftalık defter',
+        'Bu kişi için haftalık defter kaydı yok',
+        'Ölçüldü: DB.timesheets ' + (DB.timesheets || []).length + ' kayıt taşıyor ve ' +
+        'yalnız ' + (kapsam || '—') + ' haftasını kapsıyor. Bu kişinin o hafta için ' +
+        'açılmış bir defteri yok — defter kapsamı ile kaydın olmaması ayrı şeylerdir.') + '</div>';
+    }
+    return defterler.map(function(ts){
+      var kapsanan = GV.zaman.kayitlar(ts) || [];
+      var satirlar = [
+        ['Defter', kodEt(ts.kod)],
+        ['Hafta', sozluksuz(ts.hafta, 'kayıtta yazılı ISO hafta')],
+        ['Aralık', '<span class="cell-date">' + esc(F.date(ts.baslangic)) + ' → ' +
+          esc(F.date(ts.bitis)) + '</span>'],
+        ['Toplam / faturalanabilir', '<span class="u-num">' + esc(F.hours(ts.toplam)) +
+          '</span>' + GV.cell.sub(F.hours(ts.faturalanabilir) + ' faturalanabilir')],
+        ['Eksik / fazla', '<span class="u-num">' + esc(F.num(ts.eksik)) + ' / ' +
+          esc(F.num(ts.fazla)) + '</span>' + GV.cell.sub('kayıtta yazılı sapma saatleri')],
+        ['Durum', sozluksuz(ts.durum, 'timesheetStatuses sözlüğü YOK — defterden türetildi')],
+        ['Onaylayan', kisi(ts.onaylayan, 'onaylayan atanmamış')],
+        ['Kapsadığı kayıt', GV.cell.num(kapsanan.length) +
+          GV.cell.sub('GV.zaman.kayitlar(ts) · defterin tarih aralığına düşen satır')]
+      ];
+      return kart('i-sheet', 'Haftalık defter · ' + (ts.hafta || ts.kod),
+        '<a class="btn btn-line btn-xs" href="app-zaman.html">Onay yüzeyini aç</a>',
+        GV.dl(satirlar, { skipEmpty:false }) +
+        '<p class="u-sm u-faint u-mt-4">Haftalık onay ve iade yordamları ' +
+        '(<code>GV.zaman.onayla</code> · <code>.iade</code>) bu sekmede TEKRAR EDİLMEZ — ' +
+        'sekme okuma yüzeyidir (brief §22.14).</p>', 'u-mt-4');
+    }).join('');
+  }
+
+  function kapasiteKarti(){
+    if(!kapDefteri){
+      return '<div class="gv-card u-mt-4"><div class="gc-body">' + GV.notice({
+        tone:'warn', icon:'i-alert', title:'Kapasite defteri yüklü değil',
+        text:'DB.capacity koleksiyonu bulunamadı; kapasite ÖLÇÜLEMEDİ.' }) + '</div></div>';
+    }
+    if(!kapasite){
+      return '<div class="u-mt-4">' + bosKart('i-gauge', 'Kapasite planı',
+        'Bu kişi için kapasite defterinde kayıt yok',
+        'Ölçüldü: DB.capacity ' + (DB.capacity || []).length + ' kayıt taşıyor ve ' +
+        tumu.length + ' personelin ' + kapKisi + ' tanesini kapsıyor. Kaydı olmayan ' +
+        (tumu.length - kapKisi) + ' kişide "defterde kayıt yok" yazılır, <b>0 basılmaz</b> ' +
+        '(brief §22.4). Kayıttaki `doluluk` alanı ise Özet sekmesinde ve o bir plan, ' +
+        'bir sayaç değil.') + '</div>';
+    }
+    var satirlar = [
+      ['Haftalık kapasite', GV.cell.num(kapasite.kapasite) + GV.cell.sub('saat')],
+      ['Planlanan', GV.cell.num(kapasite.planlanan) + GV.cell.sub('saat')],
+      ['Doluluk', GV.cell.oran(kapasite.doluluk, 90) +
+        GV.cell.sub('defterde yazılı · kayıttaki e.doluluk = ' +
+          (e.doluluk != null ? e.doluluk + '%' : 'boş') +
+          (e.doluluk != null && kapasite.doluluk === e.doluluk
+            ? ' · iki defter aynı değeri söylüyor'
+            : ' · ⚠️ iki defter AYRI değer söylüyor, ekran birini seçmez'))],
+      ['Plandaki izin', GV.cell.num(kapasite.izin) + GV.cell.sub('saat · kapasiteden düşen')]
+    ];
+    return kart('i-gauge', 'Kapasite planı',
+      '<a class="btn btn-line btn-xs" href="app-rapor.html?r=is-kapasite">Kapasite raporu</a>',
+      GV.dl(satirlar, { skipEmpty:false }) +
+      '<p class="u-sm u-faint u-mt-4">Kapasite AYRI EKRAN DEĞİLDİR (brief §20.5): ' +
+      'küresel görünüm "İş ve Kapasite" raporudur. Bu blok yalnız bu kişinin ' +
+      'defter kaydını okur, hesap yapmaz.</p>', 'u-mt-4');
+  }
+
+  function izinKarti(){
+    if(!izinler.length){
+      return '<div class="u-mt-4">' + bosKart('i-calendar-check', 'İzin talepleri',
+        'Bu kişi için izin defterinde kayıt yok',
+        'Ölçüldü: DB.leaves ' + (DB.leaves || []).length + ' talep taşıyor; `personel` alanı ' +
+        'bu kodu gösteren kayıt yok. Kayıttaki izin bakiyesi ' +
+        (e.izinBakiye != null ? e.izinBakiye + ' gün' : 'yazılmamış') + ' ve o bakiye ' +
+        'taleplerden TÜRETİLMEZ, kayıtta yazılıdır.') + '</div>';
+    }
+    var satirlar = izinler.slice().sort(function(a, b){
+      return String(b.baslangic || '').localeCompare(String(a.baslangic || ''));
+    }).map(function(l){
+      return ['<a class="cell-code" href="app-izin-detay.html?id=' + esc(l.kod) + '">' +
+        esc(l.kod) + '</a>',
+        '<span class="u-sm">' + esc(l.tur || '') + ' · ' + esc(F.date(l.baslangic)) + ' → ' +
+        esc(F.date(l.bitis)) + '</span>' +
+        GV.cell.sub(F.num(l.gun) + ' gün · ' + esc(l.durum || '') +
+          (l.onayTarihi ? ' · karar ' + esc(F.date(l.onayTarihi)) : ' · karar bekliyor'))];
+    });
+    var toplamGun = izinler.filter(function(l){ return l.durum === 'Onaylandı'; })
+      .reduce(function(a, l){ return a + (l.gun || 0); }, 0);
+    return kart('i-calendar-check', 'İzin talepleri', sayacEtiketi(izinler.length, 'talep'),
+      GV.dl(satirlar, { skipEmpty:false }) +
+      '<p class="u-sm u-muted u-mt-4">Onaylanmış izin: <b>' + toplamGun +
+      ' gün</b> (bu ekranda türetildi). Kayıtta yazılı bakiye: <b>' +
+      (e.izinBakiye != null ? e.izinBakiye + ' gün' : '—') + '</b> — iki sayı AYRI ' +
+      'defterlerden gelir ve ekran birini diğerinden çıkarmaz.</p>' +
+      '<div class="lh-acts u-mt-4">' +
+        '<a class="btn btn-line btn-sm" href="app-zaman.html#izin">' +
+          ico('i-calendar-check','ic-sm') + ' İzin yüzeyini aç</a>' +
+        '<a class="btn btn-line btn-sm" href="app-izin-form.html?personel=' +
+          encodeURIComponent(e.kod) + '">' + ico('i-plus','ic-sm') + ' İzin talebi aç</a>' +
+      '</div>', 'u-mt-4');
+  }
+
+  /* ===================================================================
+     13. SEKME 6 — ZİMMET
+
+     `GV.varlik.zimmetliler(kod)` + tutanak DRAWER'ı (brief §20.7 sözleşmesi
+     birebir; aynı çekmece `app-varlik.html` ve `app-demirbas-detay.html`ta
+     da kurulur — kural TEK YERDE, yordamlar `GV.varlik.*`).
+
+     ⚠️ EKRAN ENVANTER YAZMAZ: `a.durum` ve `a.zimmetli` TÜRETİLMİŞ
+     görünümdür, otorite `DB.assignments`tir. Tek mutasyon noktası
+     `GV.varlik.kabulEt` / `.kabulGeriAl`. Yeni tutanak AÇAN yordam YOK
+     (brief §22.16.2) — `DB.assignments.push(...)` yasaktır ve o yüzden
+     "yeni zimmet aç" düğmesi BASILMAZ.
+     =================================================================== */
+  function cizZimmet(el){
+    if(!zimmetDefteri){
+      el.innerHTML = '<div class="gv-card"><div class="gc-body">' + GV.notice({
+        tone:'warn', icon:'i-alert', title:'Zimmet defteri yüklü değil',
+        text:'DB.assignments koleksiyonu bulunamadı; zimmet ÖLÇÜLEMEDİ.' }) + '</div></div>';
+      return;
+    }
+
+    var iddiaHtml = iddialar.map(function(d){
+      var satir = GV.varlik.dusenIddiaSatiri(d.demirbas);
+      if(!satir) return '';
+      return '<div class="u-mt-4">' + GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Envanterdeki eski zimmet iddiası düşürüldü (K-30) · ' + d.demirbas,
+        text:satir.metin }) + '</div>';
+    }).join('');
+
+    el.innerHTML =
+      zimmetOzetKarti() +
+      (acikZimmet.length ? tutanakBloklari(acikZimmet, 'Açık zimmet', 'i-user-check') : '') +
+      (gecmisZimmet.length ? tutanakBloklari(gecmisZimmet, 'Geçmiş tutanak', 'i-archive') : '') +
+      (!acikZimmet.length && !gecmisZimmet.length
+        ? '<div class="u-mt-4">' + bosKart('i-package', 'Zimmet tutanağı',
+            'Bu kişi için zimmet defterinde tutanak yok',
+            'Ölçüldü: DB.assignments ' + (DB.assignments || []).length + ' tutanak taşıyor; ' +
+            '`personel` alanı bu kodu gösteren kayıt yok. Demirbaş üstünde değil demektir, ' +
+            'veri eksik demek değil.' +
+            (iddialar.length ? ' ⚠️ Ancak envanter bir zamanlar bu kişi için ' +
+              iddialar.length + ' iddia taşıyordu — aşağıda.' : '')) + '</div>'
+        : '') +
+      iddiaHtml +
+      '<div class="u-mt-4">' + GV.notice({ tone:'neutral', icon:'i-info',
+        title:'Envanter bu ekranda YAZILMAZ',
+        text:'DB.assets[].durum ve [].zimmetli TÜRETİLMİŞ görünümdür; otorite ' +
+             'DB.assignments defteridir. Zimmet ancak personel ONAYLADIĞINDA envanteri ' +
+             '"Zimmetli" yapar; onay beklerken demirbaş "Zimmet bekliyor" durumundadır. ' +
+             'Tek mutasyon noktası GV.varlik.kabulEt / .kabulGeriAl. ' +
+             'YENİ tutanak açan yordam YOKTUR (brief §22.16.2), o yüzden "yeni zimmet aç" ' +
+             'düğmesi basılmadı; iade alan yordam da yok (§22.16.3).' }) + '</div>';
+  }
+
+  function zimmetOzetKarti(){
+    var bekleyen = acikZimmet.filter(function(z){ return z.personelOnay !== 'Onaylandı'; });
+    var satirlar = [
+      ['Açık zimmet', GV.cell.num(acikZimmet.length) +
+        GV.cell.sub('GV.varlik.zimmetliler(' + esc(e.kod) + ') · iade edilmemiş tutanak')],
+      ['Kabul bekleyen', bekleyen.length
+        ? GV.cell.num(bekleyen.length) + GV.cell.sub('personelOnay ≠ Onaylandı · ' +
+            'envanter bu yüzden "Zimmet bekliyor" durumunda')
+        : GV.cell.num(0) + GV.cell.sub('açık tutanakların tamamı onaylanmış')],
+      ['Geçmiş tutanak', GV.cell.num(gecmisZimmet.length) +
+        GV.cell.sub('iade edilmiş kayıtlar · defterden okundu')],
+      ['Düşürülmüş iddia', iddialar.length
+        ? GV.cell.num(iddialar.length) + GV.cell.sub('DB.assetClaimDrops · K-30')
+        : GV.cell.num(0) + GV.cell.sub('envanter bu kişi için bir iddia taşımıyordu')],
+      ['Ayrılış kapısı', (function(){
+        var g = GV.gates.personelZimmet(e);
+        return (g.ok ? GV.badge('Geçiyor','is-ok') : GV.badge('Reddediyor','is-warn')) +
+          GV.cell.sub(esc(g.why || 'açık zimmet yok — Ayrıldı geçişini engellemiyor'));
+      })()]
+    ];
+    return kart('i-package', 'Zimmet özeti',
+      sayacEtiketi(acikZimmet.length + gecmisZimmet.length, 'tutanak'),
+      GV.dl(satirlar, { skipEmpty:false }));
+  }
+
+  function tutanakBloklari(list, baslik, ikon){
+    return list.map(function(z){
+      var a = GV.varlik.kayit(z.demirbas);
+      var satirlar = [
+        ['Tutanak', kodEt(z.kod)],
+        ['Demirbaş', a
+          ? '<span class="cell-main">' + esc([a.marka, a.model].filter(Boolean).join(' ') || a.kod) +
+            '</span>' + GV.cell.sub(esc(a.kod) + ' · ' + esc(a.kategori || ''))
+          : BOS + GV.cell.sub('demirbaş kaydı defterde yok: ' + esc(z.demirbas || '—'))],
+        ['Teslim tarihi', tarih(z.teslimTarihi, 'teslim tarihi yazılmamış')],
+        ['Tutanak durumu', GV.badge(z.durum)],
+        ['Personel onayı', GV.badge(z.personelOnay) +
+          (z.onayTarihi ? GV.cell.sub('onay tarihi: ' + esc(F.date(z.onayTarihi)))
+                        : GV.cell.sub('henüz onaylanmadı'))],
+        ['Envanter durumu', a ? GV.badge(a.durum) +
+          GV.cell.sub('TÜRETİLMİŞ görünüm · otorite DB.assignments') : BOS]
+      ];
+      return kart(ikon, baslik + ' · ' + z.kod, GV.badge(z.personelOnay),
+        GV.dl(satirlar, { skipEmpty:false }) +
+        '<div class="lh-acts u-mt-4">' +
+          '<button type="button" class="btn btn-line btn-sm" data-zimmet="' + esc(z.kod) + '">' +
+            ico('i-stamp','ic-sm') + ' Tutanağı aç</button>' +
+          (a ? '<a class="btn btn-line btn-sm" href="app-demirbas-detay.html?id=' +
+               encodeURIComponent(a.kod) + '">' + ico('i-package','ic-sm') +
+               ' Demirbaş kartı</a>' : '') +
+        '</div>', 'u-mt-4');
+    }).join('');
+  }
+
+  /* ---- 13.1 TUTANAK ÇEKMECESİ — brief §20.7 sözleşmesi birebir ---- */
+  var acikCekmece = null;
+  function cekmeceAc(baslik, html, bagla){
+    if(acikCekmece && acikCekmece.close) acikCekmece.close();
+    /* `GV.drawer` sözleşmesi: { title, body, actions, side, onMount, onOpen }
+       — `sub` alanı YOKTUR (brief §21.11), alt başlık gövdenin ilk satırıdır. */
+    acikCekmece = GV.drawer({ title:baslik, body:'',
+      onMount:function(govde){ govde.innerHTML = html; if(bagla) bagla(govde); } });
+  }
+
+  function zimmetKaydi(k){
+    return (DB.assignments || []).filter(function(z){ return z.kod === k; })[0] || null;
+  }
+
+  function tutanakCekmecesi(z){
+    if(!z) return;
+    var a = GV.varlik.kayit(z.demirbas);
+    var iade = z.durum === 'İade edildi';
+    var satirlar = [
+      ['Demirbaş', a
+        ? '<span class="cell-main">' + esc([a.marka, a.model].filter(Boolean).join(' ') || a.kod) +
+          '</span>' + GV.cell.sub(esc(a.kod))
+        : BOS + GV.cell.sub('demirbaş kaydı defterde yok')],
+      ['Personel', GV.user(z.personel, { sm:true })],
+      ['Teslim tarihi', tarih(z.teslimTarihi, 'teslim tarihi yazılmamış')],
+      ['Durum', GV.badge(z.durum)],
+      ['Personel onayı', GV.badge(z.personelOnay) +
+        (z.onayTarihi ? GV.cell.sub('onay tarihi: ' + esc(F.date(z.onayTarihi)))
+                      : GV.cell.sub('henüz onaylanmadı'))],
+      ['Tutanak dosyası', z.tutanak
+        ? kodEt(z.tutanak) + GV.cell.sub('indirilemez — gerçek dosya deposuna yazılmaz (BE-K2)')
+        : BOS + GV.cell.sub('tutanak dosya adı kayıtlı değil')],
+      ['Hasar', dolu(z.hasar) ? esc(z.hasar) : null],
+      ['İade tarihi', iade && z.iadeTarihi ? tarih(z.iadeTarihi) : null],
+      ['İade kontrolü', iade && dolu(z.iadeKontrol) ? GV.badge(z.iadeKontrol) : null],
+      ['Eksik ekipman', iade && dolu(z.eksik) ? esc(z.eksik) : null],
+      ['İade alan', iade && z.iadeAlan ? GV.user(z.iadeAlan, { sm:true }) : null]
+    ];
+
+    /* KABUL ve KABUL GERİ ALMA — yetki kümesi AYNIDIR; geri almada gerekçe
+       KAYIT KOŞULUDUR, yetki değil (brief §20.7). Kapının kendisi yordamda;
+       ekran yalnız düğmeyi hangi durumda basacağını bilir. */
+    var yetkili = canDuzen || GV.perm.can('personel') || (me && me === z.personel);
+    var aksiyon;
+    if(!yetkili){
+      aksiyon = GV.notice({ tone:'neutral', icon:'i-lock', title:'Bu işlem için yetkiniz yok',
+        text:'Kabul ve kabul geri alma zimmetli personel, İK ya da düzenleme yetkisi olan ' +
+             'bir rol gerektirir. İki işlemin yetki kümesi AYNIDIR.' });
+    } else if(iade){
+      aksiyon = '<p class="u-sm u-muted">Bu zimmet iade edilmiş; kabul/geri alma ekseni ' +
+        'artık geçerli değil. İade ALAN yordam yazılmamış (brief §22.16.3), o yüzden ' +
+        'bu blokta iade düğmesi de yoktur.</p>';
+    } else if(z.personelOnay === 'Onaylandı'){
+      aksiyon = '<p class="u-sm u-muted">Kabul, envanteri "Zimmetli" yapan TEK koşuldur. ' +
+        'Geri alma gerekçe ister ve envanteri yeniden "Zimmet bekliyor"a döndürür.</p>' +
+        '<div class="lh-acts u-mt-4">' +
+          '<button type="button" class="btn btn-danger-line btn-sm" data-geri-al="' +
+            esc(z.kod) + '">' + ico('i-refresh','ic-sm') + ' Kabulü geri al</button>' +
+        '</div>';
+    } else {
+      aksiyon = '<p class="u-sm u-muted">Tutanak yazıldı ama personel henüz kabul etmedi; ' +
+        'envanter bu yüzden "Zimmet bekliyor" durumundadır. Kabul, envanteri "Zimmetli" ' +
+        'yapan TEK koşuldur — tutanağın yazılması değil.</p>' +
+        '<div class="lh-acts u-mt-4">' +
+          '<button type="button" class="btn btn-ok btn-sm" data-kabul="' + esc(z.kod) + '">' +
+            ico('i-check-circle','ic-sm') + ' Zimmeti kabul et</button>' +
+        '</div>';
+    }
+
+    /* Demirbaşın DÜŞEN İDDİA satırı — varsa ZORUNLU (brief §20.7 · K-30).
+       Satır veriye yazılmaz, görüntü anında ortak yordamdan türer. */
+    var satir = a ? GV.varlik.dusenIddiaSatiri(a.kod) : null;
+    var iddia = satir
+      ? '<div class="u-mt-8">' + GV.notice({ tone:'warn', icon:'i-alert',
+          title:'Envanterdeki eski zimmet iddiası düşürüldü (K-30)',
+          text:satir.metin }) + '</div>'
+      : '';
+
+    var html =
+      '<section class="gv-card">' +
+        '<div class="gc-head"><h3 class="gc-title">' + ico('i-user-check') + esc(z.kod) +
+        '</h3><span class="gc-meta">' + esc(z.durum) + '</span></div>' +
+        '<div class="gc-body">' + GV.dl(satirlar, { skipEmpty:true }) + '</div>' +
+      '</section>' +
+      iddia +
+      '<section class="gv-card u-mt-8">' +
+        '<div class="gc-head"><h3 class="gc-title">' + ico('i-stamp') +
+        'Kabul / geri alma</h3></div>' +
+        '<div class="gc-body">' + aksiyon + '</div>' +
+      '</section>' +
+      '<div class="u-mt-8">' + GV.notice({ tone:'neutral', icon:'i-info',
+        title:'BE-K2 · BE-S6 — ıslak/e-imza yoktur',
+        text:'Zimmet tutanağı ıslak ya da elektronik imza taşımaz; kabul yalnız bir ' +
+             'bayraktır ve kabul geri alma da yalnız o bayrağı çevirir. Tutanak dosyası ' +
+             'indirilemez — gerçek dosya deposuna yazılmaz.' }) + '</div>';
+
+    cekmeceAc('Zimmet ' + z.kod, html, function(govde){
+      govde.addEventListener('click', function(ev){
+        var k = ev.target.closest('[data-kabul]');
+        if(k && !k.disabled){ kabulEtBaslat(zimmetKaydi(k.dataset.kabul)); return; }
+        var g = ev.target.closest('[data-geri-al]');
+        if(g && !g.disabled){ kabulGeriAlBaslat(zimmetKaydi(g.dataset.geriAl)); return; }
+      });
+    });
+  }
+
+  function kabulEtBaslat(z){
+    if(!z) return;
+    GV.confirm({
+      title:'Zimmeti kabul et',
+      text:z.kod + ' — kabul, envanteri "Zimmetli" yapan tek koşuldur.',
+      tone:'ok', okLabel:'Kabul et'
+    }).then(function(ok){
+      if(!ok) return;
+      var r = GV.varlik.kabulEt(z.kod);
+      if(r.ok === false){ GV.toast(GV.flowHata(r), 'danger'); return; }
+      GV.toast(z.kod + ' kabul edildi · envanter "' + (r.demirbas ? r.demirbas.durum : '?') + '"', 'ok');
+      GV.refresh();
+    });
+  }
+
+  function kabulGeriAlBaslat(z){
+    if(!z) return;
+    GV.action({
+      eylem:'Geri Çek',
+      kayit:{ kod:z.kod, baslik:'Zimmet kabulü' },
+      sonuc:'Bu zimmetin kabulü geri alınacak; envanter yeniden "Zimmet bekliyor" durumuna döner.',
+      gerekce:true, nedenTuru:'geri',
+      run:function(v){
+        var r = GV.varlik.kabulGeriAl(z.kod, v.not);
+        if(r.ok === false) return { ok:false, mesaj:GV.flowHata(r) };
+        GV.refresh();
+        return { mesaj:z.kod + ' kabulü geri alındı · envanter "' +
+                       (r.demirbas ? r.demirbas.durum : '?') + '"' };
+      }
+    });
+  }
+
+  /* ===================================================================
+     14. SEKME 7 — AKTİVİTE
+     =================================================================== */
+  function cizAktivite(el){
+    el.innerHTML =
+      '<section class="gv-card">' +
+        kartBasi('i-activity', 'Aktivite ve denetim izi', sayacEtiketi(izler.length, 'kayıt')) +
+        '<div class="gc-body">' + GV.activity(izler) + '</div>' +
+      '</section>' +
+      '<div class="u-mt-4">' + GV.notice({ tone:'neutral', icon:'i-info',
+        title:'Kaynak: GV.audit.oku(' + e.kod + ', 20)',
+        text:'Yordam olay defterini (DB.activities) ve sistem günlüğünü (DB.logs) ' +
+             'birleştirip zaman sırasına dizer; ekran ikinci bir defter okumaz. ' +
+             'Ölçüldü: bu kayıt için ' + izler.length + ' satır döndü. ' +
+             'Kişi kodları (EMP-*) ada bileşen tarafından çevrilir. ' +
+             'İz KALICI DEĞİLDİR — BE-S5.' }) + '</div>';
+  }
+
+  /* ===================================================================
+     15. ORTAK LİSTE KURUCUSU
+
+     Sekme içindeki her liste `GV.list`tir ve `urlSync:false` bildirir
+     (brief §18.9 · bayrak İKİ YÖNLÜDÜR: yazmayan liste okumaz da). Yedi
+     panel var; biri diğerinin adres durumunu üstlenemez.
+
+     `countTarget` ZORUNLU: verilmezse `GV.list` sayacı `GV.pageHead`in
+     `[data-listcount]` düğümüne yazar ve personelin künye satırını ezer.
+     =================================================================== */
+  function liste(cfg){
+    cfg.urlSync = false;
+    cfg.archive = false;
+    cfg.delay = 0;
+    cfg.pageSize = cfg.pageSize || 10;
+    return GV.list(cfg);
+  }
+
+  function benzersiz(list, alan){
+    var out = [];
+    (list || []).forEach(function(r){
+      if(r[alan] != null && r[alan] !== '' && out.indexOf(r[alan]) === -1) out.push(r[alan]);
+    });
+    return out.sort();
+  }
+
+  /* ===================================================================
+     16. BACKEND PAYI — brief §20.6 + §22.15 tablolarından KOPYALANIR
+        (§10.2 (b) biçimi). Ekran kendi maddesini uydurmaz.
+     =================================================================== */
+  var BACKEND = [
+    { kod:'BE-P1', bolum:'§9',
+      madde:'Durum geçişi sunucuda yeniden doğrulanmaz; yetki ve zorunlu alan kontrolü istemcide koşar' },
+    { kod:'BE-P2', bolum:'§9',
+      madde:'Zaman kaydı gerçek bir timesheet servisine bağlı değil; süreler bellekte tutulur' },
+    { kod:'BE-K1', bolum:'§9',
+      madde:'Kişisel veri kapısı yalnız arayüzdedir; gerçek sistemde özlük ve maaş alanları ' +
+            'SUNUCUDA yetkiye göre filtrelenmelidir — maskelenmiş alan istemciye hiç gitmemelidir' },
+    { kod:'BE-K2', bolum:'§9',
+      madde:'Zimmet tutanağı ıslak/e-imza taşımaz; kabul yalnız bir bayraktır' },
+    { kod:'BE-K3', bolum:'§9',
+      madde:'Maaş öz-erişimi istemcide açıldı; gerçek sistemde kendi ücret kaydı da ' +
+            'sunucuda kimliğe göre filtrelenmelidir' },
+    { kod:'BE-S4', bolum:'§9',
+      madde:'Belge yükleme gerçek depoya yazmaz; dosya adı ve boyutu bellekte tutulur' },
+    { kod:'BE-S5', bolum:'§9 audit_event',
+      madde:'Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır' },
+    { kod:'BE-S6', bolum:'§9',
+      madde:'Zimmet kabulü ıslak/e-imza taşımaz (BE-K2 eki); kabul geri alma da yalnız ' +
+            'bir bayrağı çevirir' }
+  ];
+  function cizBackend(){
+    return '<section class="gv-card u-mt-4">' +
+      kartBasi('i-shield', 'Backend payı', sayacEtiketi(BACKEND.length, 'madde')) +
+      '<ul class="gv-checklist">' + BACKEND.map(function(g){
+        return '<li><span><b>' + esc(g.kod) + '</b> — ' + esc(g.madde) + '</span>' +
+          '<span class="cell-sub">' + esc(g.bolum) + '</span></li>';
+      }).join('') + '</ul>' +
+      '<div class="gc-body u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+        '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur. ' +
+        'Ortak katman borçları ayrıca: <b>V2-47</b> (personelEvrak kapısı hiç kapanmıyor) · ' +
+        '<b>V2-85</b> (kayıt bazlı düzenleme kapsamı yordamı yok) · ' +
+        '<b>V2-01</b> (GV.action alan yuvası yok — "Ayrılışı Tamamla" bu yüzden ' +
+        'çekmece + GV.form ile kuruldu).</div>' +
+    '</section>';
+  }
+
+  /* ===================================================================
+     17. ÇİZİM
+     =================================================================== */
+  var pageActions = [
+    { label:'Personel listesine dön', icon:'i-arrow-left', href:'app-personel.html' }
+  ];
+  if(canDuzen){
+    pageActions.push({ label:'Düzenle', icon:'i-edit', cls:'btn-acc',
+      href:'app-personel-form.html?id=' + encodeURIComponent(e.kod) });
+  }
+  pageActions.push({ label:'İzin talebi aç', icon:'i-calendar-check',
+    href:'app-izin-form.html?personel=' + encodeURIComponent(e.kod) });
+
+  GV.pageHead({
+    eyebrow:'Ekip ve Kaynaklar · Personel',
+    title:e.ad,
+    sub:e.kod + ' · ' + (e.pozisyon || 'pozisyon yazılmamış') + ' · ' +
+        (e.depAd || e.dep || 'departman yok') + ' · ' + GV.hr.durum(e),
+    actions:pageActions
+  });
+
+  mount.innerHTML =
+    ((!ozlukAcik || !maasAcik)
+      ? '<div class="u-mb-4">' + GV.notice({ tone:'warn', icon:'i-eye-off',
+          title:'Bu kartta maskelenmiş alanlar var',
+          text:(!ozlukAcik ? 'Özlük ve sağlık bloğu ' : '') +
+               (!ozlukAcik && !maasAcik ? 'ile ' : '') +
+               (!maasAcik ? 'ücret ve iç maliyet bloğu ' : '') +
+               MASK + ' basıldı. Alanlar BOŞ DEĞİL, görülemiyor — ikisi ayrı şeydir ' +
+               '(UID-11). Sebebi Özet sekmesindeki "Kişisel veri kapısı" kartında ' +
+               'yordam adıyla yazılı.' }) + '</div>'
+      : '') +
+    (e.cikisTarihi && GV.hr.durum(e) !== 'Ayrıldı'
+      ? '<div class="u-mb-4">' + GV.notice({ tone:'warn', icon:'i-hourglass',
+          title:'Çıkış süreci sürüyor',
+          text:'Kayıtta çıkış tarihi ' + F.date(e.cikisTarihi) + ' ve neden kodu ' +
+               nedenAd(e.cikisNedenKodu) + ' yazılı, ama durum "' + GV.hr.durum(e) +
+               '". Ayrılış henüz TAMAMLANMADI — geçişin tek kapısı Yaşam döngüsü ' +
+               'sekmesindeki GV.flow.gec düğmesidir.' }) + '</div>'
+      : '') +
+    '<div class="gv-card">' +
+      '<div class="gv-tabs" id="pdSekme" role="tablist" ' +
+        'aria-label="Personel kartı sekmeleri">' + sekmeHtml + '</div>' +
+    '</div>' +
+    panelHtml +
+    cizBackend();
+
+  /* ---- Tembel çizim — panel gövdesi YALNIZ BİR KEZ çizilir --------- */
+  var PANEL = {
+    ozet:function(el){ el.innerHTML = cizOzet(); },
+    performans:cizPerformans,
+    egitim:cizEgitim,
+    yasamdongusu:cizYasam,
+    zaman:cizZaman,
+    zimmet:cizZimmet,
+    aktivite:cizAktivite
+  };
+  var cizildi = {};
+  function cizPanel(key){
+    if(cizildi[key] || !PANEL[key]) return;
+    var el = mount.querySelector('[data-panel="' + key + '"]');
+    if(!el) return;
+    cizildi[key] = true;
+    PANEL[key](el);
+  }
+  /* `document` KALICI düğümdür — `GV.on` tekil anahtarı ikinci çizimde
+     öncekini söker, dinleyici birikmez (brief §2.6 · L-16). */
+  GV.on(document, 'gv:tab', function(ev){ cizPanel(ev.detail.key); }, 'personelDetay-tab');
+
+  /* `GV.tabs` ÇİZİMDEN SONRA çağrılır; açılışta `location.hash`i okur ve
+     `gv:tab` atar — yani `app-personel-detay.html?id=EMP-006#zimmet`
+     doğrudan o sekmeyi açar. Bu adres biçimi SÖZLEŞMEDİR (brief §22.14).
+     ⚠️ K-37: yordam şeridin `scrollLeft`ini ayarlar, `scrollIntoView`
+     ÇAĞIRMAZ — ekran da çizim anında çağırmaz. */
+  var tabApi = GV.tabs('#pdSekme');
+
+  /* ===================================================================
+     18. EYLEMLER — mount içi delegasyon
+     =================================================================== */
+  GV.on(mount, 'click', function(ev){
+    var git = ev.target.closest('[data-git]');
+    if(git){ ev.preventDefault(); if(tabApi) tabApi.activate(git.dataset.git, true); return; }
+    var hedef = ev.target.closest('[data-hedef]');
+    if(hedef && !hedef.disabled){ durumGec(hedef.dataset.hedef); return; }
+    var z = ev.target.closest('[data-zimmet]');
+    if(z){ tutanakCekmecesi(zimmetKaydi(z.dataset.zimmet)); return; }
+  }, 'personelDetay-click');
+
+  /* ---- 18.1 DURUM GEÇİŞİ — tek kapı `GV.flow.gec` ----------------- */
+  function durumGec(hedefAd){
+    var a = (GV.flow.adimlar('employee', e.kod) || [])
+      .filter(function(x){ return x.hedef === hedefAd; })[0];
+    if(!a) return;
+
+    /* `Ayrıldı` hedefinin `girisZorunlu` alanları (cikisTarihi ·
+       cikisNedenKodu) BU SEKMENİN işidir (brief §22.8) ve `GV.action` bir
+       ALAN YUVASI taşımıyor (borç V2-01) — o yüzden çekmece + `GV.form`
+       kullanılıyor (brief §8.1 deseni).
+
+       Alanlar kayıtta DOLU olsa bile çekmece açılır: `GV.action`ın neden
+       kodu ile kayıttaki `cikisNedenKodu` ayrışabilir ve o zaman denetim izi
+       bir kod, kayıt başka bir kod söylerdi. Ölçüldü: EMP-015'te iki alan da
+       dolu, yani `eksik` boş — koşul yalnız eksiğe bakarsa bu kayıtta form
+       hiç açılmaz ve iki defter sessizce ayrışır. */
+    if(ayrilisFormuMu(a)){ ayrilisCekmecesi(a); return; }
+
+    if(!a.gerekce){
+      GV.confirm({
+        title:a.etiket, tone:'ok', okLabel:a.etiket,
+        text:e.kod + ' → "' + hedefAd + '" durumuna geçecek.'
+      }).then(function(ok){
+        if(!ok) return;
+        var r = GV.flow.gec('employee', e.kod, hedefAd);
+        if(r.ok === false){ GV.toast(GV.flowHata(r), 'danger'); return; }
+        GV.toast(e.kod + ' → ' + hedefAd, 'ok');
+        GV.refresh();
+      });
+      return;
+    }
+
+    /* `nedenTuru` neden kodu listesini DARALTIR. Ölçüldü: `DB.reasonCodes`
+       16 kodun türleri `iade 2 · revizyon 5 · ret 6 · iptal 5 · geri 3 ·
+       istisna 2 · cikis 7`. "Pasife alma" ya da "izne ayırma" karşılığı olan
+       bir tür YOKTUR — uyduran bir eşleme listeyi yanlış daraltır, o yüzden
+       o hedeflerde tür verilmez ve 16 kodun tamamı sunulur (§10.1 disiplini). */
+    var nedenTuru = hedefAd === 'Ayrıldı' ? 'cikis'
+                  : hedefAd === 'Aktif'   ? 'geri'
+                  : null;
+    GV.action({
+      eylem:hedefAd === 'Aktif' ? 'Geri Çek' : hedefAd,
+      kayit:{ kod:e.kod, baslik:e.ad },
+      sonuc:'Personel kaydı "' + hedefAd + '" durumuna geçecek.',
+      gerekce:true,
+      nedenTuru:nedenTuru,
+      tone:hedefAd === 'Ayrıldı' ? 'danger' : 'warn',
+      run:function(v){
+        var r = GV.flow.gec('employee', e.kod, hedefAd, null,
+                            { neden:v.neden, not:v.not, istisna:false });
+        if(r.ok === false) return { ok:false, mesaj:GV.flowHata(r) };
+        GV.refresh();
+        return { mesaj:e.kod + ' → ' + hedefAd, auditKod:(r.kayit || {}).kod };
+      }
+    });
+  }
+
+  /* ---- 18.2 AYRILIŞ ÇEKMECESİ — hedefin zorunlu alanları ---------- */
+  function ayrilisCekmecesi(a){
+    var CIKIS = (DB.reasonCodes || []).filter(function(c){
+      return (c.tur || []).indexOf('cikis') !== -1; });
+    var zimmetKapi = GV.gates.personelZimmet(e);
+
+    var html =
+      '<div class="u-sm u-muted">' + esc(e.kod) + ' · ' + esc(e.ad) +
+        ' — "Ayrıldı" hedefi TERMINAL bir durumdur ve çıkış tarihi ile neden kodunu ' +
+        'kaydın kendisine yazar. Bu iki alan personel FORMUNDA sorulmaz; hedefin ' +
+        'zorunluluğudur (brief §22.8).</div>' +
+      (zimmetKapi.ok ? '' : '<div class="u-mt-4">' + GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Zimmet kapısı bu geçişi REDDEDİYOR', text:zimmetKapi.why }) + '</div>') +
+      '<div class="u-mt-4" id="pdCikisForm"></div>' +
+      '<div class="u-mt-4">' + GV.notice({ tone:'neutral', icon:'i-info',
+        title:'Neden `GV.action` değil çekmece',
+        text:'GV.action bir ALAN YUVASI taşımıyor (ortak katman borcu V2-01), oysa bu ' +
+             'hedef iki kayıt alanı istiyor. Gerekçe (neden kodu + açıklama) yine ' +
+             'zorunludur ve aşağıdaki alanlardan GV.flow.gec\'e geçer.' }) + '</div>';
+
+    var form = null;
+    acikCekmece = GV.drawer({
+      title:'Ayrılışı Tamamla · ' + e.kod,
+      body:'',
+      onMount:function(govde){
+        govde.innerHTML = html;
+        form = GV.form({
+          mount:govde.querySelector('#pdCikisForm'),
+          id:'pdCikis',
+          record:{ cikisTarihi:e.cikisTarihi || '', cikisNedenKodu:e.cikisNedenKodu || '' },
+          sections:[{ title:'Çıkış kaydı', icon:'i-logout',
+            desc:'Neden kodları DB.reasonCodes içinde `tur` dizisi "cikis" içeren ' +
+                 CIKIS.length + ' koddur.',
+            fields:[
+              { key:'cikisTarihi', label:'Çıkış tarihi', type:'date', required:true, cols:6 },
+              { key:'cikisNedenKodu', label:'Çıkış neden kodu', type:'select', required:true,
+                cols:6, options:CIKIS.map(function(c){
+                  return { value:c.kod, label:c.ad }; }) },
+              { key:'not', label:'Gerekçe açıklaması', type:'textarea', required:true,
+                rows:3, cols:12,
+                hint:'Neden kodu + açıklama, "Ayrıldı" kararının kayıt koşuludur.' }
+            ] }]
+        });
+      },
+      actions:[
+        /* `GV.form` kaydedilmemiş değişiklikte `beforeunload` uyarısı bağlar
+           (bileşende, `ui.js`); vazgeçilen çekmece o uyarıyı geride bırakmasın
+           diye kirlilik bayrağı burada temizlenir. */
+        { label:'Vazgeç', cls:'btn-line',
+          onClick:function(){ if(form && form.setDirty) form.setDirty(false); } },
+        { label:'Ayrılışı tamamla', cls:'btn-danger', close:false,
+          onClick:function(close){
+            if(!form) return false;
+            var v = form.submit();
+            if(!v) return false;                 /* doğrulama düştü, bileşen söyledi */
+            var r = GV.flow.gec('employee', e.kod, 'Ayrıldı',
+              { cikisTarihi:v.cikisTarihi, cikisNedenKodu:v.cikisNedenKodu },
+              { neden:v.cikisNedenKodu, not:v.not });
+            if(r.ok === false){ GV.toast(GV.flowHata(r), 'danger'); return false; }
+            close();
+            GV.toast(e.kod + ' → Ayrıldı', 'ok');
+            GV.refresh();
+          } }
+      ]
+    });
+  }
+});
+</script>
+</body>
+</html>
