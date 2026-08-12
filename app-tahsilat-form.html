@@ -470,6 +470,10 @@ document.addEventListener('gv:ready', function(){
       { key:'yontem', label:'Yöntem', type:'text', cols:4, required:true,
         showIf:function(v){ return !!v.gerceklesti; },
         placeholder:YONTEMLER[0] || 'Havale',
+        /* K-44 `list[]` yuvası — alan SERBEST METİN kalır, öneri listesi
+           `<datalist>` olarak bileşenin kendi çiziminde basılır. Önceden
+           bu liste forma çizimden SONRA elle iliştiriliyordu (yama). */
+        list:YONTEMLER,
         hint:'SERBEST METİN. Yöntem sözlüğü veri katmanında yok (ödeme yöntemlerini tutan bir ' +
              'koleksiyon hiç tanımlı değil) ve 17 tahsilat kaydının 17\'sinde de yontem alanı yok. ' +
              'Aşağı açılır öneriler tahsis defterindeki (DB.paymentAllocations) mevcut ' +
@@ -605,24 +609,13 @@ document.addEventListener('gv:ready', function(){
     }
   }
 
-  /* ⚠️ ÖLÇÜLEN BİLEŞEN BOŞLUĞU (raporlandı, ortak katman DEĞİŞTİRİLMEDİ):
-     `GV.form` alan sözleşmesinde bir `datalist` yuvası YOK (ui.js:2109-2116
-     metin dalı yalnız placeholder/min/max basıyor). Yöntem alanı sözlüksüz
-     ve serbest metin olmak ZORUNDA — ama defterde ölçülmüş değerleri
-     kullanıcıdan gizlemek de bilgi yutmak olurdu. Bu yüzden datalist forma
-     çizimden SONRA iliştiriliyor; alan yine serbest metindir, doğrulama
-     değişmez. `GV.form`a `list:[]` yuvası eklemek ana oturumun işidir. */
-  if(!nakitliKayit && canFinans && YONTEMLER.length){
-    var yonEl = form.el.querySelector('[name="yontem"]');
-    if(yonEl){
-      var dl = document.createElement('datalist');
-      dl.id = 'thsYontemList';
-      dl.innerHTML = YONTEMLER.map(function(y){
-        return '<option value="' + GV.esc(y) + '"></option>'; }).join('');
-      yonEl.setAttribute('list', 'thsYontemList');
-      yonEl.parentNode.appendChild(dl);
-    }
-  }
+  /* ⚠️ DATALIST YAMASI KALKTI (K-44). Burada bir `<datalist>` düğümü elle
+     kurulup `form.el` içine çizimden SONRA iliştiriliyordu, çünkü alan
+     sözleşmesinde öneri yuvası yoktu. Yuva geldi (`fields[].list`), yama
+     gitti: liste artık alanın kendi tanımında ve bileşenin çiziminde.
+     Alanın serbest metin oluşu ve doğrulaması DEĞİŞMEDİ — `list` bir sözlük
+     değil ÖNERİdir; ölçülen değerler (`DB.paymentAllocations`) kullanıcıdan
+     gizlenmiyor ama seçenek listesine de dönüşmüyor. */
 
   /* =================================================================
      KAYDETME
