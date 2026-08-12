@@ -56,6 +56,9 @@
 /* =====================================================================
    2. GÜNDEM PANELİ — şartname §4.1
    En fazla altı kart: ajanda · iş kuyruğu · notlar · bildirim + iki özet
+   Bu tavan KORUNUYOR. Rota 2 ve 5 (`app-panel-ozet` · `app-panel-duyurular`)
+   yedinci·sekizinci·dokuzuncu KART olarak değil, §3'ün adıyla söylediği
+   biçimde — **DRAWER** olarak gömüldü; tetikleyicileri `.pn-serit`tir.
    ===================================================================== */
 .pn-grid{ margin-top:var(--sp-9); }
 .pn-col{ display:flex; flex-direction:column; gap:var(--sp-9); min-width:0; }
@@ -64,6 +67,17 @@
 .pn-col .gv-card + .gv-card{ margin-top:0; }
 
 .pn-card{ display:flex; flex-direction:column; min-width:0; }
+
+/* Panel çekmece şeridi — rota 2 · 5. Kart DEĞİL: tavan altı kartta kalsın
+   diye üç yüzey buradan çekmece olarak açılır (§3 "widget ve drawer'ları"). */
+.pn-serit{
+  display:flex; flex-wrap:wrap; align-items:center; gap:var(--sp-5);
+  margin-top:var(--sp-9); padding:var(--sp-7);
+  background:var(--bg-sunk); border-radius:var(--r-md);
+}
+.pn-serit-lbl{ margin-right:var(--sp-3); }
+.pn-serit .btn{ display:inline-flex; align-items:center; gap:var(--sp-3); }
+
 .pn-body{ min-width:0; }
 .pn-pad{ padding:var(--card-pad); }
 

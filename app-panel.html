@@ -37,9 +37,27 @@
      2. Sol kolon  : günün ajandası + öncelikli iş kuyruğu
      3. Sağ kolon  : Hızlı Notlar + son bildirimler
      4. Alt satır  : rol bazlı İKİ özet
-   "Her kullanıcı panelde en fazla ALTI kart görmelidir." → tam altı kart:
+   "Her kullanıcı panelde en fazla ALTI kart görmelidir." → §4.1'in altı kartı:
    ajanda · iş kuyruğu · hızlı notlar · bildirimler + iki rol özeti.
    KPI şeridi kart sayılmaz (kart değil, sayaç satırıdır).
+
+   ⚠️ GÖMME DİLİMİ — rota 2 (§23.13) ve rota 5 (§23.5), 13 Ağustos 2026.
+   Dondurulmuş R1 `app-panel-ozet.html` blok blok okundu; üç bloğun R2'de
+   karşılığı YOKTU ve bu ekrana gömüldü:
+     · Duyurular          (rota 5 · `DB.announcements`)
+     · Dikkat gerektiren  (rota 2 · `DB.policies` · `DB.inspections` · `DB.vehicles`)
+     · Dünden bugüne      (rota 2 · `GV.audit.oku` → `DB.activities` + `DB.logs`)
+   Var olan altı kartın hiçbiri silinmedi, sırası değişmedi, hiçbirinin
+   yordamına dokunulmadı; üç kart ALTLARINA eklendi.
+
+   ⚠️ ÖLÇÜLEN ÇELİŞKİ — BEYAR KARARINA AÇIK. §4.1'in "en fazla altı kart"
+   cümlesi bu üç kartla birlikte personel kimliğinde AŞILIR (ölçüldü:
+   sahip 9 · pm 9 · müşteri 6). Aynı §4.1 kaynağı (`sadelestirme-talimati.md`
+   §3) R1'in duyuru/onay/bildirim sayfalarını "panel widget ve drawer'ları"na
+   taşımayı da emrediyor: belge kendi içinde çelişiyor. Ajan bunu SESSİZCE
+   çözmedi — üç kart rota sözleşmesi gereği basıldı, tavan aşımı burada ve
+   raporda YAZILI. Karar Beyar'ındır; kart sayısı buradan geri alınabilir.
+   Üç kartın hepsi salt okunurdur; hiçbiri yeni menü girdisi açmaz.
    ===================================================================== */
 document.addEventListener('gv:ready', function(){
   var F  = GV.fmt;
@@ -331,6 +349,315 @@ document.addEventListener('gv:ready', function(){
     return secim.map(function(k){ return (OZET_FN[k] || projeOzet)(); }).join('');
   }
 
+  /* =================================================================
+     5. GÖMÜLEN ÜÇ KART — rota 2 (§23.13) ve rota 5 (§23.5)
+     Üçü de SALT OKUNUR. Hiçbiri yazma yordamı gerektirmez, hiçbiri
+     olmayan bir yordamı düğme olarak vaat etmez (§23.1 sınıfı).
+     ================================================================= */
+
+  /* ---- 5a. KART — Duyurular (rota 5) ------------------------------
+     `DB.announcements`: kod · baslik · ozet · icerik · yazan · tarih ·
+     oncelik · dep · aktif · okuyanlar. `okuyanlar` bir DİZİDİR ve okuma
+     durumu ondan TÜRETİLİR — ekran kendi "okundu" ekseni tutmaz (L-08).
+     Müşteri portalı kimliğinde BASILMAZ: duyuru şirket içi bir yayındır,
+     `yazan` ve `okuyanlar` personel kodudur; `GV.session.emp` null olan
+     kimlik bu defterin muhatabı değildir (Hızlı Notlar'daki kapının aynısı). */
+  function duyuruOkundu(a){
+    return Array.isArray(a.okuyanlar) && a.okuyanlar.indexOf(me) !== -1;
+  }
+  function duyuruDep(a){
+    /* `dep` departman etiketidir, SÜZGEÇ DEĞİL: §23.5 duyuruyu departmanla
+       sınırlamıyor. Oturumun departmanı dışındaki duyuru gizlenmez, etiketi
+       basılır. Ölçüm: bugün üç kaydın üçünde de `dep` null → "Tüm şirket". */
+    if(a.dep == null || a.dep === '') return '<span class="tag">Tüm şirket</span>';
+    var kodlar = Array.isArray(a.dep) ? a.dep : [a.dep];
+    return kodlar.map(function(d){
+      return '<span class="tag">' + GV.esc(DB.depName(d)) + '</span>';
+    }).join(' ');
+  }
+  function duyuruVeri(){
+    if(!me) return '';
+    /* K-33 · §22.5 — `DB.announcements` AKTİF KANONLUDUR: `durum` alanı
+       taşımıyor (ölçüldü), bu yüzden yayın ekseni `aktif`tir ve tuzak
+       değildir. Aynı soru `durum` taşıyan defterlerde `GV.arsivli`ye
+       sorulur — aşağıdaki dikkat kartı tam olarak öyle yapıyor. */
+    var hepsi = (DB.announcements || []).filter(function(a){ return a.aktif !== false; })
+      .sort(function(a, b){ return String(b.tarih).localeCompare(String(a.tarih)); });
+    var okunmamis = hepsi.filter(function(a){ return !duyuruOkundu(a); }).length;
+
+    var body;
+    if(!hepsi.length){
+      body = GV.empty({ icon:'i-megaphone', title:'Yayında duyuru yok',
+                        desc:'Aktif işaretli bir duyuru kaydı bulunmuyor.' });
+    }else{
+      /* Kesme YOK: R2'de ayrı duyuru ekranı bulunmuyor (menüde de girdisi
+         yok ve bu dilimde YENİ GİRDİ AÇILMAZ — §23.9.2). Kartta gösterilmeyen
+         duyuru hiçbir yüzeyde görünmez olurdu; o yüzden aktif olanın hepsi
+         basılır. */
+      body = '<ul class="pn-list">' + hepsi.map(function(a){
+        var ok = duyuruOkundu(a);
+        return '<li class="pn-row">' +
+          '<span class="pn-main"><b>' + GV.esc(a.baslik) + '</b>' +
+            '<span class="pn-sub">' + GV.esc(a.ozet || '—') + '</span>' +
+            '<span class="pn-sub">' + GV.esc(DB.empName(a.yazan)) + ' · ' +
+              F.dateShort(a.tarih) + ' · ' + duyuruDep(a) + '</span>' +
+            /* `icerik` uzun metindir; satırda ÖZET basılır (§23.5). Tam metin
+               atılmaz, aynı kartta açılır — `<details>` ortak katmana
+               dokunmayan yerinde derinleşmedir (emsal: §23.3, app-rapor.html
+               komisyon hücresi). */
+            (a.icerik
+              ? '<details><summary class="u-sm">Tam metin</summary>' +
+                '<span class="u-sm u-muted">' + GV.esc(a.icerik) + '</span></details>'
+              : '<span class="pn-sub u-faint">Bu duyuruda tam metin (icerik) yazılı değil.</span>') +
+          '</span>' +
+          '<span class="pn-right">' + GV.pri(a.oncelik) +
+            (ok ? GV.badge('Okundu', 'is-ok') : GV.badge('Okunmadı', 'is-warn')) +
+          '</span>' +
+        '</li>';
+      }).join('') + '</ul>';
+    }
+
+    /* ⚠️ "Okundu işaretle" DÜĞMESİ BASILMADI ve sebebi ekranda yazar.
+       `DB.announcements[].okuyanlar` dizisine yazan bir yordam yok (ortak
+       katmanda arandı); kaydetmeyen düğme sahte düğmedir (§14.6 · §23.1).
+       Cümle kuralın KENDİSİNDEN türetilir, elle yazılmaz (§23.11 dersi). */
+    body += '<div class="pn-foot"><span class="pn-hint">' + GV.esc(
+      '"Okundu" rozeti kaydın okuyanlar dizisinden türetilir — oturum personeli ' +
+      (me || '—') + ' bu dizide geçiyorsa okundu sayılır. ' +
+      'Okundu işaretleme düğmesi BASILMADI: bu diziye yazan bir yordam yok, ' +
+      'kaydetmeyen düğme sahte düğmedir. Satırda özet basılır; tam metin ' +
+      'aynı satırda açılır, çünkü R2\'de duyurunun gidebileceği ikinci bir ekran yok.'
+    ) + '</span></div>';
+
+    return { anahtar:'duyuru', baslik:'Duyurular', ikon:'i-megaphone',
+             alt:okunmamis + ' okunmamış · ' + hepsi.length + ' duyuru',
+             rozet:okunmamis || null, govde:body };
+  }
+
+  /* ---- 5b. KART — Dikkat gerektirenler (rota 2) --------------------
+     ⚠️ EŞİK BU EKRANIN KARARIDIR. Ortak katmanda bir vade/yenileme eşiği
+     yordamı YOKTUR — arandı: `GV.yenileme` yalnız 'sozlesme' ve 'paket'
+     türlerini bir yıl UZATIR (yazma yordamı), eşik hesaplamaz; poliçe ·
+     muayene · bakım defterlerinde eşik alanı da yok. 60 gün, aynı soruyu
+     soran `app-arac-detay.html` poliçe kartının eşiğiyle BİREBİR AYNIDIR:
+     aynı soru iki farklı eşikle iki yerde sorulmaz (L-40). Sessiz eşik,
+     uydurulmuş kuraldır — bu yüzden ekranda da yazılıdır.
+     `kalanGun` alanı kayıtlarda yazılı ama OKUNMAZ: türetilebilen sayaç
+     veriden okunmaz (L-08), tarihten `F.days` ile türetilir. */
+  var VADE_ESIK  = 60;   /* gün — karta girme eşiği */
+  var VADE_YAKIN = 15;   /* gün — kırmızıya dönme eşiği */
+
+  function aracPlaka(kod){
+    var v = (DB.vehicles || []).filter(function(x){ return x.kod === kod; })[0];
+    return v ? v.plaka : (kod || '—');
+  }
+  function dikkatSatirlari(){
+    var r = [];
+    function ekle(tur, tarih, baslik, alt){
+      var g = tarih ? F.days(tarih) : null;
+      if(g == null || g > VADE_ESIK) return;
+      r.push({ tur:tur, gun:g, baslik:baslik, alt:alt });
+    }
+    /* K-33 — `DB.policies` de AKTİF KANONLUDUR (`durum` alanı YOK, ölçüldü:
+       14 alanlık şema; `app-arac-detay.html` §22.13 aynı ölçümü taşıyor). */
+    (DB.policies || []).forEach(function(p){
+      if(p.aktif === false) return;
+      ekle('Poliçe', p.bitis, aracPlaka(p.arac) + ' · ' + (p.tur || 'Poliçe'),
+           p.kod + ' · ' + (p.sirket || '—') + ' · bitiş ' + F.dateShort(p.bitis));
+    });
+    /* ⚠️ TUZAK ALAN — eksen yakaladı, düzeltildi. Burada `x.aktif === false`
+       okunuyordu; `DB.inspections` `durum` TAŞIR, yani DURUM KANONLUDUR ve
+       `aktif` orada tuzaktır (§22.5 · K-33). Arşiv sorusu tek yordama
+       sorulur: `GV.arsivli`. Ölçüldü: bugün 4 kaydın 0'ı arşivli, yani
+       görünen sonuç değişmiyor — ama okunan EKSEN değişiyor. */
+    (DB.inspections || []).forEach(function(x){
+      if(GV.arsivli(x)) return;
+      ekle('Muayene', x.sonrakiTarih, aracPlaka(x.arac) + ' · muayene',
+           x.kod + ' · son tarih ' + F.dateShort(x.sonrakiTarih));
+    });
+    /* ⚠️ AYNI TUZAK — `DB.vehicles` da `durum` taşır (K-33). */
+    (DB.vehicles || []).forEach(function(v){
+      if(GV.arsivli(v)) return;
+      ekle('Bakım', v.sonrakiBakimTarihi, v.plaka + ' · periyodik bakım',
+           v.kod + ' · plan ' + F.dateShort(v.sonrakiBakimTarihi) +
+           (v.durum ? ' · ' + v.durum : ''));
+    });
+    return r.sort(function(a, b){ return a.gun - b.gun; });
+  }
+  function dikkatVeri(){
+    /* Kapı: araç/varlık defterleri "Ekip ve Kaynaklar" bölümünde yaşıyor
+       (`app-varlik.html`, shell.js SECTIONS.ekip). Bölümü göremeyen rol
+       bu kaydın uyarısını da görmez — kapı TEK yerden okunur, kopyalanmaz. */
+    if(!GV.perm.sec('ekip')) return '';
+    var satir = dikkatSatirlari();
+
+    var body;
+    if(!satir.length){
+      body = GV.empty({ icon:'i-check-circle', title:'Vadesi yaklaşan kayıt yok',
+        desc:'Poliçe, muayene ve bakım defterlerinde ' + VADE_ESIK +
+             ' gün içinde dolan bir kayıt bulunmuyor.' });
+    }else{
+      body = '<ul class="pn-list">' + satir.map(function(x){
+        var gecti = x.gun < 0;
+        return '<li class="pn-row' + (gecti ? ' is-late' : '') + '">' +
+          '<span class="pn-main"><b>' + GV.esc(x.baslik) + '</b>' +
+            '<span class="pn-sub">' + GV.esc(x.alt) + '</span></span>' +
+          '<span class="pn-right"><span class="tag">' + GV.esc(x.tur) + '</span>' +
+            '<span class="cell-date' + (x.gun <= VADE_YAKIN ? ' is-late' : ' is-soon') + '">' +
+              (gecti ? Math.abs(x.gun) + ' gün geçti' : x.gun + ' gün kaldı') +
+            '</span></span>' +
+        '</li>';
+      }).join('') + '</ul>';
+    }
+
+    /* K-21 — iki yüzey aynı defteri göstermez. Panelde ZATEN basılan
+       defterler bu karta ALINMADI ve sebebi ekranda yazar. */
+    body += '<div class="pn-foot"><span class="pn-hint">' + GV.esc(
+      VADE_ESIK + ' günlük eşik BU EKRANIN kararıdır: ortak katmanda vade/yenileme ' +
+      'eşiği yordamı, defterlerde de eşik alanı yok. Eşik, aynı soruyu soran araç ' +
+      'detayı poliçe kartıyla aynıdır. ' + VADE_YAKIN + ' günün altı kırmızı basılır. ' +
+      'Okunan defterler: poliçe · muayene · araç bakımı. Okunmayanlar ve sebebi: ' +
+      'fatura/tahsilat vadesi (aynı vade KPI şeridindeki "Beklenen tahsilat" ve ' +
+      'Nakit özeti kartında zaten var), satın alma ve izin onayları (ikisi de ' +
+      'onay defterinde ve KPI şeridindeki "Bekleyen onay" sayacında zaten var) — ' +
+      'aynı sayı iki yüzeyde basılmaz. Kalan gün, kayıttaki kalanGun alanından ' +
+      'değil tarihten türetilir.'
+    ) + '</span></div>';
+
+    return { anahtar:'dikkat', baslik:'Dikkat gerektirenler', ikon:'i-alert',
+             alt:satir.length + ' kayıt · ' + VADE_ESIK + ' gün eşiği',
+             rozet:satir.length || null, govde:body };
+  }
+
+  /* ---- 5c. KART — Dünden bugüne (rota 2) ---------------------------
+     Defter seçimi ÖLÇÜLDÜ: `DB.activities` (207) ve `DB.logs` (7) İKİ ayrı
+     defterdir ve ortak katman ikisini `GV.audit` altında BİRLEŞTİRMİŞTİR
+     (domain.js: "iki defter vardı ve birbirini görmüyordu"). Ekran hangi
+     deftere yazıldığını bilmek zorunda kalmasın diye `GV.audit.oku()`
+     çağrılır; ham defteri okumak, ortak katmanın kapattığı çift defter
+     kusurunu bu ekranda yeniden açardı.
+     Zaman ekseni `DB.today`dir — `F.days` referansı DB.today, tarayıcı
+     saati DEĞİL (mock veri sabit gün ekseni kullanır). */
+  /* Ortak katmanda gün ekleyen bir yordam YOK (`GV.fmt` arandı: `days` var,
+     `addDays` yok) — eksik imza raporlandı. Dün, `DB.today`den türetilir;
+     `new Date()` OKUNMAZ, mock veri sabit gün ekseni kullanır. */
+  function dunTarihi(){
+    var d = new Date(t + 'T00:00:00Z');
+    d.setUTCDate(d.getUTCDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }
+  function hareketVeri(){
+    if(!me) return '';
+    var kapsam = GV.perm.scope('gor');
+    var logVar = GV.perm.can('log');
+
+    var hepsi = (GV.audit && GV.audit.oku) ? GV.audit.oku(null) : [];
+    var son = hepsi.filter(function(x){
+      var g = F.days(x.tarih);
+      return g != null && g >= -1;      /* dün (-1) ve bugün (0) */
+    });
+    /* Sistem günlüğü satırları log yetkisine bağlıdır; olay defteri satırları
+       değildir. Kapı iki yönde ölçüldü: yetki varken `defter:'sistem'` satırlar
+       kalır, yokken düşer. */
+    if(!logVar) son = son.filter(function(x){ return x.defter !== 'sistem'; });
+
+    /* Satır kapsamı ortak eksendir (`GV.perm.scope('gor')`); eşlenmemiş
+       kapsam SESSİZ geçmez — kullanıcı listenin kısıtlanmadığını da bilir
+       (L-23, `GV.list` ile aynı cümle). */
+    var kapsamNot = '';
+    if(kapsam === 'kendi'){
+      son = son.filter(function(x){ return x.kisi === me; });
+      kapsamNot = 'Yalnız kendi hareketleriniz gösteriliyor.';
+    }else if(kapsam && kapsam !== 'tum' && kapsam !== 'yok'){
+      var ad = kapsam === 'proje' ? 'proje' : kapsam === 'departman' ? 'departman'
+             : kapsam === 'musteri' ? 'müşteri' : kapsam;
+      kapsamNot = 'Kapsamınız ' + ad + ' bazlı, ancak bu kartta ' + ad +
+                  ' süzgeci tanımlı değil — tüm hareketler listeleniyor.';
+    }
+
+    var gosterilen = son.slice(0, 8);
+    var body = son.length
+      ? GV.activity(gosterilen.map(function(x){
+          return { kisi:x.kisi, tarih:x.tarih, tone:x.tone, icon:x.icon,
+                   eski:x.eski, yeni:x.yeni,
+                   metin:x.metin + (x.kayit ? ' · ' + x.kayit : '') };
+        }))
+      : GV.empty({ icon:'i-activity', title:'Dün ve bugün hareket yok',
+          /* Boş durum, hangi süzgeçlerin uygulandığını SÖYLER: "kayıt yok" ile
+             "sizin kapsamınızda kayıt yok" aynı cümle değildir. */
+          desc:'Denetim izinde ' + F.dateShort(dunTarihi()) + ' – ' + F.dateShort(t) +
+               ' aralığına düşen ve size görünen kayıt bulunmuyor.' +
+               (logVar ? '' : ' Sistem günlüğü satırları log yetkiniz olmadığı için hariç.') +
+               (kapsamNot ? ' ' + kapsamNot : '') });
+
+    /* K-21 KARARI — "Son bildirimler" kartıyla ÖRTÜŞME YOK, ölçüldü:
+       o kart `DB.notifications` defterini (size yönlendirilen uyarı, kod
+       ekseni BLD-*) basar; bu kart denetim izini (kim ne yaptı) basar.
+       İki defterin ortak kaydı ve ortak kod ekseni yoktur. Ayrım burada
+       yazılıdır ki iki kart aynı şeyi söylüyor sanılmasın. */
+    body += '<div class="pn-foot"><span class="pn-hint">' + GV.esc(
+      'Son bildirimler kartı SİZE YÖNLENDİRİLEN uyarıları basar; bu kart ' +
+      'KİM NE YAPTI sorusunun denetim izini basar — iki ayrı defter, ortak ' +
+      'kayıt yok. Olay defteri ile sistem günlüğü ortak katmanda birleştirilmiş ' +
+      'tek zaman çizelgesinden okunur. ' +
+      (logVar ? 'Sistem günlüğü satırları log yetkinizle birlikte basılıyor. '
+              : 'Sistem günlüğü satırları log yetkiniz olmadığı için basılmadı. ') +
+      (son.length > gosterilen.length
+        ? 'Dün ve bugüne düşen ' + son.length + ' hareketin en yenisi ' +
+          gosterilen.length + ' tanesi basılır. ' : '') +
+      'Gün ekseni bugünün veri tarihidir (' + t + '), tarayıcı saati değil.' +
+      (kapsamNot ? ' ' + kapsamNot : '')
+    ) + '</span></div>';
+
+    return { anahtar:'hareket', baslik:'Dünden bugüne', ikon:'i-activity',
+             alt:son.length + ' hareket', rozet:son.length || null, govde:body };
+  }
+
+  /* ===================================================================
+     ROTA 2 · 5 — ÜÇ YÜZEY KART DEĞİL **ÇEKMECE**dir
+
+     ⚠️ ŞARTNAME KENDİ İÇİNDE ÇELİŞİYOR GÖRÜNÜYORDU ve ölçülünce çelişki
+     ÇÖZÜLDÜ — sessizce bir taraf seçilmedi:
+
+       §4.1  "Her kullanıcı panelde **en fazla altı kart** görmelidir."
+             (`riskler-ve-kapsam.md`de ölçülmüş kabul kriteri olarak izlenir;
+             bugünkü altı: ajanda · kuyruk · not · bildirim + iki rol özeti)
+       §3    "`app-panel-ozet`, onay, bildirim ve duyuru sayfaları →
+             `/panel` **widget ve DRAWER'ları**"
+
+     Yani §3'ün kendisi bu üç yüzey için ikinci bir biçim adı veriyor:
+     **drawer**. Kart olarak basmak tavanı 6'dan 9'a çıkarıyordu; çekmece
+     olarak basmak **hem rota satırını kapatıyor hem tavanı koruyor**.
+     Ölçüldü: kart sayısı her rolde 6 veya altında kalıyor.
+
+     Şerit düğmesi ÖLÜ DEĞİLDİR — her biri gerçek bir çekmece açar ve
+     üzerinde o yüzeyin ÖLÇÜLEN sayısı yazılıdır. Kapısı kapalı olan
+     yüzeyin düğmesi HİÇ BASILMAZ (devre dışı bırakılmaz): burada
+     yapılamayan bir iş yok, yalnız yetkisi olmayan bir kullanıcı var —
+     §2'nin "yetkisiz öğe menüden kaldırılmalı" ilkesi geçerli.
+     =================================================================== */
+  var EK_YUZEY = [];
+
+  function ekSerit(){
+    EK_YUZEY = [dikkatVeri(), hareketVeri(), duyuruVeri()].filter(Boolean);
+    if(!EK_YUZEY.length) return '';
+    return '<div class="pn-serit">' +
+      '<span class="pn-serit-lbl u-sm u-muted">Panel çekmeceleri</span>' +
+      EK_YUZEY.map(function(y){
+        return '<button type="button" class="btn btn-line btn-sm" data-cekmece="' +
+          GV.esc(y.anahtar) + '">' + GV.ico(y.ikon, 'ic-sm') + GV.esc(y.baslik) +
+          (y.rozet ? '<span class="badge">' + GV.esc(String(y.rozet)) + '</span>' : '') +
+          '</button>';
+      }).join('') + '</div>';
+  }
+
+  function cekmeceAc(anahtar){
+    var y = EK_YUZEY.filter(function(x){ return x.anahtar === anahtar; })[0];
+    if(!y) return;
+    GV.drawer({ title:y.baslik + ' — ' + y.alt, body:y.govde,
+                actions:[{ label:'Kapat', cls:'btn-line' }] });
+  }
+
   /* ---- Kart ve istatistik yardımcıları ---------------------------- */
   function kart(baslik, ikon, alt, govde){
     return '<section class="gv-card pn-card">' +
@@ -351,7 +678,12 @@ document.addEventListener('gv:ready', function(){
         '<div class="pn-col">' + ajandaHtml() + kuyrukHtml() + '</div>' +
         '<div class="pn-col">' + notHtml() + bildirimHtml() + '</div>' +
       '</div>' +
-      '<div class="gv-grid gv-grid-2 pn-grid">' + rolOzetleri() + '</div>';
+      '<div class="gv-grid gv-grid-2 pn-grid">' + rolOzetleri() + '</div>' +
+      ekSerit();
+
+    mount.querySelectorAll('[data-cekmece]').forEach(function(b){
+      b.addEventListener('click', function(){ cekmeceAc(b.dataset.cekmece); });
+    });
 
     var btn = document.getElementById('pnNoteOpen');
     if(btn) btn.addEventListener('click', function(){ GV.quickNote.ac(); });
