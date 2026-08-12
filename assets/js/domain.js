@@ -268,13 +268,39 @@
      `{ok:false, why:…}` dönerse geçiş reddedilir; `istisnaRol` listesindeki
      rol gerekçe + neden kodu ile geçebilir (ADR-04 · ADR-05). */
   var Gates = {
-    /* Proje "Aktif" ön koşulları — şartname [5.2.3] */
+    /* Proje "Aktif" ön koşulları — şartname [5.2.3]
+       ─────────────────────────────────────────────────────────────────
+       ⚠️ K-40 · ADR-R2-40 — KAPI İKİ ALANI DA OLMAYAN ADLA OKUYORDU.
+       Ölçüldü: yordam `p.bitis` ve `p.sozlesme` okuyordu; `DB.projects`
+       şemasında bu iki alan **14 kaydın 14'ünde de YOK** (gerçek adlar
+       `planlananBitis`, ve sözleşme bağı hiç `projects` tarafında değil).
+       Sonuç: kapı 14 projenin 14'ünde de REDDEDİYORDU ve `istisnaRol`
+       boş olduğu için hiçbir rol geçemiyordu — yani hiçbir proje Aktife
+       ALINAMIYORDU. `Başlatma Onayı → Aktif` kenarı fiilen kapalıydı.
+
+       ADR-R2-33'ün `sozlesmeAktif` kusuruyla AYNI SINIF: yanlış defteri /
+       yanlış alan adını okuyan bir kapı, dengeli bir kaydı da reddeder ve
+       kimse fark etmez çünkü "reddedildi" beklenen cevap gibi görünür.
+       V2-47'nin de aynası: orada kapı HİÇ KAPANMIYORDU, burada HİÇ
+       AÇILMIYORDU. İkisi de L-31 ("uygulanmayan kural").
+
+       Sözleşme bağı artık OTORİTE DEFTERDEN okunur (`DB.contracts[].proje`,
+       6/7 dolu) — `projects` tarafında bir ayna alan aranmaz. Defter yüklü
+       değilse "sözleşme yok" DEMEK YANLIŞTIR, ölçülemedi demektir (L-13 ·
+       L-25 · `sozlesmeAktif` ile aynı disiplin). */
     projeAktif:function(p){
       var eksik = [];
-      if(!p.pm)         eksik.push('proje yöneticisi');
-      if(!p.baslangic || !p.bitis) eksik.push('başlangıç/bitiş tarihi');
-      if(!p.musteri && p.kaynak === 'Müşteri Sözleşmesi') eksik.push('müşteri');
-      if(p.kaynak === 'Müşteri Sözleşmesi' && !p.sozlesme) eksik.push('sözleşme bağı');
+      if(!p.pm) eksik.push('proje yöneticisi');
+      if(!p.baslangic || !p.planlananBitis) eksik.push('başlangıç/planlanan bitiş tarihi');
+      if(p.kaynak === 'Müşteri Sözleşmesi'){
+        if(!p.musteri) eksik.push('müşteri');
+        if(!window.DB || !DB.contracts)
+          return { ok:false, olculemedi:true,
+                   why:'Sözleşme defteri bu ekranda yüklü değil — müşteri sözleşmesi ' +
+                       'kaynaklı projede sözleşme bağı kontrolü YAPILAMADI.' };
+        var bagli = DB.contracts.filter(function(c){ return c.proje === p.kod; });
+        if(!bagli.length) eksik.push('sözleşme bağı (DB.contracts[].proje)');
+      }
       return eksik.length ? { ok:false, why:'Aktife almak için eksik: ' + eksik.join(', ') } : { ok:true };
     },
     /* Proje "Teslim" — açık kritik hata / başarısız zorunlu test [5.2.5] */
