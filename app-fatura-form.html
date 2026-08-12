@@ -575,13 +575,23 @@ document.addEventListener('gv:ready', function(){
     });
   }
 
+  /* ⚠️ LİSTEDEN ÇIKARMA YAMASI KALKTI (K-44). Faturası olan taksit
+     `filter` ile listeden SİLİNİYORDU; etiket metni ("— faturası var: FTR-…")
+     yazılıydı ama basılamıyordu, çünkü gösterilmeyen seçeneğin etiketi de
+     görünmezdi. Kullanıcı taksiti "yok" sanıyordu, oysa VARDI ve
+     faturalanmıştı — bilgi yutuluyordu.
+     Gelen yuva `options[].disabled` (K-44): seçenek GÖRÜNÜR, seçilemez ve
+     NEDEN seçilemediği etiketinde yazılı.
+     ⚠️ KORUNAN SEÇENEK: düzenlenen kaydın kendi taksiti `disabled` DEĞİLDİR
+     — kendi değerini seçilemez yapmak, formu kendi kaydını kaydedemez hâle
+     getirirdi (`validate` mevcut değeri tolere eder). */
   function taksitSecenekleri(szK, seciliKod){
     if(!szK) return [];
     return sozlesmeTaksitleri(szK)
-      .filter(function(m){ return !faturaliMi(m.kod) || m.kod === seciliKod; })
       .map(function(m){
         var f = taksitFaturasi[m.kod];
-        return { value:m.kod,
+        var kapali = !!f && m.kod !== seciliKod;
+        return { value:m.kod, disabled:kapali,
           label:m.kod + ' · ' + (m.taksit || '—') + '. taksit · ' + (m.ad || '—') + ' · ' +
                 paraMetin(m.odeme) + ' NET' + (f ? ' — faturası var: ' + f : '') };
       });
@@ -655,7 +665,8 @@ document.addEventListener('gv:ready', function(){
                 : (taksitler.length
                     ? taksitler.length + ' taksitin ' + (taksitler.length - acikTaksit.length) +
                       ' tanesinin faturası var, ' + acikTaksit.length + ' tanesinin yok; ' +
-                      'listede yalnız faturalanmamış olanlar seçilebilir. Seçilirse NET tutar ' +
+                      'faturalanmış taksitler listede GÖRÜNÜR ama seçilemez ve hangi faturaya ' +
+                      'bağlandıkları etiketlerinde yazar. Seçilirse NET tutar ' +
                       'taksitten gelir ve salt okunur olur.'
                     : 'Bu sözleşmede ödeme planı taksiti YOK; fatura taksitsiz kesilecek.') },
 
