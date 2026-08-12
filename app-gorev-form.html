@@ -75,6 +75,14 @@ document.addEventListener('gv:ready', function(){
   function depAd(k){ var d = depKaydi(k); return d ? d.ad : (k || null); }
   function kisiAd(k){ return k ? (DB.empName(k) || k) : null; }
   function faint(s){ return '<span class="u-faint">' + esc(s) + '</span>'; }
+  /* `multiple:true` alanın okuması: dizi gelir, boş dizi de geçerli bir
+     cevaptır. Tek değer gelirse (bileşen sürümü ne olursa olsun) diziye
+     sarılır — okuma biçimi değişse bile kayıt şekli değişmesin. */
+  function dizi(x){
+    if(x == null || x === '') return [];
+    return (Array.isArray(x) ? x : [x]).filter(function(v){ return v != null && v !== ''; });
+  }
+
   function bosNull(x){
     var s = (x == null) ? '' : String(x).trim();
     return s === '' ? null : s;
@@ -261,9 +269,13 @@ document.addEventListener('gv:ready', function(){
        ekseni susturmuyor, niyeti görünür kılıyor. */
     formKayit.durumBilgi = rec.durum || '';
     formKayit.etiketler  = (rec.etiketler || []).join(', ');
-    /* Çok kişilik alanlar SALT OKUNUR gösterilir — gerekçesi alan tanımında. */
-    formKayit.yardimciBilgi = (rec.yardimci || []).map(kisiAd).join(', ') || '—';
-    formKayit.izleyiciBilgi = (rec.izleyiciler || []).map(kisiAd).join(', ') || '—';
+    /* ⚠️ YAMA KALKTI (K-44 · V2-32). Bu iki alan `yardimciBilgi` /
+       `izleyiciBilgi` adıyla SALT OKUNUR metin basılıyordu, çünkü ortak
+       katmanda çoklu seçim alanı yoktu ve tek seçimlik bir alan çok kişilik
+       listeyi SESSİZCE silerdi. `multiple:true` geldi; artık gerçek alan
+       çizilir ve `read()` DİZİ döner. Kayıt dizisi olduğu gibi verilir. */
+    formKayit.yardimci    = (rec.yardimci || []).slice();
+    formKayit.izleyiciler = (rec.izleyiciler || []).slice();
     formKayit.faturaBilgi   = rec.faturalanabilir == null ? '' : rec.faturalanabilir;
   }else{
     formKayit.veren = (GV.session && GV.session.emp) || '';
@@ -359,26 +371,19 @@ document.addEventListener('gv:ready', function(){
     { key:'dep', label:'Departman', type:'select', cols:6, options:DEPARTMANLAR,
       hint:rec ? '' : 'Varsayılan olarak oturumun departmanı yazıldı.' }
   ];
-  if(rec){
-    /* ⚠️ ÇOKLU SEÇİM YUVASI YOK. `GV.form` `select` alanında `multiple`
-       desteklemiyor ve `read()` tek düğüm okuyor — mevcut kayıtlarda iki
-       kişilik izleyici listeleri var; tek seçimlik bir alan onları SESSİZCE
-       silerdi. Bu yüzden düzenlemede alanlar salt okunur bilgidir.
-       (Eksik bileşen ana oturuma rapor edildi.) */
-    atamaAlanlar.push(
-      { key:'yardimciBilgi', label:'Yardımcı personel', type:'text', cols:6, readonly:true,
-        hint:'Çok kişilik liste. Form bileşeninde çoklu seçim alanı olmadığı için bu ekran ' +
-             'listeyi değiştirmez; olduğu gibi korur.' },
-      { key:'izleyiciBilgi', label:'İzleyiciler', type:'text', cols:6, readonly:true,
-        hint:'Çok kişilik liste. Aynı nedenle salt okunur.' });
-  }else{
-    atamaAlanlar.push(
-      { key:'yardimci', label:'Yardımcı personel', type:'select', cols:6, options:KISILER,
-        hint:'Bu sürümde tek kişi seçilebilir — çoklu seçim alanı ortak katmanda yok. ' +
-             'Kayda tek kişilik liste olarak yazılır.' },
-      { key:'izleyiciler', label:'İzleyici', type:'select', cols:6, options:KISILER,
-        hint:'Aynı sınır: tek kişi seçilir, kayda tek kişilik liste olarak yazılır.' });
-  }
+  /* ⚠️ TEK DAL — düzenleme ve yeni kayıt aynı alanı kullanır (K-44).
+     Önceden iki varyant vardı: düzenlemede salt okunur metin, yeni kayıtta
+     TEK kişilik `select`. İkisi de aynı eksikliğin kılığıydı ve ikincisi
+     daha tehlikeliydi: kullanıcı üç kişilik bir listeyi tek kişiye
+     indirdiğini görmeden kaydediyordu. `multiple:true` ile alan diziyi
+     hem okur hem yazar; `size` bileşenin kendi hesabına bırakılır. */
+  atamaAlanlar.push(
+    { key:'yardimci', label:'Yardımcı personel', type:'select', cols:6,
+      options:KISILER, multiple:true,
+      hint:'Çoklu seçim — Ctrl/Cmd ile birden çok kişi. Kayda DİZİ olarak yazılır.' },
+    { key:'izleyiciler', label:'İzleyiciler', type:'select', cols:6,
+      options:KISILER, multiple:true,
+      hint:'Çoklu seçim. Boş bırakılırsa kayıtta boş dizi durur.' });
 
   var faturaAlani = rec
     ? { key:'faturaBilgi', label:'Faturalanabilir (saat)', type:'number', cols:6, readonly:true,
@@ -642,8 +647,10 @@ document.addEventListener('gv:ready', function(){
       tur:bosNull(v.tur),
       proje:bosNull(v.proje), modul:bosNull(v.modul), sprint:bosNull(v.sprint),
       musteri:bosNull(v.musteri), dep:bosNull(v.dep), veren:bosNull(v.veren),
-      yardimci:bosNull(v.yardimci) ? [bosNull(v.yardimci)] : [],
-      izleyiciler:bosNull(v.izleyiciler) ? [bosNull(v.izleyiciler)] : [],
+      /* `multiple:true` → `read()` zaten DİZİ döner; tek elemanlı diziye
+         sarma yaması kalktı (K-44). */
+      yardimci:dizi(v.yardimci),
+      izleyiciler:dizi(v.izleyiciler),
       kontrolEden:bosNull(v.kontrolEden), onaylayan:bosNull(v.onaylayan),
       oncelik:bosNull(v.oncelik), etki:bosNull(v.etki), aciliyet:bosNull(v.aciliyet),
       destek:bosNull(v.destek), termin:bosNull(v.termin),
@@ -722,6 +729,14 @@ document.addEventListener('gv:ready', function(){
     if(yEtiket.join('|') !== (rec.etiketler || []).join('|')){
       degisen.push('etiketler'); rec.etiketler = yEtiket;
     }
+    /* ⚠️ YAMA KALKTIĞI İÇİN BU İKİ ALAN ARTIK YAZILIYOR (K-44 · V2-32).
+       Salt okunurken güncelleme döngüsünde hiç yerleri yoktu; `multiple:true`
+       ile düzenlenebilir olduklarına göre karşılaştırma da DİZİ eksenindedir
+       (`String(...)` karşılaştırması iki farklı sıralamayı aynı sayardı). */
+    ['yardimci', 'izleyiciler'].forEach(function(k){
+      var yeni = dizi(v[k]);
+      if(yeni.join('|') !== (rec[k] || []).join('|')){ degisen.push(k); rec[k] = yeni; }
+    });
 
     GV.audit.yaz({
       kayit:rec.kod, modul:'Görev',
