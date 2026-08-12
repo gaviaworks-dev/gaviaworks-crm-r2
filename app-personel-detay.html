@@ -898,6 +898,65 @@ document.addEventListener('gv:ready', function(){
     return (a.eksik || []).every(function(k){ return izinli.indexOf(k) !== -1; });
   }
 
+  /* ---- 11.1b EVRAK BEYANI — kapı ONARILDI, beyan ona göre yazılır --
+     ⚠️ BU METİN BİR TUR BAYAT KALDI ve dersi burada duruyor: kapı
+     onarıldığında (V2-47 · ADR-R2-46) ekrandaki "kapı UYGULANMIYOR"
+     cümlesi kendiliğinden yanlışa döndü. Kapının hâlini anlatan cümle,
+     kapının KENDİSİNDEN türetilmeli — sabit metin, kodun bir tur gerisinde
+     kalır. Artık üç şey de ÖLÇÜLEREK basılıyor. */
+  function evrakBeyani(evrak, onbN, durumDagilim){
+    /* (1) Kapının bu kayıttaki kararı — zaten yukarıdaki satırda var,
+       burada GEREKÇESİ açılıyor: hangi şablon, hangi adım. */
+    var sablon = (DB.onboardingTemplates || []).filter(function(t){
+      return t.tur === 'Giriş' && t.tip === 'temel' && t.aktif !== false && /* K-33 */
+             (t.calismaTipi == null || t.calismaTipi === e.calismaTipi); })[0];
+
+    /* (2) EK ŞABLONLAR — V2-96. Kapsam donduruldu ama SESSİZ GEÇİLMEZ:
+       bir kural "kapsam dışı" diye yok sayılırsa, okuyan onun uygulandığını
+       sanar. Uygulanmayan kuralın sessizliği, yanlış kuralın en sinsi hâli
+       (L-31). Ölçüm ekranda: kaç ek şablon var, kaçı bu kişiye uyuyor, kaçı
+       sürece uygulanmış. */
+    var ekler = (DB.onboardingTemplates || []).filter(function(t){
+      return t.tur === 'Giriş' && t.tip === 'ek' && t.aktif !== false; });  /* K-33 */
+    var girisS = surecler.filter(function(o){ return o.tur === 'Giriş'; })[0] || null;
+    var adimAdlari = girisS ? (girisS.adimlar || []).map(function(a){ return a.ad; }) : [];
+    var uyanEkler = ekler.filter(function(t){
+      return (t.rol && (e.roller || []).indexOf(t.rol) !== -1) ||
+             (t.ustDepartman && String(e.depAd || '').indexOf(t.ustDepartman) !== -1); });
+    var uygulanan = ekler.filter(function(t){
+      return (t.adimlar || []).some(function(a){ return adimAdlari.indexOf(a.ad) !== -1; }); });
+
+    return GV.notice({ tone:evrak.ok ? 'info' : 'warn', icon:evrak.ok ? 'i-info' : 'i-alert',
+      title:evrak.ok
+        ? 'personelEvrak kapısı — bu kayıtta GEÇİYOR, kapsamı yazılı'
+        : 'personelEvrak kapısı — bu kayıtta EKSİK EVRAK bulundu',
+      text:'(1) KARAR: ' + esc(evrak.why || 'zorunlu evrağın tamamı tamamlanmış') +
+           (sablon ? ' Ölçüm şablonu: ' + esc(sablon.kod) + ' (' +
+             (sablon.adimlar || []).filter(function(a){ return a.zorunlu; }).length +
+             ' zorunlu adım).' : ' ⚠️ Bu çalışma tipi için temel giriş şablonu YOK.') +
+           ' ' +
+           /* (3) DURUM ÇELİŞKİSİ — tohum veri BİLEREK düzeltilmedi. */
+           (!evrak.ok && GV.hr.durum(e) === 'Aktif'
+             ? '(2) ⚠️ ÇELİŞKİ, BİLEREK DURUYOR: kayıt bugün <b>Aktif</b> ama zorunlu ' +
+               'evrağı açık. Şartname [4.2.3] "zorunlu evrak eksikken personel Aktif ' +
+               'olamaz" diyor; bu kayıt kapı GERÇEKTEN ÖLÇMEYE BAŞLAMADAN ÖNCE ' +
+               'aktifleştirilmiş. Veri DÜZELTİLMEDİ: düzeltmek kapıyı görünmez kılardı ve ' +
+               'kapının değerini kanıtlayan tek kayıt buydu. Eksiklik burada, sebebiyle ' +
+               'birlikte duruyor. '
+             : '(2) Durum: ' + esc(GV.hr.durum(e)) + ' · kapının çalıştığı kenar ' +
+               '`Onboarding → Aktif` ve bugün ' + onbN + ' kayıt o durumda (dağılım: ' +
+               esc(durumDagilim) + '). ') +
+           '(3) KAPSAM — EK ŞABLONLAR UYGULANMIYOR (V2-96): defterde ' + ekler.length +
+           ' etkin `ek` giriş şablonu var' +
+           (uyanEkler.length
+             ? ' ve bunlardan ' + uyanEkler.length + ' tanesi bu kişiye UYUYOR (' +
+               esc(uyanEkler.map(function(t){ return t.kod; }).join(' · ')) + ')'
+             : ' ama hiçbiri bu kişinin rolüne/departmanına uymuyor') +
+           '; süreç kaydına uygulanmış olan: ' + uygulanan.length + '. Kapı yalnız `temel` ' +
+           'şablonu ölçer, ek şablonun zorunlu adımını ARAYAMAZ. Bu bir eksikliktir ve ' +
+           'sessizce geçilmiyor — karar Beyar\'da (V2-96).' });
+  }
+
   /* ---- 11.2 Kapılar — İKİSİ AYRI ŞEY ----------------------------- */
   function kapiKartiYasam(){
     var evrak  = GV.gates.personelEvrak(e);
@@ -932,18 +991,7 @@ document.addEventListener('gv:ready', function(){
       'koşulları yeniden okunmadı: karar <b>GV.gates[ad](kayit)</b> yordamından alındı ' +
       '(brief §22.1b.1). Bir ayna yazmak, aynı kuralın ikinci okuyucusunu doğururdu.</p>' +
       GV.dl(satirlar, { skipEmpty:false }) +
-      '<div class="u-mt-4">' + GV.notice({ tone:'warn', icon:'i-alert',
-        title:'personelEvrak kapısı — İKİ AYRI ölçüm, ikisi de beyan edilir',
-        text:'(1) ULAŞILAMAZ: kapının çalıştığı kenar `Onboarding → Aktif`, ama bugün ' +
-             onbN + ' kayıt Onboarding durumunda (dağılım: ' + durumDagilim + '). ' +
-             'Yani kenar bugünkü veride hiçbir kayıtta görünmüyor. ' +
-             '(2) UYGULANMIYOR (V2-47): yordam `adim.zorunlu && adim.durum !== "Tamamlandı"` ' +
-             'okuyor, oysa ÖRNEK adımları bu iki alanı taşımıyor — yalnız ŞABLON adımları ' +
-             '(DB.onboardingTemplates) `zorunlu` taşır. Bu kaydın giriş sürecinde ' +
-             '`zorunlu` alanı taşıyan adım sayısı: ' + zorunluTasiyan + '. Sonuç: süreç kaydı ' +
-             'olan her personelde kapı her zaman geçiyor. Bu ikisi AYRI şeydir; ' +
-             'karıştırmak "kapı çalışıyor" izlenimi verirdi. Kapsam dondurulmuş, ekran ' +
-             'düzeltmeye çalışmaz.' }) + '</div>', 'u-mt-4');
+      '<div class="u-mt-4">' + evrakBeyani(evrak, onbN, durumDagilim) + '</div>', 'u-mt-4');
   }
 
   /* ---- 11.3 Süreç defteri — GİRİŞ VE ÇIKIŞ AYNI DEFTERDE --------- */
