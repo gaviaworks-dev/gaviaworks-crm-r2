@@ -1327,7 +1327,12 @@
           return { tur:'iliski', anahtar:adim.iliski, ad:t.ad, kisi:null, cozuldu:false,
                    neden:e.kod + ' kaydında `' + t.alan + '` alanı boş — bu personelin ' +
                          'bağlı yöneticisi defterde yazılı değil.' };
-        return { tur:'iliski', anahtar:adim.iliski, ad:t.ad, kisi:hedef, cozuldu:true, neden:null };
+        /* ⚠️ Adımın KENDİ `ad` alanı varsa o kazanır: `ILISKILER[x].ad`
+           ilişkinin genel adıdır ('Bağlı yönetici'), adımın `ad`ı o adıma
+           verilmiş etikettir ('Bağlı Yönetici'). İkisini birden basmak aynı
+           adımın iki yazımını üretiyordu — ekranlar arasında ayrışır. */
+        return { tur:'iliski', anahtar:adim.iliski, ad:adim.ad || t.ad,
+                 kisi:hedef, cozuldu:true, neden:null };
       }
 
       if(adim.rol){
@@ -1343,6 +1348,82 @@
 
       return { tur:null, anahtar:null, ad:adim.ad || null, kisi:null, cozuldu:false,
                neden:'Adımda ne `rol` ne `iliski` yazılı — muhatap tanımsız.' };
+    },
+
+    /* ===================================================================
+       ADIM KOŞULU — EŞİK KARŞILAŞTIRMASI TEK YERDE (K-41 · ADR-R2-41)
+
+       Ölçülen kusur: `adim.esik` karşılaştırması DÖRT ekranda ayrı ayrı
+       yazılıydı ve ikisi `>=`, biri `>` kullanıyordu:
+
+         app-izin-detay.html      `isGun >  s.esik`      ← aykırı olan
+         app-izin-form.html       `isGun >= adim.esik`
+         app-satinalma-form.html  `tutar >= a.esik`
+         app-ayar-sirket.html     karşılaştırmıyor ama "ve üzeri" YAZIYOR
+
+       Tam 10 iş günlük bir izinde iki ekran farklı cevap verir: biri İK
+       adımının tetiklendiğini, öbürü tetiklenmediğini söyler. Bugün eşiğe
+       TAM OTURAN kayıt yok (izinlerde en yüksek iş günü 5, satın almada
+       hiçbir tutar 25.000 ya da 100.000 değil) — yani kusur veri sayesinde
+       görünmüyor (V2-48 sınıfı). Bir kayıt eşiğe oturduğu gün iki ekran
+       ayrışır ve hangisinin doğru olduğunu kimse bilemez.
+
+       KANON `>=`. Üç gerekçe: (1) `app-ayar-sirket.html` — işi zincir
+       TANIMINI göstermek olan ekran — iki yerde "ve üzeri" yazıyor;
+       (2) "eşik" bir alt sınırdır, sınırın kendisi kapsam içindedir;
+       (3) dört yerin ikisi zaten `>=`.
+
+       Yordam ÖLÇÜMÜ ALIR, türetmez: hangi alanın hangi koşula karşılık
+       geldiği (izinde `isGunu`, satın almada `tahminiMaliyet`) çağıranın
+       bilgisidir. Yordamın işi yalnız KARŞILAŞTIRMA — ve `null` döndürerek
+       "ölçülemedi"yi "çalışmıyor"dan ayırmak (L-13).
+
+       adimCalisir(adim, { tutar, gun })
+         → { calisir:true|false|null, kosul, esik, olculen, neden }
+       =================================================================== */
+    adimCalisir:function(adim, olcum){
+      olcum = olcum || {};
+      if(!adim)
+        return { calisir:null, kosul:null, esik:null, olculen:null,
+                 neden:'adım verilmedi' };
+      /* Eşiği olmayan adım her zaman çalışır — `kosul:'hep'` de buraya
+         düşer. Ayırt edici olan `kosul` değil `esik == null`dır. */
+      if(adim.esik == null)
+        return { calisir:true, kosul:adim.kosul || 'hep', esik:null, olculen:null,
+                 neden:'eşik tanımlı değil — bu adım atlanamaz' };
+
+      var alan = adim.kosul === 'tutar' ? 'tutar'
+               : adim.kosul === 'gun'   ? 'gun'
+               : null;
+      if(!alan)
+        return { calisir:null, kosul:adim.kosul, esik:adim.esik, olculen:null,
+                 neden:'“' + adim.kosul + '” koşulunun ölçüm alanı tanımlı değil — ' +
+                       'eşik karşılaştırması yapılamadı' };
+
+      var v = olcum[alan];
+      if(v == null || v === '' || isNaN(Number(v)))
+        return { calisir:null, kosul:adim.kosul, esik:adim.esik, olculen:null,
+                 neden:'“' + alan + '” ölçümü verilmedi — adımın çalışıp ' +
+                       'çalışmayacağı ÖLÇÜLEMEDİ, "çalışmıyor" demek değildir' };
+
+      return { calisir:Number(v) >= adim.esik, kosul:adim.kosul, esik:adim.esik,
+               olculen:Number(v), neden:null };
+    },
+
+    /* Bu kayıt için ÇALIŞACAK adımlar — zincirin türetilmiş uzunluğu.
+       Ölçülemeyen adım `calisir:null` döner ve BU LİSTEYE GİRMEZ; çağıran
+       `olculemeyen` sayısını ayrıca basar, tek bir sayıya yuvarlamaz. */
+    calisanAdimlar:function(tur, olcum){
+      var akis = Approval.akisTanim(tur);
+      if(!akis) return null;
+      var calisan = [], olculemeyen = [];
+      (akis.adimlar || []).forEach(function(a){
+        var r = Approval.adimCalisir(a, olcum);
+        if(r.calisir === true) calisan.push(a);
+        else if(r.calisir === null) olculemeyen.push({ adim:a, neden:r.neden });
+      });
+      return { akis:akis, calisan:calisan, olculemeyen:olculemeyen,
+               toplam:(akis.adimlar || []).length };
     },
 
     /* Yayındaki akış tanımı — sürüm örneğe sabitlenir ([6.3.2]) */

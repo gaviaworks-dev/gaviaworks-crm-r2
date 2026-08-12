@@ -237,7 +237,9 @@ document.addEventListener('gv:ready', function(){
   function calisanAdimlar(tutar){
     if(tutar == null) return null;
     return ADIMLAR.filter(function(a){
-      return a.esik == null || (a.kosul === 'tutar' && tutar >= a.esik);
+      /* Eşik karşılaştırması ortak yordamda (K-41 · ADR-R2-41) — dört
+         ekranda kopyalanmıştı ve biri `>` kullanıyordu. */
+      return GV.approval.adimCalisir(a, { tutar:tutar }).calisir === true;
     });
   }
 

@@ -234,14 +234,24 @@ document.addEventListener('gv:ready', function(){
           '<div class="gc-body u-col">' +
             (akisTan
               ? '<ul class="gv-checklist">' + akisTan.adimlar.map(function(s){
-                  var tetik = s.kosul === 'hep' ? true : (s.kosul === 'gun' ? isGun > s.esik : null);
+                  /* ⚠️ EŞİK KARŞILAŞTIRMASI ARTIK ORTAK YORDAMDA (K-41 ·
+                     ADR-R2-41). Burada `isGun > s.esik` yazılıydı; iki form
+                     ekranı `>=` kullanıyordu ve `app-ayar-sirket.html` "ve
+                     üzeri" YAZIYORDU. Tam 10 iş günlük bir izinde bu ekran
+                     "tetiklenmedi", öbürleri "tetiklendi" diyordu. Kanon
+                     `>=`; kural tek yerde. */
+                  var kr = GV.approval.adimCalisir(s, { gun:isGun });
+                  var tetik = kr.calisir;
                   return '<li><span class="cell-main">' + esc(s.ad) +
                     '<span class="cell-sub">adım ' + s.sira + ' · rol: ' + esc(s.rol) + ' · koşul: ' +
-                    (s.kosul === 'hep' ? 'her talepte' : esc(s.kosul) + ' > ' + s.esik + ' iş günü') +
+                    (s.esik == null ? 'her talepte' : esc(s.kosul) + ' ≥ ' + s.esik + ' iş günü') +
                     ' · bu talepte ' + isGun + ' iş günü' +
-                    (s.kosul === 'hep' ? '' : (tetik ? ' — tetiklendi' : ' — tetiklenmedi')) + '</span></span>' +
-                    (s.kosul === 'hep' ? GV.badge('Her talepte geçerli', 'is-ok')
-                      : (tetik ? GV.badge('Tetiklendi', 'is-warn') : GV.badge('Tetiklenmedi', ''))) +
+                    (s.esik == null ? ''
+                      : tetik === null ? ' — ÖLÇÜLEMEDİ: ' + esc(kr.neden || '')
+                      : tetik ? ' — tetiklendi' : ' — tetiklenmedi') + '</span></span>' +
+                    (s.esik == null ? GV.badge('Her talepte geçerli', 'is-ok')
+                      : tetik === null ? GV.badge('Ölçülemedi', 'is-neutral')
+                      : tetik ? GV.badge('Tetiklendi', 'is-warn') : GV.badge('Tetiklenmedi', '')) +
                     '</li>';
                 }).join('') + '</ul>'
               : '<p class="u-faint u-sm u-mb-0">"İzin talebi" için yayında bir akış tanımı bulunamadı.</p>') +
