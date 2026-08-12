@@ -191,3 +191,35 @@ V2-09 · V2-10 · V2-13 · V2-14 · V2-15 · V2-16 — on üç madde.
 | **V2-66** | `DB.reasonCodes`ta ayar/modül kararına özgü neden türü yok | Modül anahtarı gerekçesi `tur:'istisna'` kodlarını kullanıyor (2 kod). Ayar kararları kendi neden kümesini hak ediyor olabilir |
 | **V2-67** | Rota defterinin §1 özet tablosu satırlarıyla ayrışmıştı | `KARŞILIĞI VAR 44 · GÖMÜLÜYOR 91` yazıyordu, satırlar `42 · 93` diyordu; "bugün yayında 17" beş dilim boyunca güncellenmemişti (gerçek 84). **Düzeltildi** ve `ayar-ekseni [A9]` her koşumda karşılaştırıyor. Ham satır 153 / gerçek 148 farkı dosya sonundaki özet tablosunun beş kopyasıdır (6 · 66 · 79 · 123 · 133) |
 | **V2-68** | ADR-R2-06 ile `arsiv` sekmesi çakışıyor | ADR-R2-06 merkezî belge arşivini **Ayarlar'ın yönetim bloğunda ayrı girdi** yapıyordu (rota 123-125, yönetici 20→21 girdi). Bu turda `app-ayar-log.html › arsiv` sekmesi **aynı yüzeyi** kapsadı (rota 145). Rota 123-124 bilerek ✅ İŞARETLENMEDİ. Beşinci ayar girdisi mi açılsın, yoksa 123-125 bu sekmeye mi gömülsün — Beyar kararı |
+
+---
+
+## Dilim 6 açılışında KAPANAN borç
+
+| Borç | Kapatan karar | Ölçüm |
+|---|---|---|
+| **V2-68** ADR-R2-06 ile `arsiv` sekmesi çakışıyordu | beyar kararı · ADR-R2-06 **revize** | Rota 123-124 `KARŞILIĞI VAR` → **GÖMÜLÜYOR**, hedef `app-ayar-log.html › arsiv`. Beşinci ayar girdisi AÇILMADI: standart kullanıcı **17**, yönetici **20** girdi (21 olmadı). `KARŞILIĞI VAR` 43 → 41 · `GÖMÜLÜYOR` 92 → 94 · `[A9]` doğruluyor |
+| **V2-61** onay zincirinde iki tanımsız rol | K-38 · ADR-R2-38 | `finans` → `muhasebe` (rol, `ad:'Muhasebe'` birebir tutuyor). `yonetici` → **rol DEĞİL ilişki**: `iliski:'yonetici'` → `DB.employees[].yonetici`. 6 adımın 6'sı çözülüyor (önce 4/6); 7 izin talebinde muhatap 3 farklı kişiye çıkıyor — `genelmudur` eşlemesinin yanlış olduğunun ölçümü bu. Sözlük genişletilmedi |
+| **V2-64** kendi kaydında bile maaş kapısı `permMatrix.maas` | K-39 · ADR-R2-39 | Öz-erişim açıldı, kapı **iki yönde de ölçüldü**: kendi kaydı 3/3 açık · başkasının kaydı 3/3 reddedildi · küme sorusu (argümansız) **açılmadı** · `saatlikUcret` aynı kapıda · müşteri oturumu ayrı sebeple reddediliyor |
+| **V2-63** `GV.hr.maas(e)` yok — maaşın maskeleyen okuyucusu | K-39 eki | `GV.hr.maas(e, alan)` ve `GV.hr.maasKapi(e)` yazıldı; maskenin altındaki cümle de ortak katmana taşındı (L-40). Kural iki ekranda kopyalanmıyor artık |
+
+**Ayrıca kapatılan (ölçüm sırasında bulundu, yazılan ekranı doğrudan
+bozuyordu — kapsam istisnası):**
+
+| # | Kusur | Kapatan | Ölçüm |
+|---|---|---|---|
+| **V2-70** | `Gates.projeAktif` **olmayan iki alanı** okuyordu (`p.bitis` · `p.sozlesme`; `DB.projects` şemasında 14/14 kayıtta yok) → kapı 14/14 reddediyor, `istisnaRol` boş, **hiçbir proje Aktife alınamıyor** | K-40 · ADR-R2-40 | `planlananBitis` okunuyor · sözleşme bağı otorite defterden (`DB.contracts[].proje`, 6/7 dolu) · defter yüklü değilse `olculemedi:true`. Geçen **0/14 → 8/14**, reddeden 14/14 → 6/14 (altısı gerçekten sözleşmesiz kapanmış proje). Enjekte edilmiş boş kayıt hâlâ reddediliyor — kapı ölü değil. Rota 32 bu kapının arkasındaydı |
+
+## Dilim 6'da açılan yeni borç
+
+| # | Madde | Ölçüm |
+|---|---|---|
+| **V2-69** | **`AKS-IZN-1` adım 1'in muhatabı bir kayıtta ÇÖZÜLEMİYOR** | `DB.employees[].yonetici` 15/16 dolu; boş olan `EMP-001`dir (kurucu, üstü yok). O kişinin izin talebinde `adimMuhatap` `cozuldu:false` döner ve ekran sebebini basar — doğru cevap. Ama zincirin o durumda ne yapacağı (adımı ATLA · İK'ya DÜŞÜR · talebi reddet) bir **iş kuralı kararıdır** ve verilmedi. Beyar kararı |
+| **V2-71** | **`aktif` alanı üç koleksiyonda daha TUZAKSIZ** | `DB.fuelLogs` (5/5 `true`) · `DB.vehicleExpenses` (8/8) · `DB.policies` (6/6). Sebebi ölçüldü: tuzak yalnız `durum` ekseni olan koleksiyonlara kuruluyor, bu üçünde `durum` alanı YOK. Zararsız — `GV.arsivli(r)` `durum` yokken `aktif`e düşüyor ve tuzağı tetiklemiyor (`DB.bayatAktif.sayac` artmıyor, ölçüldü) — ama §20.2'nin "`aktif` yalnız ÜÇ koleksiyonda kanondur" cümlesi **eksikti**; gerçek sayı altı. Brief §22.5 düzeltti. Tuzağı `durum`suz koleksiyonlara da yaymak mı, yoksa listeyi resmîleştirmek mi — karar verilmedi |
+| **V2-72** | **`DB.salaryHistory` bir GEÇMİŞ DEĞİL** | 15 kaydın **15'inde** `baslangic` = `DB.today` (`2026-08-03`) ve **15'inde** `kaynak:'gozlem'`; `bitis` **0/15** (V2-44 yalnız `bitis`i ölçmüştü). Yani defter tek bir ANI taşıyor, bir zaman serisi yok. `GV.hr.icMaliyet`in üç kademeli çözümünün ikinci kademesi (`tarihi kapsayan maaş kaydı`) bugünkü veriyle **yalnız `DB.today` için** çalışıyor; geçmiş tarihli her zaman kaydı `guvenilir:false` ile bugünkü orana düşüyor. Personel detayı "maaş geçmişi" tablosu basmıyor, "1 gözlem, geçmiş kaydı yok" yazıyor. Gerçek dönem kaydı istenirse veri genişletilmeli |
+| **V2-73** | **`DB.vehicles` şeması brief'te eksik yazılıydı** | 34 alan var, §20.4 "28 alan" diyordu; eksik olan altısı KİRALAMA bloğu (`kiralamaFirmasi` · `sozlesmeBas` · `sozlesmeBit` · `aylikKira` · `kmSiniri` · `depozito` — 1/4 kayıtta dolu). Brief §22.4 düzeltti. Şema sayısını ölçen bir eksen yok: brief'in alan envanteri elle yazılıyor ve kayabiliyor |
+| **V2-74** | **Araç bir `GV.flow` varlığı DEĞİL** | `DB.transitions.vehicle` yok; `DB.vehicles[].durum` (`Aktif` · `Serviste`) düz alan olarak yazılıyor ve geçiş kaydı üretmiyor. Demirbaşta durum TÜRETİLMİŞ (otorite zimmet defteri), araçta ne türetilmiş ne motorlu — üçüncü bir kip. `Serviste` bir bakım kaydıyla (`DB.maintenance.durum === 'Serviste'`) çelişebilir ve kimse fark etmez. Ekranlar bunu `BE-P4` ile beyan ediyor |
+| **V2-75** | **Demirbaş yaşam döngüsünün yazma tarafı YOK** | Üç yordam eksik: `hurdayaAyir` (durum sözlüğünde `Hurda` var, 1 kayıt o durumda, yordam yok) · `zimmetAc` (yeni tutanak açan yordam yok; `kabulEt` var olanı onaylar) · `iadeAl` (`iadeTarihi`/`iadeKontrol`/`eksik`/`iadeAlan` alanları veride var, 1/7 dolu, yazan yordam yok). Demirbaş detayı bu üç düğmeyi **basmıyor** ve sebebini beyan ediyor |
+| **V2-76** | **Yedi araç alt defteri SALT OKUNUR** | `DB.maintenance` · `fuelLogs` · `fines` · `inspections` · `accidents` · `vehicleExpenses` · `policies` — hiçbirinin yazma yordamı yok. Araç detayı "yeni bakım ekle" düğmesi basmıyor. Filo yönetimi istenirse yedi yordam birden gerekiyor |
+| **V2-77** | **Ortalama yakıt tüketimi TÜRETİLEMİYOR** | `DB.fuelLogs` 5 kayıt ve **hiçbir araçta ardışık iki dolum yok**; iki `km` farkı olmadan L/100km hesaplanamaz. KPI **basılmıyor**, `—` + sebep basılıyor (§10.1). Sayı istenirse veri genişletilmeli |
+| **V2-78** | **Kod üretimi 6 ekranda kopya ve `yeniKod` sözleşmesi yetersiz** | `domain.js` üç ayrı yerel `yeniKod` taşıyor (satır 3653 · 3869 · 4256) ve hiçbiri `GV`'ye açılmıyor; ayrıca ikisi sırayı **yalnız içinde bulunulan yılda** tarıyor, oysa altı defterde numara yıllar arasında GLOBAL ilerliyor (`DMB-2023-011` … `DMB-2026-015`). Proje defterinde yıl-içi tarama `PRJ-2026-009` üretir ama 009 numarası `PRJ-2025-009` olarak kullanılmıştır. Brief §22.2 global-max varyantını yazdı ama **her form ekranı kendi kopyasını taşıyor** — L-40. `GV.kodUret(list, onek, {yil})` ortak katmana ait |
