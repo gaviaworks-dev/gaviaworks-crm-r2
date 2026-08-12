@@ -171,13 +171,29 @@ const EKRANLAR = [
   { dosya: 'app-satinalma-form.html?id=SAT-2026-016',   ad: 'Satın Alma · 2 Adım',oturum: true },
   { dosya: 'app-personel-form.html',                    ad: 'Personel Formu',     oturum: true },
   { dosya: 'app-personel-form.html?id=EMP-015',         ad: 'Personel · Saatlik', oturum: true },
-  { dosya: 'app-personel-form.html?id=EMP-006',         ad: 'Personel · Kapalı Form', oturum: true, rol: 'frontend' },
+  /* ⚠️ ÜÇ SATIRIN ROLÜ DÜZELTİLDİ — `frontend` DEĞİL `takimlideri`. Ölçüldü:
+     `SEC_BY_ROLE.frontend` = gundem · operasyon · ayarlar; `ekip` alanı YOK.
+     Personel ekranları `data-sec="ekip"` taşıdığı için kabuk üç ekranı da
+     403 basıyordu ve eksen ekranı değil YETKİSİZ SAYFAYI ölçüyordu: 3 ekran
+     × 6 genişlik = 18 ölçüm, 54 bulgu, hepsi "GEÇERSİZ ÖLÇÜM". Kapı doğru
+     çalışıyordu, ölçüm yanlış tarafa konmuştu.
+
+     `takimlideri` bu üç yerleşimin ölçülebildiği rol: `ekip` alanı AÇIK ama
+     `permMatrix.maas` KAPALI (`sahip · genelmudur · ik · muhasebe` dışında
+     kapalıdır). Oturum EMP-004'e düşer (`roller` içinde `takimlideri` olan
+     ilk kayıt), böylece K-39'un iki yönü de gerçekten çizilir — ölçüldü:
+       · `?id=EMP-004` (KENDİ kaydı) → maasKapi { acik:true,  kaynak:'ozErisim' }
+       · `?id=EMP-005` (BAŞKASI)     → maasKapi { acik:false, kaynak:'permMatrix.maas' }
+       · küme sorusu (argümansız)    → ikisinde de false
+     Öz-erişim satırının kaydı bu yüzden EMP-006 değil **EMP-004**: öz-erişim
+     oturumun KENDİ kaydıyla ölçülür, başkasının kaydıyla ölçülemez. */
+  { dosya: 'app-personel-form.html?id=EMP-006',         ad: 'Personel · Kapalı Form', oturum: true, rol: 'takimlideri' },
   { dosya: 'app-personel-detay.html?id=EMP-006',        ad: 'Personel Detayı',    oturum: true },
   { dosya: 'app-personel-detay.html?id=EMP-006#zimmet', ad: 'Personel · Zimmet',  oturum: true },
   { dosya: 'app-personel-detay.html?id=EMP-015#yasamdongusu', ad: 'Personel · Çıkış', oturum: true },
   { dosya: 'app-personel-detay.html?id=EMP-011',        ad: 'Personel · Boş',     oturum: true },
-  { dosya: 'app-personel-detay.html?id=EMP-006',        ad: 'Personel · Öz-erişim', oturum: true, rol: 'frontend' },
-  { dosya: 'app-personel-detay.html?id=EMP-005',        ad: 'Personel · Maskeli', oturum: true, rol: 'frontend' },
+  { dosya: 'app-personel-detay.html?id=EMP-004',        ad: 'Personel · Öz-erişim', oturum: true, rol: 'takimlideri' },
+  { dosya: 'app-personel-detay.html?id=EMP-005',        ad: 'Personel · Maskeli', oturum: true, rol: 'takimlideri' },
   { dosya: 'app-izin-form.html',                        ad: 'İzin Formu',         oturum: true },
   { dosya: 'app-izin-form.html?id=IZN-2026-039',        ad: 'İzin · Bakiyesiz',   oturum: true },
   { dosya: 'app-demirbas-form.html',                    ad: 'Demirbaş Formu',     oturum: true },
