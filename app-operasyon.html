@@ -660,7 +660,17 @@ document.addEventListener('gv:ready', function(){
   GV.pageHead({
     eyebrow:'Proje ve Operasyon',
     title:'Operasyon',
-    sub:K.kapsamli().length + ' iş kuyrukta · beş tip tek yüzeyde'
+    /* ⚠️ BAYAT BEYAN — rota 51-52 kapatılırken ölçülüp düzeltildi. Burada
+       "beş tip tek yüzeyde" yazıyordu; altıncı tip (departman talebi ·
+       ADR-R2-14) eklendiği gün bu cümle ekranda yanlışa döndü ve çip
+       şeridi altı çip basarken alt satır beş diyordu. Sayı artık
+       YORDAMDAN türetiliyor — tip eklenince cümle kendiliğinden düzelir.
+       Aynı ders §22.13'ün `salt()` cümlesinde ve EMP-016 kartında da
+       yakalandı: bir kuralın hâlini anlatan cümle kuralın KENDİSİNDEN
+       türemeli. Aşağıdaki §6.2 sapma paragrafı zaten "altı" diyordu —
+       iki cümle aynı ekranda birbiriyle çelişiyordu. */
+    sub:K.kapsamli().length + ' iş kuyrukta · ' +
+        Object.keys(K.tipler).length + ' tip tek yüzeyde'
   });
 
   ciz();
