@@ -2671,3 +2671,752 @@ Bir ekranın ihtiyacı olan imza **brief'te yoksa ajan açılmaz** — imza önc
 buraya yazılır. Dilim 5'te bu kural bir kez çiğnendi ve dört ajanın dördü de
 ortak katmanı kazdı. Kazının maliyeti ölçüldü: ajan başına ortalama **80
 araç çağrısı**. Brief'e bir imza yazmanın maliyeti bir satırdır.
+
+## 22. Dilim 6 — KALAN DOKUZ EKRAN (rota defterinin son KARŞILIĞI VAR satırları)
+
+§1–§21 aynen geçerlidir. Bu bölümdeki her sayı **ölçüldü**; ajan hiçbirini
+yeniden ölçmek zorunda değildir. Bir imza burada yoksa **ajan onu yazmaz,
+rapor eder** (§21.12).
+
+> **Bu dilim rota defterini kapatıyor.** Dilim 5 sonunda `KARŞILIĞI VAR` olup
+> yayında olmayan 11 satır vardı; ikisi (`app-dokuman.html` · `-detay`) beyar
+> kararıyla **GÖMÜLÜYOR**'a çevrildi (V2-68 · ADR-R2-06 revizyonu), kalan
+> **dokuzu bu dilimde yazılıyor**. Bundan sonra kendi ekranını almış olup
+> yazılmamış satır **kalmıyor**.
+
+### 22.0 Ekranlar, kabuk öznitelikleri ve YAZIM SIRASI
+
+**Form ekranları ÖNCE yazılır** — detay ekranları onlara bağlantı verir ve
+`GV.afterSave` hedefi olarak onları kullanır.
+
+| # | Rota | Dosya | `data-sec` | `data-screen` | mount |
+|---|---|---|---|---|---|
+| 1 | 32 | `app-proje-form.html` | `operasyon` | `proje` | `rec` |
+| 2 | 115 | `app-satinalma-form.html` | `finans` | `satinalma` | `rec` |
+| 3 | 82 | `app-personel-form.html` | `ekip` | `personel` | `rec` |
+| 4 | 89 | `app-izin-form.html` | `ekip` | `zaman` | `rec` |
+| 5 | 95 | `app-demirbas-form.html` | `ekip` | `varlik` | `rec` |
+| 6 | 100 | `app-arac-form.html` | `ekip` | `varlik` | `rec` |
+| 7 | 81 | `app-personel-detay.html` | `ekip` | `personel` | `rec` |
+| 8 | 94 | `app-demirbas-detay.html` | `ekip` | `varlik` | `rec` |
+| 9 | 99 | `app-arac-detay.html` | `ekip` | `varlik` | `rec` |
+
+**Veri dosyaları** (§1.1 sırası pazarlığa kapalı):
+
+| Ekran | Yüklenecek `assets/data/*.js` |
+|---|---|
+| yedi `ekip` ekranı (3-9) | `org` · `crm` · `work` · `misc` · `ops` · **`hr`** · `lifecycle` |
+| `app-proje-form.html` | `org` · `crm` · `work` · `misc` · `ops` · **`hr`** · `lifecycle` |
+| `app-satinalma-form.html` | `org` · `crm` · `work` · `misc` · `ops` · `lifecycle` |
+
+`firsat.js` · `odeme.js` · `notes.js` · `reports.js` **hiçbirinde yüklenmez**.
+`hr.js` satın alma formunda da gerekmez (`DB.purchases` `ops.js`tedir) —
+kullanmadığın veri dosyasını yükleme.
+
+⚠️ **`assets/` altına ajan DOKUNMAZ.** Bir ekran `BUILT` listesine ana oturum
+tarafından, dosya diske düştükten sonra eklenir (`ayar-ekseni` `BUILT ==
+disk` eşitliğini her koşumda ölçer). Ajan `shell.js`e ekran adı yazmaz.
+
+### 22.1 Bu dilimde ortak katmana EKLENEN imzalar — ajan ÇAĞIRIR, yazmaz
+
+Üçü de bu tur ana oturumda yazıldı ve ölçüldü. Ajan bunları **hazır bulur**.
+
+```js
+/* K-38 · ADR-R2-38 — onay zinciri adımının MUHATABI */
+GV.approval.adimMuhatap(adim, kayit)
+//  → { tur:'rol'|'iliski'|'celiski'|null, anahtar, ad, kisi, cozuldu, neden }
+//  `tur:'rol'`    → bir KÜME ("muhasebe rolündeki herkes"). `kisi` HER ZAMAN null.
+//  `tur:'iliski'` → bir KENAR ("BU kaydın kişisinin yöneticisi"). `kisi` dolu.
+//  `cozuldu:false` → muhatap ÇÖZÜLEMEDİ; `neden` basılır, kişi UYDURULMAZ.
+//  Kayıt verilmezse ilişki adımı `cozuldu:false` döner — bu bir kusur değil,
+//  "zincir TANIMI gösteriliyor, koşumu değil" cevabıdır.
+GV.approval.ILISKILER        // { yonetici:{ad,alan,kisiAlan,aciklama}, veren:{…} }
+
+/* K-39 · ADR-R2-39 — maaş kapısı, ÖZ-ERİŞİM AÇIK */
+GV.hr.maasGorebilir(e)   // KAYIT sorusu: kendi kaydı → true · başkası → permMatrix.maas
+GV.hr.maasGorebilir()     // KÜME sorusu: "başkalarının ücreti" · öz-erişimden ETKİLENMEZ
+GV.hr.maasKapi(e)         // → { acik, kaynak:'permMatrix.maas'|'ozErisim', neden }
+GV.hr.maas(e, alan)       // yetkisizde '••••••' döner, BOŞ ya da 0 DEĞİL
+                          // alan verilmezse 'maas'; 'saatlikUcret' de AYNI kapıda
+```
+
+⚠️ **KÜME ile KAYIT sorusunu karıştırmak yasak.** Bir kişinin kendi ücretini
+görmesi 15 kişilik bir toplamı, bir para süzgecini ya da bir doluluk sayacını
+**açmaz** (maskelenen değer süzgeçle dolaylı olarak geri hesaplanır — UID-11).
+Kural: **tek kayıt basıyorsan argümanlı, küme sayıyorsan argümansız çağır.**
+Liste kolonunda `perm:'maas'` DEĞİL satır bazlı `mask:function(e){ return
+!GV.hr.maasGorebilir(e); }` kullanılır (`app-personel.html` bu turda öyle
+düzeltildi).
+
+**`Gates.projeAktif` bu turda onarıldı (K-40 · ADR-R2-40).** Eskiden `p.bitis`
+ve `p.sozlesme` okuyordu; ikisi de `DB.projects` şemasında **yok**. Kapı 14
+projenin 14'ünde reddediyordu ve `istisnaRol` boş olduğu için **hiçbir proje
+Aktife alınamıyordu**. Artık `planlananBitis` okunuyor ve sözleşme bağı
+otorite defterden (`DB.contracts[].proje`) geliyor: geçen **8/14**, reddeden
+**6/14** (altısı da 2023-2025 kapanmış, sözleşme kaydı olmayan projeler).
+
+### 22.2 KOD ÜRETİMİ — sıra GLOBAL, yıl damgası kayıt yılıdır
+
+⚠️ Ölçüldü ve §13.2'deki desen **bu koleksiyonlarda yetersizdir.** `domain.js`
+içindeki yerel `yeniKod` yordamları sırayı **yalnız içinde bulunulan yılda**
+tarar; oysa bu altı defterde numara **yıllar arasında GLOBAL** ilerliyor:
+
+```
+DMB-2023-011 · DMB-2024-001…003 · DMB-2025-004…010 · DMB-2026-012…015
+PRJ-2023-014 · PRJ-2024-011 · PRJ-2025-008…012 · PRJ-2026-001…008
+SAT-2025-010 · SAT-2026-011…016          IZN-2026-033…039
+EMP-001…016 (YIL DAMGASI YOK)            ARC-001…004 (YIL DAMGASI YOK)
+```
+
+Somut sonuç: proje defterinde yıl-içi tarama `PRJ-2026-009` üretir, ama **009
+numarası `PRJ-2025-009` olarak zaten kullanılmıştır** — kod çakışmaz ama
+defterin sırası bozulur. Bu yüzden bu dilimde **max GLOBAL alınır**:
+
+```js
+/* YIL DAMGALI defterler — DMB · PRJ · SAT · IZN */
+function kodUret(list, onek){
+  var yil = String(DB.today).slice(0, 4), max = 0;
+  (list || []).forEach(function(x){
+    var m = new RegExp('^' + onek + '-\\d{4}-(\\d+)$').exec(x.kod || '');
+    if(m) max = Math.max(max, +m[1]);          /* ← YIL SERBEST, sıra global */
+  });
+  return onek + '-' + yil + '-' + String(max + 1).padStart(3, '0');
+}
+/* YIL DAMGASI OLMAYAN defterler — EMP · ARC */
+function kodUretYilsiz(list, onek){
+  var max = 0;
+  (list || []).forEach(function(x){
+    var m = new RegExp('^' + onek + '-(\\d+)$').exec(x.kod || '');
+    if(m) max = Math.max(max, +m[1]);
+  });
+  return onek + '-' + String(max + 1).padStart(3, '0');
+}
+```
+
+Bugünkü veriyle üreteceği kodlar (ölçüldü): `PRJ-2026-015` · `SAT-2026-017` ·
+`EMP-017` · `IZN-2026-040` · `DMB-2026-016` · `ARC-005`.
+
+Zaman damgası: `DB.today + 'T' + new Date().toTimeString().slice(0,5)`.
+**`new Date()` ile "bugün" alma** — `DB.today` sabittir (`'2026-08-03'`).
+
+### 22.3 GEÇİŞ TABLOLARI — hangi varlıkta var, hangisinde YOK
+
+| Varlık | `DB.transitions` | Doğum durumu | Not |
+|---|---|---|---|
+| `project` | **VAR** (10 durum) | `Plan` | `Plan` → çıkmak için `pm · baslangic · planlananBitis` |
+| `purchase` | **VAR** (12 durum) | `Taslak` | `Taslak` → çıkmak için `urun · tahminiMaliyet` |
+| `leave` | **VAR** (5 durum) | `Taslak` | `Taslak` → çıkmak için `baslangic · bitis · tur` |
+| `employee` | **VAR** (7 durum) | `Taslak` | §20.2'de tam yazılı |
+| **`asset`** | **YOKTUR** | — | `durum` **TÜRETİLİR** (`GV.varlik`) — §22.9 |
+| **`vehicle`** | **YOKTUR** | — | `durum` DÜZ ALANDIR — §22.10 |
+
+**`transitions.leave` — tam tablo (ölçüldü):**
+```
+Taslak        → Onay bekliyor · İptal edildi     yetki:['veren']
+                zorunlu: baslangic · bitis · tur        etiket:'Onaya Gönder'
+Onay bekliyor → Onaylandı · Reddedildi · İptal edildi
+                yetki:['onaylayan','ik','sahip','genelmudur']   etiket:'Onayla'
+Onaylandı     → İptal edildi   yetki:['ik','sahip','genelmudur'] · gerekce:true
+                girisKapi:'izinBakiye'  ← BU KAPI *Onaylandı'ya GİRERKEN* çalışır
+Reddedildi    → (terminal)     girisGerekce:true
+İptal edildi  → (terminal)     girisGerekce:true
+```
+⚠️ `'veren'` bir rol DEĞİL ilişkidir: `Flow.yetkili` onu
+`rec.veren === me || rec.talepEden === me || rec.personel === me` diye çözer.
+İzinde bu **talebi açan personelin kendisi** demektir.
+
+**`transitions.purchase` — eşiği olan kenarlar:** `Taslak` yetkisi
+`['veren','depmudur','operasyon','sahip','genelmudur']`; `Onaya Gönderildi`
+sonrası yetki `depmudur`/`operasyon`/`sahip`/`genelmudur`;
+`Onaylandı`dan sonrası yalnız `operasyon`/`sahip`/`genelmudur`.
+`İade` ve `Reddedildi` **`Taslak`a geri döner** ve `girisGerekce:true` ister —
+geri dönüş kenarı VARDIR, ekran onu basar.
+
+**`transitions.project` — kapılar:**
+`Başlatma Onayı → Aktif` `kenarKapi: projeAktif` ·
+`Test/Kabul → Teslim` `kenarKapi: projeTeslim` (`istisnaRol:['sahip','genelmudur']`) ·
+`Tamamlandı → Arşivlendi` `girisKapi: projeKapanis`.
+`anaHedef` yazılı: `Aktif → Test/Kabul`, `Kapanış → Tamamlandı`.
+
+### 22.4 VERİ GERÇEKLERİ — ölçüldü, uydurma yok
+
+§20.4 bu dilimde de geçerlidir; **aşağıdakiler oraya EKTİR ve düzeltmedir.**
+
+⚠️ **`DB.vehicles` 34 alan taşır, §20.4'te 28 yazılıydı — eksik olan altısı
+KİRALAMA bloğudur:** `kiralamaFirmasi` · `sozlesmeBas` · `sozlesmeBit` ·
+`aylikKira` · `kmSiniri` · `depozito` (hepsi 1/4 — yalnız `ARC-002`).
+
+| Koleksiyon | Adet | Ölçülen gerçek |
+|---|---:|---|
+| `DB.vehicles` | **4** | `mulkiyet`: `Satın alınan` 3 · `Kiralık` 1 (`ARC-002`). `durum`: `Aktif` 3 · `Serviste` 1 (`ARC-003`). `kullanim`: `Personele tahsisli` · `Ortak kullanım`. `tip`: `Otomobil` · `Ticari araç`. `yakit`: `Benzin` · `Dizel` · `Hibrit`. `vites`: `Otomatik` · `Manuel`. `anaSurucu` 2/4 · `yedekSurucu` 2/4 · **`proje` 0/4** · `siparis` 1/4 · `alisTarihi`/`alisBedeli`/`satici` 3/4 (kiralıkta boş) |
+| `DB.policies` | **6** | **ARAÇ SİGORTA POLİÇESİ** — `arac` alanı taşır. `tur`: `Trafik Sigortası` · `Kasko`. Kasko kayıtlarında 5 ek alan dolu (`kaskoBedeli` · `muafiyet` · `ikameArac` · `miniOnarim` · `hasarsizlik` — 3/6). `yenileme` · `odeme` · `kalanGun` yazılı. **`durum` alanı YOKTUR** |
+| `DB.maintenance` | 5 | `durum`: `Yaklaşıyor` · `Serviste` · `Planlandı` · `Tamam`. `tur`: `Periyodik bakım` · `Ağır bakım`. `gercekTarihi` 2/5 · `maliyet` 2/5 (planlıda `null`) · `islemler` DİZİ |
+| `DB.fuelLogs` | 5 | `litre` · `birimFiyat` · `tutar` · `km` · `surucu` · `istasyon`. **`durum` alanı YOKTUR** |
+| `DB.fines` | 2 | `durum`: `Ödendi` · `Ödenmedi`. `tur`: `Hız limiti aşımı` · `Park ihlali`. `belge` dosya adı |
+| `DB.inspections` | 4 | `durum`: `Yaklaşıyor` · `Planlandı`. `sonuc`: `Geçti`. `kusur` 1/4 |
+| `DB.accidents` | 1 | `KZA-2026-002` · `ARC-003` · `kusurOrani:0` · `onarimMaliyet:0` · `durum:'Kapandı'`. ⚠️ İki sıfır da **ölçülmüş değerdir** ("karşı taraf tam kusurlu, hasar sigortadan karşılandı") — `—` basılmaz, `0` basılır ve sebebi yazılır |
+| `DB.vehicleExpenses` | 8 | `tur` 8 çeşit, **her türden 1 kayıt**: `Bakım` · `Yakıt` · `HGS` · `Kira` · `Ceza` · `Sigorta` · `Kasko` · `Lastik`. **`durum` alanı YOKTUR** |
+| `DB.assets` | **15** | 21 alan. `arsiv:true` **1 kayıtta** (`DMB-2023-011`, `durum:'Hurda'`). `zimmetTarihi` 6/15 · `iadeTarihi` 2/15 · `siparis` 3/15 · `barkod` 15/15. `kategori` 8 çeşit (sözlük 20), `altKategori` 9 çeşit **sözlüksüz** |
+| `DB.assignments` | 7 | 13 alan. §20.4'te yazılı olmayan dördü: `iadeKontrol` (1/7 · `'Eksikli'`) · `eksik` (1/7) · `iadeAlan` (1/7) · `hasar` (1/7) |
+| `DB.suppliers` | 7 | `TDR-001…007` · `unvan` · `kategori` · `puan` · `odemeVadesi` · `durum`. Demirbaşın `tedarikci` alanı bu koda bağlanır (5 çeşit kullanılmış) |
+| `DB.performance` | **5** | 18 alan · `PRF-2026-Q2-005` biçiminde kod (⚠️ `PREFIX-YIL-NNN` DEĞİL). `durum`: `Tamamlandı` 4 · `Açık` 1. **Açık kayıtta 12 ölçüt alanı `null`** · `egitimIhtiyaci` DİZİ (3/5) |
+| `DB.trainings` | 4 | `durum`: `Planlandı` · `Tamamlandı`. `tur`: `Online kurs` · `Atölye` · `Seminer`. `katilimci` **DİZİ** · `kazanim` DİZİ · `sertifika` boolean (4/4 `false`) |
+| `DB.onboarding` | **4** | **GİRİŞ VE ÇIKIŞ AYNI DEFTERDEDİR** — `tur`: `Giriş` / `Çıkış`. `adimlar[]` = `{ad, tamam, sorumlu}` · `durum` · `sorumlu` · `not`. Kod `IGC-YYYY-NNN` |
+| `DB.onboardingTemplates` | 6 | `adimlar[]` = `{ad, tur, sorumluRol, gun, zorunlu}` — ⚠️ ŞABLON adımı `zorunlu` taşır, **ÖRNEK adımı taşımaz** (§22.7'deki V2-47 kusuru buradan doğuyor) |
+| `DB.capacity` | 10 | `{personel, kapasite, planlanan, doluluk, izin}` — **16 personelin 10'unda**. Kaydı olmayan 6 kişide "defterde kayıt yok" yazılır, `0` basılmaz |
+| `DB.salaryHistory` | **15** | ⚠️ **BU BİR GEÇMİŞ DEĞİLDİR.** `kod` alanı YOK (anahtar `personel`+`baslangic`). 15 kaydın **15'inde `baslangic` = `DB.today`** ve **15'inde `kaynak:'gozlem'`**, `bitis` **0/15**. Yani defterde tek bir AN vardır, bir zaman serisi yoktur. Ekran "maaş geçmişi" tablosu basmaz; "bugünkü gözlem, geçmiş kaydı yok" yazar (V2-44 eki) |
+| `DB.purchases` | 7 | `kategori` 7 çeşit — ⚠️ **`DB.assetCategories` DEĞİL**: `'Araç'` değeri 20'lik demirbaş sözlüğünde yok. Seçenekler satın alma defterinden türetilir. `butceKodu` 5 çeşit **sözlüksüz** · `proje` 1/7 · `onayAdim`/`onayToplam` **TÜRETİLMİŞ** |
+| `DB.purchaseApprovals` | 16 | `{talep, sira, rol, kisi, durum, tarih, not, turetilmis}` · `kisi` 5/16 · `turetilmis` 11/16 |
+| `DB.projects` | 14 | 32 alan. ⚠️ **`bitis` ve `sozlesme` alanları YOKTUR** (K-40). `arsiv:true` 7/14 (hepsi `Tamamlandı`). `faz` 7/14 (tek değer `Faz 1`). `ekip` · `teknoloji` · `ucuncuTaraf` · `riskler` DİZİ |
+| `DB.contracts` | 7 | Proje bağı **BURADADIR**: `c.proje` 6/7 dolu. `projects` tarafında ayna alan yok |
+| `DB.employees` | 16 | 31 alan. §20.4'te yazılı olmayanlar: `izinBakiye` 16/16 · `doluluk` 16/16 · `roller` DİZİ · `depAd` · `calismaTipi` (`DB.workTypes` 5) · `calismaTuru` (`Tam zamanlı`·`Proje bazlı`·`Yarı zamanlı`, **sözlüksüz**) · `sozlesme` (4 çeşit, **sözlüksüz**) · `uzmanlik` 9/16 |
+
+**Sözlüğü OLMAYAN alanlar — bu dilimde karşına çıkacak tam liste** (§10.1
+gereği değerler kayıtlardan türetilir ve kaynağı ekranda **yazılır**):
+`vehicleStatuses` · `contractTypes` · `performanceStatuses` ·
+`trainingStatuses` · `timelogStatuses` · `timesheetStatuses` ·
+**`altKategori`** (demirbaş) · **`butceKodu`** (satın alma) ·
+**`calismaTuru`** (mesai) · **`mulkiyet`** · **`kullanim`** · **`tip`** ·
+**`yakit`** · **`vites`** · **`renk`** (araç) · **bakım/muayene/ceza/poliçe
+`tur` ve `durum` değerleri**.
+
+### 22.5 ⚠️ `aktif` ALANI — bu dilimde ÜÇ KOLEKSİYONDA TUZAKSIZ
+
+§20.2 "`aktif` yalnız üç koleksiyonda kanondur" diyor (`departments` ·
+`contacts` · `customers`). Bu dilimde ölçüldü ki **üç koleksiyon daha** ne
+tuzaklıdır ne o listededir — çünkü `durum` ekseni **yoktur** ve tuzak yalnız
+`durum` taşıyan koleksiyonlara kuruluyor:
+
+`DB.fuelLogs` (5/5 `true`) · `DB.vehicleExpenses` (8/8 `true`) ·
+`DB.policies` (6/6 `true`).
+
+**Kural değişmiyor: ekran `aktif` OKUMAZ.** Pasiflik sorusu her zaman
+`GV.arsivli(r)`den geçer; o yordam `durum` yoksa `aktif`e düşer ve tuzağı
+tetiklemez (ölçüldü: `DB.bayatAktif.sayac` artmıyor). Bu üç defterde bugün
+**hiçbir kayıt arşivli değildir** ve ekran bunu şöyle söyler: *"arşiv ekseni
+bu defterde `aktif` alanıdır ve 8 kaydın 8'i etkin — süzgeç bugün hiçbir
+kaydı düşürmüyor."* `durum` taşıyan kalan her defterde (`assets` ·
+`vehicles` · `maintenance` · `inspections` · `fines` · `accidents` ·
+`trainings` · `performance` · `leaves` · `purchases` · `onboarding`) `aktif`
+**tuzaklıdır**: okuyan `undefined` alır ve sayaç artar.
+
+### 22.6 `app-proje-form.html` — rota 32 · V2-39 kapanıyor
+
+**Tohum:** `?hesap=<hesapKodu>` — `GV.sales.firsatKazan`ın "Proje oluştur"
+önerisi bu adresi üretiyor (`domain.js` · `oneriler`). Düzenleme kipi
+`?id=PRJ-…`.
+
+⚠️ **`?hesap=` bir HESAP kodudur, müşteri kodu DEĞİL.** `DB.accounts` 20
+kayıttır: 12'si `MUS-*`, **8'i `LEAD-*`** (aday kaynaklı hesap). Ama
+`DB.projects[].musteri` alanı `MUS-*` bekler. Aday kaynaklı hesapta MUS kodu
+**yoktur**: form o durumda `musteri` alanını **boş bırakır**, sebebini yazar
+ve kaynağı `İç Proje` / `Satış Öncesi / PoC` olarak önerir. Uydurma `MUS`
+kodu üretmek yasaktır. (Pratikte `firsatKazan` bu öneriyi yalnız hesap
+`MUSTERI` evresine geçtikten sonra verir, ama form tohumu doğrulamak
+zorundadır — adres elle de yazılabilir.)
+
+**Doğum durumu `'Plan'`** — nesne literalinde verilir, kayda sonradan durum
+yazan satır **yoktur**. `Plan`dan çıkmak için `pm · baslangic ·
+planlananBitis` zorunludur; form bu üçünü `required` yapar ki kayıt
+doğduğu anda ilerletilebilir olsun.
+
+**Alanlar** (`DB.projects` 32 alanının form tarafı):
+`ad`(req) · `musteri`(select, `DB.accounts` MUS süzgeci) · `pm`(req,
+`GV.hr.atanabilirler()`) · `teknikSorumlu` · `musteriSorumlu` ·
+`kaynak`(`DB.projectSources` 5) · `tur`(7 çeşit, **sözlüksüz** → defterden) ·
+`oncelik`(`DB.priorities` 4) · `faz`(`DB.projectPhases` 7) ·
+`baslangic`(req) · `planlananBitis`(req) · `tahminiSure`(number, saat) ·
+`sozlesmeTutari`(money) · `butce`(money) · `repo` · `test` · `canli` ·
+`tasarim` · `sunucu` · `saglik`(`DB.healthLevels` 3) · `gecikmeNedeni`.
+
+**Basılmayacak alanlar ve sebepleri — ekranda YAZILIR:**
+- `durum` · `arsiv` — geçiş motorunun ve arşiv ekseninin işi (§14.5).
+- `ilerleme` · `gercekBitis` · `sonGuncelleme` — türetilmiş/olay çıktısı.
+- `ekip` · `teknoloji` · `ucuncuTaraf` · `riskler` — **DİZİ alanlar.**
+  `GV.form` `select` dalında çoklu seçim **yoktur** (V2-32) ve tek seçimlik
+  bir alan mevcut listeyi **sessizce silerdi**. Düzenleme kipinde bu dört
+  alan **salt okunur bilgi** olarak basılır ve "bu turda düzenlenemiyor,
+  sebebi V2-32" yazılır. Oluşturmada boş dizi ile doğar.
+- `musteriAd` — `musteri` seçiminden türetilir, kullanıcı yazmaz.
+
+**Kaydettikten sonra:** `GV.afterSave({ kod, liste:'app-proje.html',
+detay:'app-proje-detay.html', yeni:!rec, mesaj:… })`. Sağ panelde (`aside`)
+aktivasyon kapısının **canlı** hâli basılır: `kaynak === 'Müşteri
+Sözleşmesi'` ise sözleşme bağı `DB.contracts[].proje` üzerinden aranır ve
+"bu proje Aktife alınabilmek için bir sözleşme kaydına bağlanmalı" denir
+(K-40 · ADR-R2-40). Kapı **formu reddetmez** — kapı aktivasyon kenarındadır,
+kayıt doğuşunda değil; bu ayrım ekranda yazılır.
+
+### 22.7 `app-satinalma-form.html` — rota 115 · V2-40 kapanıyor
+
+**Tohum:** `app-satinalma.html` "Yeni Talep" düğmesi (`?` yok). Düzenleme
+`?id=SAT-…`. `?proje=PRJ-…` desteklenir (talep bir projeye bağlanabilir).
+
+**Doğum durumu `'Taslak'`.** `Taslak`tan çıkmak için `urun ·
+tahminiMaliyet` zorunlu — form ikisini `required` yapar.
+
+**Alanlar:** `urun`(req) · `kategori`(select, **`DB.purchases`ten
+türetilir**, `DB.assetCategories` DEĞİL — `'Araç'` o sözlükte yok) ·
+`aciklama`(textarea) · `ozellik` · `miktar`(number, min 1) ·
+`tahminiMaliyet`(money, req) · `ihtiyacTarihi`(date) ·
+`oncelik`(`DB.priorities`) · `gerekce`(textarea, req — zincirin okuduğu
+alan) · `butceKodu`(**sözlüksüz**, defterden türetilir + serbest metin) ·
+`dep`(`DB.departments` 21) · `proje`(opsiyonel, `DB.projects`) ·
+`talepEden` (oturumdan; `GV.session.emp` — kullanıcı seçmez).
+
+**ONAY ZİNCİRİ ÖNİZLEMESİ — bu ekranın asıl işi.** `aside` içinde tutar
+değiştikçe canlı yeniden çizilir:
+
+```js
+var akis = GV.approval.akisTanim('Satın alma talebi');   // AKS-SAT-1
+akis.adimlar.forEach(function(a){
+  var m = GV.approval.adimMuhatap(a, veri);   // → { tur:'rol', ad:'Muhasebe', … }
+  var calisir = a.esik == null || (a.kosul === 'tutar' && veri.tahminiMaliyet >= a.esik);
+  …
+});
+```
+Ölçülen eşikler: adım 1 `depmudur` **her zaman** · adım 2 `muhasebe`
+**≥ 25.000 ₺** · adım 3 `sahip` **≥ 100.000 ₺**. Yani 30.000 ₺'lik bir talep
+2 adım, 150.000 ₺'lik 3 adım görür. Bu sayı **türetilir**, yazılmaz.
+
+⚠️ **`onayAdim` ve `onayToplam` alanlarına EKRAN YAZMAZ.** İkisi de yükleme
+anında zincirden yeniden türetilir (`GV.approval.tazeleSayaclar()`); elle
+yazılan değer hayatta kalmaz ([6.3.10]). Yeni kayıt literalinde de
+verilmezler — zincir kaydı (`DB.purchaseApprovals`) doğmadığı için
+`GV.approval.adim(...)` `null` döner ve ekran **"zincir örneği henüz
+açılmadı"** der, `0/0` basmaz.
+
+⚠️ **Zincir ÖRNEĞİ üretilmez.** `DB.purchaseApprovals`e satır yazmak bir
+onay koşumu başlatmaktır ve bunun yordamı yoktur (`GV.approval.karar` var
+olan satırı sonuçlandırır, satır AÇMAZ). Form yalnız TANIMI gösterir; bunu
+ekranda beyan eder ve "onaya gönder" işini `GV.flow.adimlar('purchase', kod)`
+düğmesine bırakır.
+
+### 22.8 `app-personel-form.html` — rota 82 · maaş/saatlikÜcret XOR
+
+**Doğum durumu `'Taslak'`** (`transitions.employee`). `Taslak`tan çıkmak
+için `girisTarihi · dep · pozisyon` zorunlu.
+
+⚠️ **XOR SÖZLEŞMESİ — bu ekranın çekirdek kuralı.** Ölçüldü: 16 personelin
+**15'i `maas` ekseninde**, **1'i (`EMP-015`, freelancer) `saatlikUcret`
+ekseninde**; ikisi birlikte dolu olan kayıt **yoktur**. Kural
+`domain.js` `Hr.icMaliyet` yorumunda yazılıdır ve `GV.hr.icMaliyet` bu
+varsayımla çalışır: `saatlikUcret > 0` ise onu kullanır, yoksa maaştan türetir.
+
+```js
+{ key:'maas', label:'Aylık brüt maaş', type:'money', currency:'₺',
+  showIf:function(v){ return v.ucretEkseni !== 'saatlik'; },
+  validate:function(deger, v){
+    if(v.ucretEkseni === 'aylik' && !(Number(deger) > 0))
+      return 'Aylık maaş ekseninde bir tutar zorunludur.';
+    return ''; } }
+```
+Eksen bir **radio** ile seçilir (`ucretEkseni`: `aylik` | `saatlik`) ve
+`showIf` görünmeyen alanı doğrulamadan da `read()`ten de düşürür
+(§5.2) — yani ekseni değiştirmek diğer alanı **sessizce boşaltır**, iki alan
+aynı kayıtta asla birlikte dolmaz. Düzenleme kipinde eksen mevcut kayıttan
+türetilir. Kaydetmede son kontrol: ikisi birden > 0 ise kayıt **REDDEDİLİR**
+ve sebebi söylenir ("uyar ama geçir" yasak — §14.12).
+
+⚠️ **KAPININ ARKASINDAKİ ALAN FORMA HİÇ BASILMAZ.** Maskelenmiş bir
+`<input>` kaydettiğinde gerçek değerin üstüne `••••••` yazar. Kural:
+
+```js
+var maasAcik  = GV.hr.maasGorebilir(rec || {});      /* yeni kayıtta rec yok */
+var ozlukAcik = rec ? GV.hr.ozlukGorebilir(rec) : GV.perm.can('ekle');
+```
+- `maasAcik === false` → ücret bölümü **hiç çizilmez**; yerine
+  `GV.hr.maasKapi(rec).neden` cümlesi basılır ve "bu alanlar bu oturumda
+  düzenlenemiyor" denir. Kaydetmede o alanlar **okunmaz**, kayıttaki değer
+  **korunur**.
+- `ozlukAcik === false` → özlük bölümü (`dogum · kanGrubu · acilKisi · tel ·
+  eposta · egitim · sertifika · sozlesme · calismaTuru`) aynı biçimde
+  çizilmez.
+- Yeni kayıtta oturumun kendi kaydı yoktur; `maasAcik` küme sorusuna düşer.
+
+**Alanlar:** `ad`(req) · `ini`(2 harf, `ad`dan türetilebilir ama kullanıcı
+düzeltebilir) · `rol`(req, `DB.roles` 27) · `dep`(req, `DB.departments`) ·
+`pozisyon`(req) · `yonetici`(`GV.hr.atanabilirler()`) · `girisTarihi`(req) ·
+`lokasyon` · `uzmanlik` · `calismaTipi`(`DB.workTypes` 5) ·
+`izinBakiye`(number) · `doluluk`(number 0-100) · özlük bloğu (kapı arkası) ·
+ücret bloğu (kapı arkası).
+
+**Basılmayacaklar:** `durum` (geçiş motoru) · `aktif` (tuzak) ·
+`roller`/`yetkinlik`/`teknoloji`/`sertifika` (**DİZİ**, V2-32 → düzenlemede
+salt okunur, sebebi yazılı) · `depAd` (`dep`ten türetilir) ·
+`cikisTarihi`/`cikisNedenKodu` (`Ayrıldı` geçişinin `girisZorunlu` alanları —
+formun değil, yaşam döngüsü sekmesinin işi) · `maas`/`saatlikUcret` kapı
+kapalıysa · `DB.salaryHistory` (form maaş geçmişine satır yazmaz; defterde
+zaten geçmiş yok — §22.4).
+
+### 22.9 `app-izin-form.html` — rota 89
+
+**Tohum:** `app-zaman.html` "Yeni İzin Talebi". `?personel=EMP-…` ve
+`?id=IZN-…` desteklenir. **Doğum durumu `'Taslak'`.**
+
+**Alanlar:** `personel`(req — kendi adına açıyorsa oturumdan gelir ve
+salt okunur; başkası adına açmak `GV.perm.can('ekle')` ister) ·
+`tur`(req, `DB.leaveTypes` 6) · `baslangic`(req) · `bitis`(req) ·
+`vekil`(`GV.hr.atanabilirler()`, talep sahibi hariç) · `gerekce`(req).
+
+**`gun` TÜRETİLİR, KULLANICI YAZMAZ** — `GV.calendar.isGunu(bas, bit)` iş
+günü sayar (`DB.holidays` 14 resmî tatil + hafta sonu). Alan `readonly`
+basılır ve formülü altında yazılır. Ölçüldü: `2026-08-10 → 2026-08-14` = **5
+iş günü**.
+
+**`cakisma` TÜRETİLİR** — aynı personelin çakışan başka talebi (`durum` ∈
+`Taslak`/`Onay bekliyor`/`Onaylandı`) varsa `true`. Ekran çakışan kaydı
+**kodla** gösterir; boolean'ı tek başına basmak "neyle çakıştı" sorusunu
+cevapsız bırakır.
+
+⚠️ **BAKİYE KAPISI FORMUN KAPISI DEĞİLDİR — ve bu bir "uyar ama engelleme"
+kaçamağı değildir.** `Gates.izinBakiye` `transitions.leave` içinde
+`Onaylandı` durumunun **`girisKapi`**'sıdır: bakiyeyi aşan izin
+**onaylanamaz**, ama *talep edilebilir* — çünkü çıkış yolu vardır
+(`tur:'Ücretsiz izin'` kapıdan muaftır, kapı bunu kendi mesajında söylüyor).
+Form bu yüzden:
+1. bakiyeyi ve istenen iş günü sayısını **ölçüp yan yana** basar
+   (`e.izinBakiye` — 16/16 dolu),
+2. aşım varsa **onay adımının reddedeceğini** yazar ve `Ücretsiz izin`
+   seçeneğini gösterir,
+3. **kaydı reddetmez** — reddedecek olan kapı burada değil.
+Ölçülen canlı vaka: `IZN-2026-039` bakiyesi yetmeyen taleptir; onay kapısı
+kapalı, ret ve iptal açıktır.
+
+**ONAY ZİNCİRİ — K-38'in görünür olduğu yer.** `AKS-IZN-1` iki adım:
+```
+adım 1  iliski:'yonetici'  ad:'Bağlı Yönetici'  koşul: hep
+        → GV.approval.adimMuhatap(adim, izinKaydi).kisi
+          = DB.emp(izin.personel).yonetici          (15/16 kayıtta dolu)
+adım 2  rol:'ik'           ad:'İnsan Kaynakları'   koşul: gun ≥ 10
+```
+Ölçüldü: 7 izin talebinin 7'sinde muhatap çözülüyor ve **tek kişiye
+toplanmıyor** (`EMP-003` ×5 · `EMP-002` · `EMP-006`). `yonetici` alanı boş
+olan personelde (1/16) `cozuldu:false` döner; ekran adımın `ad` alanını basar
+ve sebebini yazar — kişi **uydurmaz**.
+
+### 22.10 `app-demirbas-form.html` — rota 95
+
+⚠️ **`DB.transitions.asset` YOKTUR ve `durum` alanı TÜRETİLMİŞTİR.** Otorite
+`DB.assignments`tir (ADR-R2-29 · K-30). Formun durum tarafındaki tüm
+sözleşmesi şudur:
+
+| Durum | Formda seçilebilir mi | Sebep |
+|---|---|---|
+| `Depoda` | **EVET — varsayılan** | Zimmetsiz demirbaşın türetilmiş hâli |
+| `Aktif` | **EVET** | Zimmetten BAĞIMSIZ durum: sarf / ortak kullanım / bulut. `GV.varlik.tazele` bu değeri **ezmez**. Ölçüldü: 3 kayıt (`Sunucu` · `Yazılım lisansı` · `Kurumsal abonelik`) |
+| `Zimmetli` | **HAYIR** | Yalnız personel kabulünden türer (`GV.varlik.kabulEt`) |
+| `Zimmet bekliyor` | **HAYIR** | Tutanak yazılıp kabul beklenirken türer |
+| `Hurda` | **HAYIR** | Bir emeklilik kararıdır, doğum durumu değil — ve yordamı YOKTUR (§22.16) |
+
+Form iki seçeneği basar, kalan üçünü **listelemez** ve neden listelemediğini
+yazar. `zimmetli` · `zimmetTarihi` · `iadeTarihi` alanlarına **ekran hiç
+yazmaz** (`DB.assets` üstünde doğrudan atama yasaktır).
+
+**Alanlar:** `kategori`(req, `DB.assetCategories` 20) ·
+`altKategori`(**sözlüksüz** → `DB.assets`ten türet + serbest metin) ·
+`marka`(req) · `model`(req) · `seri`(req) · `ozellik` · `barkod` ·
+`alisTarihi` · `alisFiyati`(money) · `tedarikci`(`DB.suppliers` 7) ·
+`siparis`(`DB.orders` 4, opsiyonel) · `garantiBas` · `garantiBit` ·
+`lokasyon`(**sözlüksüz**, 4 çeşit → türet) · `dep`(`DB.departments`) ·
+`durum`(yukarıdaki iki seçenek).
+
+`garantiBit < garantiBas` ise `validate` **reddeder**. `arsiv` formda yoktur
+(arşiv ekseni ayrıdır).
+
+### 22.11 `app-demirbas-detay.html` — rota 94 · SEKME YOK
+
+**Tek yüzey, sekmesiz.** Kayıt 21 alan taşır ve alt defteri yalnız BİRDİR
+(zimmet) — yedi sekmeli bir şerit açmak, §20.5'in "ayrı ekran ailesi açma"
+ilkesinin sekme hâli olurdu. Bloklar `GV.dl` + kart olarak akar.
+Yayındaki desen örneği: `app-odeme-linki-detay.html`.
+
+**Bloklar:**
+1. **Künye** — `kod` · `kategori`/`altKategori` · `marka`/`model` · `seri` ·
+   `ozellik` · `barkod`.
+2. **Durum — TÜRETİLMİŞ olduğu YAZILIR.** `a.durum` ve `a.zimmetli`
+   `DB.assignments`ten türer; ekran ikisini de OKUR, **yazmaz**. Blok
+   `GV.varlik.tazele(a)` sonucunu ve otoritenin hangi defter olduğunu söyler.
+3. **Zimmet defteri** — `GV.varlik.zimmetOf(a.kod)` (yaşayan tutanak) ve
+   `DB.assignments` içindeki tüm geçmiş satırlar. Tutanak **DRAWER**'dır
+   (§20.7 sözleşmesi birebir): `tutanak` dosya adı + `BE-K2` beyanı ·
+   `personelOnay` · `onayTarihi` · **kabul / kabul geri alma** düğmeleri
+   (`GV.varlik.kabulEt` · `.kabulGeriAl(kod, gerekce)`) · `hasar` ·
+   `iadeKontrol`/`eksik`/`iadeAlan` (1/7 dolu). İki düğmenin yetki kümesi
+   **AYNIDIR**; geri almada gerekçe **kayıt koşuludur, yetki değil**.
+4. **DÜŞEN ZİMMET İDDİASI — varsa ZORUNLU.**
+   `GV.varlik.dusenIddiaSatiri(a.kod)` üç demirbaşta satır döndürür
+   (`DMB-2025-007` · `DMB-2026-013` · `DMB-2026-014`). Satır **veriye
+   yazılmaz**, görüntü anında defterden türer. Basılmaması, envanterin bir
+   zamanlar başka bir şey söylediği bilgisini kaybetmek olurdu (K-30).
+   ⚠️ İkon `i-alert`tir.
+   <!-- brief-dogrula:yoksay-basla -->
+   Yakın adı olan `i-alert-triangle` sprite'ta **YOKTUR** ve boş bir `<use>`
+   çizerdi; `GV.varlik.dusenIddiaSatiri` kendi yorumunda bu tuzağı anıyor.
+   <!-- brief-dogrula:yoksay-bitir -->
+5. **Satın alma ve tedarikçi** — `alisTarihi` · `alisFiyati` ·
+   `tedarikci` → `DB.suppliers` kaydı (`unvan` · `puan` · `odemeVadesi`) ·
+   `siparis` → `DB.orders`.
+6. **Garanti** — `garantiBas`/`garantiBit` + `GV.cell.gun` ile kalan gün
+   türevi. `DB.today`e göre geçmişse "garanti bitti" yazılır.
+7. **Konum** — `lokasyon` · `dep`.
+8. **Aktivite** — `GV.activity(GV.audit.oku(a.kod, 20))` + varsa düşen iddia
+   satırı zaman çizelgesine karıştırılır (türetilmiş olduğu rozetle söylenir).
+
+**Aksiyonlar:** `Düzenle` → `app-demirbas-form.html?id=…`.
+**Hurdaya ayırma DÜĞMESİ BASILMAZ** — yordamı yok (§22.16); devre dışı bir
+düğme bile vaat sayılır, o yüzden blokta bir cümleyle beyan edilir.
+
+### 22.12 `app-arac-form.html` — rota 100
+
+⚠️ **`DB.transitions.vehicle` YOKTUR.** Araç bir `GV.flow` varlığı değildir;
+`durum` **düz alandır** ve seçenekleri `DB.vehicles`ten türetilir
+(`Aktif` · `Serviste` — `vehicleStatuses` sözlüğü yok, V2-43). Ekran bunu
+**yazar**: *"araç için geçiş tablosu tanımlı değil; durum düz alan olarak
+düzenlenir ve bir geçiş kaydı üretmez."* `GV.flow.gec` **çağrılmaz** —
+olmayan bir varlık için çağırmak sessizce `null` dönerdi.
+
+**MÜLKİYET EKSENİ — `showIf` ile ikiye ayrılır.** Ölçüldü: `Satın alınan`
+3 kayıt, `Kiralık` 1 kayıt (`ARC-002`) ve iki blok **aynı kayıtta birlikte
+dolmuyor**:
+
+```js
+showIf:function(v){ return v.mulkiyet === 'Satın alınan'; }
+//   alisTarihi · alisBedeli · satici · siparis        (3/4 dolu)
+showIf:function(v){ return v.mulkiyet === 'Kiralık'; }
+//   kiralamaFirmasi · sozlesmeBas · sozlesmeBit · aylikKira · kmSiniri · depozito
+//                                                    (1/4 dolu)
+```
+
+**Alanlar:** `plaka`(req) · `marka`(req) · `model`(req) · `modelYili`(number) ·
+`tip` · `yakit` · `vites` · `renk` · `motorHacmi`(number) · `motorNo` ·
+`sasi` · `mulkiyet`(req) · mülkiyet blokları · `kullanim` ·
+`anaSurucu`/`yedekSurucu`(`GV.hr.atanabilirler()`) · `dep` ·
+`proje`(**0/4 dolu** — opsiyonel, "bugün hiçbir araç projeye bağlı değil"
+yazılır) · `durum` · `guncelKm`(number) · `sonBakimTarihi` · `sonBakimKm` ·
+`sonrakiBakimTarihi` · `sonrakiBakimKm`.
+
+`sonrakiBakimKm <= sonBakimKm` ya da `sonrakiBakimTarihi <= sonBakimTarihi`
+ise `validate` **reddeder**. `anaSurucu === yedekSurucu` da reddedilir.
+
+### 22.13 `app-arac-detay.html` — rota 99 · YEDİ SEKME, ALTI ALT DEFTER
+
+Rota defteri bu ekran için "altı alt kaydın sekmesini R1'de zaten taşıyor —
+bu revizyonun istediği yapının **çalışan emsali**" diyor. Altı defter
+sekmedir; yedincisi özettir.
+
+| `key` | Etiket | Kaynak | Adet |
+|---|---|---|---|
+| `ozet` | Özet | künye · mülkiyet/kira · **`DB.policies`** · km ve bakım planı | 6 poliçe |
+| `bakim` | Bakım | `DB.maintenance` | 5 |
+| `yakit` | Yakıt | `DB.fuelLogs` | 5 |
+| `ceza` | Ceza | `DB.fines` | 2 |
+| `muayene` | Muayene | `DB.inspections` | 4 |
+| `kaza` | Kaza | `DB.accidents` | 1 |
+| `gider` | Gider | `DB.vehicleExpenses` | 8 |
+
+**`DB.policies` NEDEN AYRI SEKME DEĞİL.** Altı defter birer **olay
+kaydıdır** (bir bakım yapıldı, bir ceza kesildi); poliçe bir **mülkiyet
+niteliğidir** — süresi olan bir sözleşme, olan bir olay değil. Yedinci olay
+sekmesi açmak §20.5'in "ayrı ekran ailesi açma" ilkesini sekme düzeyinde
+delerdi. O yüzden `ozet` sekmesinde "Sigorta ve poliçe" bloğu olarak durur ve
+`kalanGun`/`bitis` üzerinden bir yenileme uyarısı üretir.
+
+⚠️ **ŞERİTTE İKON YOK.** Ölçülen sebep `app-proje-detay.html:192-196`'da
+yazılı: dokuz ikonlu sekme 1440 px'te içerik sütununa sığmıyor, `.gv-tabs`
+yatay kayıyor ama scrollbar'ı gizli (V2-04) — kesilen sekme kullanıcıya
+işaret bırakmadan kaybolur. İkonlar kart başlıklarında yaşar. Aynı kural
+`app-personel-detay.html` için de geçerlidir.
+
+**Sekme sözleşmesi** (`app-proje-detay.html` deseni birebir):
+tetikleyici `role="tab"` + `data-tab="<key>"`, panel `role="tabpanel"` +
+`data-panel="<key>"` + `hidden`; `GV.tabs('#aracSekme')` **çizimden sonra**
+çağrılır; gövde yalnız `gv:tab` olayında ve yalnız **bir kez** çizilir;
+`#hash` derin bağlantısı **sözleşmedir**. Her sekme başlığı ÖLÇÜLEN kayıt
+sayısını taşır (`<span class="gv-tab-cnt">`).
+
+⚠️ Sekme içindeki her `GV.list` **`urlSync:false`** bildirir — yedi panel
+var, biri diğerinin adres durumunu üstlenemez (§18.9, iki yönlüdür).
+
+**Boş sekme "kayıt yok" DEMEZ, hangi defterin boş olduğunu söyler** (§10.1).
+Ölçüldü: `DB.accidents` 1 kayıt ve o da `ARC-003`e ait — kalan üç araçta kaza
+sekmesi boş çıkar ve doğru cümle *"bu araç için kaza defterinde kayıt yok"*
+tur, *"kaza olmadı"* değil.
+
+**KPI'lar (türetilir, kaynağı yazılır):** bakımı yaklaşan (`kalanGun` ·
+`sonrakiBakimTarihi` vs `DB.today`) · toplam gider (`DB.vehicleExpenses`
+`tutar` toplamı) · ödenmemiş ceza (`fines.durum === 'Ödenmedi'`) · muayene
+son tarihi · ortalama yakıt tüketimi — ⚠️ **son KPI TÜRETİLEMEZ ve
+BASILMAZ**: 5 yakıt kaydı bir araca ait ardışık iki dolum içermiyor, iki km
+farkı olmadan tüketim hesaplanamaz. `GV.empty`/`—` + sebep basılır.
+
+⚠️ **`aktif` alanı `fuelLogs` · `vehicleExpenses` · `policies` defterlerinde
+TUZAKSIZ ama OKUNMAZ** — §22.5. Pasiflik `GV.arsivli(r)`den geçer.
+
+### 22.14 `app-personel-detay.html` — rota 81 · YEDİ SEKME
+
+§20.5 sözleşmesi: `ozet` · `performans` · `egitim` · `yasamdongusu` ·
+`zaman` · `zimmet` · `aktivite`. Tembel çizim zorunlu, `#hash` derin
+bağlantısı sözleşme, **şeritte ikon yok** (§22.13).
+
+**ÖNCE KAPI, SONRA ALAN** (§20.1 gevşetilmez):
+```js
+if(!GV.guardRecord({ mount:'#rec', kod:e.kod, eyebrow:'Ekip ve Kaynaklar',
+                     title:e.ad, geriHref:'app-personel.html',
+                     geriLabel:'Personel listesine dön' })) return;
+var ozlukAcik = GV.hr.ozlukGorebilir(e);      /* kendi kaydı → true */
+var maasKapi  = GV.hr.maasKapi(e);            /* { acik, kaynak, neden } */
+```
+
+**`ozet`** — künye (`kod` · `pozisyon` · `depAd` · `rol`→`DB.roleName` ·
+`roller` DİZİ `join(' · ')` · `lokasyon` · `girisTarihi` · `calismaTipi` +
+`GV.hr.disKaynak(e.kod)` · `uzmanlik` · `yetkinlik`/`teknoloji`/`sertifika`
+DİZİ) · yönetici bağı (`e.yonetici` → `GV.user`) ve **astlar**
+(`DB.employees` `yonetici === e.kod` süzgeci) · durum rozeti
+(⚠️ `Onboarding`/`İzinli`/`Offboarding`/`Ayrıldı` `ui.js` ton sözlüğünde
+**yoktur** — V2-46; `GV.badge` nötr basar ve ekran bunu telafi etmeye
+çalışmaz, rozet uydurmaz) · `izinBakiye` · `doluluk` (**bir SAYAÇ DEĞİL**,
+kayıtta yazılı plandır) · özlük bloğu (`GV.hr.ozluk(e, alan)` — yetkisizde
+`••••••`, hücre çıktıya da girmez) · ücret bloğu (`GV.hr.maas(e)` +
+`maasKapi.neden` + **XOR** beyanı + `GV.hr.icMaliyet(e.kod)`).
+
+⚠️ **`GV.hr.icMaliyet` `guvenilir` bayrağı taşır** ve tarih verilmezse
+bugünkü orana düşer. Ekran formülü (`formul` alanı) ve güvenilirliği
+**basar**; tek bir "iç maliyet: X ₺/saat" satırı basıp güvenilirliği yutmak
+yasaktır.
+
+⚠️ **MAAŞ GEÇMİŞİ TABLOSU BASILMAZ.** `DB.salaryHistory` 15 kaydın 15'inde
+`baslangic = DB.today` ve `kaynak:'gozlem'`, `bitis` 0/15 (§22.4). Bu bir
+zaman serisi değil, tek bir gözlemdir. Doğru cümle: *"maaş defterinde bu
+kişi için 1 gözlem kaydı var (2026-08-03, kaynak: gözlem); geçmiş dönem
+kaydı yok, o yüzden bir değişim çizelgesi türetilemiyor."*
+
+**`performans`** — `DB.performance` `personel` süzgeci. Ölçüldü: 5 kayıt, 15
+personel → **çoğu kişide kayıt YOK** ve o zaman `0` değil "defterde kayıt
+yok" yazılır. `Açık` durumdaki kayıtta **12 ölçüt alanı `null`** →
+her biri **"ölçülemedi"**dir, `0` değil. `durum` sözlüğü yok
+(`performanceStatuses`) → değerler defterden türetilir ve kaynağı yazılır.
+`egitimIhtiyaci` DİZİdir. Kod biçimi `PRF-2026-Q2-005` (dönem taşır).
+
+**`egitim`** — `DB.trainings` içinde `katilimci` DİZİsi bu kodu içeren
+kayıtlar: `DB.trainings.filter(function(t){ return (t.katilimci||[])
+.indexOf(e.kod) !== -1; })`. `kazanim` DİZİ. `sertifika` boolean (4/4
+`false`) — "sertifika verilmiyor" diye yazılır, boş bırakılmaz.
+`trainingStatuses` sözlüğü yok → türet.
+
+**`yasamdongusu`** — bu sekmenin işi **`GV.flow`**:
+```js
+GV.flow.adimlar('employee', e.kod)   // → hedef başına { eksik, gerekce, kapi, izin, yetki }
+GV.flow.gec('employee', e.kod, hedef, ek, { neden, not })
+```
+- Ekran **kendi durum listesini yazmaz**; ne gelirse onu basar.
+- `eksik` listesi **hedef başına** okunur — tek liste bütün hedeflere
+  basılmaz (K-31).
+- ✅ **`Offboarding → Aktif` kenarı VARDIR** ve düğmesi basılır: yanlışlıkla
+  çıkış sürecine alınan personel **gerekçe ile** geri döndürülür. `Ayrıldı`
+  hedefi çıkış tarihi + neden kodu + zimmet kapısı ister; `Aktif` hedefi
+  yalnız gerekçe. **Geri almak ileri gitmekten ağır değildir** ve ekran bu
+  farkı yazar.
+- Çıkış neden kodları: `DB.reasonCodes` içinde `tur === 'cikis'` olanlar
+  (6 kod + `DIGER`).
+- **Süreç defteri:** `DB.onboarding` — `personel` süzgeci, `tur` `Giriş`
+  **ve** `Çıkış` aynı defterdedir. `adimlar[]` = `{ad, tamam, sorumlu}`;
+  ekran `tamam` üzerinden ilerlemeyi basar.
+- ⚠️ **`Gates.personelEvrak` FİİLEN HİÇ KAPANMIYOR (V2-47).** Yordam
+  `adim.zorunlu && adim.durum !== 'Tamamlandı'` okuyor; **örnek** adımları
+  bu iki alanı taşımıyor (yalnız `ŞABLON` adımları `zorunlu` taşır —
+  §22.4). Sonuç: `Onboarding → Aktif` her zaman geçiyor. Ekran bunu
+  **beyan eder** ve düzeltmeye çalışmaz (kapsam dondurulmuş). Bugünkü
+  veride kimse `Onboarding` durumunda değil (`Aktif` 15 · `Offboarding` 1),
+  yani kapı ulaşılamaz — bu da yazılır.
+- `Gates.personelZimmet`: açık zimmet varken `Ayrıldı` olunamaz; ekran açık
+  zimmet kodlarını `GV.varlik.zimmetliler(e.kod)` ile listeler.
+
+**`zaman`** — `DB.timelogs` `personel` süzgeci (131 kaydın bu kişiye
+düşeni) · `DB.timesheets` (6 kayıt, yalnız `2026-W31` kapsamlı) ·
+`GV.zaman.timesheetOf(l)` / `.kayitlar(ts)` · `DB.capacity` (**16'nın
+10'unda** — kaydı olmayanda "defterde kayıt yok") · izin özeti
+(`DB.leaves`). Onay yordamları `GV.zaman.onayla` / `.iade` / `.onaylaKayit`
+**burada tekrar edilmez** — sekme okuma yüzeyidir ve `app-zaman.html`e derin
+bağlantı verir. Maliyet oranı `GV.hr.kayitOrani(l)` ve **kapı satır
+bazlıdır** (`GV.hr.maasGorebilir(l.personel)` — K-39).
+
+**`zimmet`** — `GV.varlik.zimmetliler(e.kod)` + tutanak drawer (§22.11
+bloğu 3 ile **aynı** sözleşme; iki ekran aynı çekmeceyi kurar, kural tek
+yerdedir: yordamlar `GV.varlik.*`) + `GV.varlik.dusenIddiaSatiri` varsa.
+
+**`aktivite`** — `GV.activity(GV.audit.oku(e.kod, 20))`.
+
+**Aksiyonlar:** `Düzenle` → `app-personel-form.html?id=…` ·
+`İzin talebi aç` → `app-izin-form.html?personel=…`.
+
+### 22.15 Bu dilimde beyan edilecek backend payı
+
+§20.6'daki `BE-P1` · `BE-K1` · `BE-K2` · `BE-S4` · `BE-S5` aynen geçerlidir.
+Eklenenler:
+
+| Kod | Madde | Nerede |
+|---|---|---|
+| `BE-P3` | Onay zinciri örneği sunucuda açılmaz; ekran zincirin TANIMINI gösterir, bir koşumunu değil | satın alma · izin formu |
+| `BE-P4` | Araç için durum makinesi yok; `durum` düz alan olarak yazılır ve geçiş kaydı üretmez | araç formu · araç detayı |
+| `BE-K3` | Maaş öz-erişimi **istemcide** açıldı; gerçek sistemde kendi ücret kaydı da sunucuda kimliğe göre filtrelenmelidir | personel detayı · personel formu |
+| `BE-S6` | Zimmet kabulü ıslak/e-imza taşımaz (`BE-K2` eki); kabul geri alma da yalnız bir bayrağı çevirir | demirbaş detayı · personel detayı |
+
+### 22.16 YAZILMAYAN YORDAMLAR — ihtiyaç duyarsan YAZMA, RAPOR ET
+
+Bu dilimde ölçüldü; ajan bunlardan birine ihtiyaç duyarsa **ekranı devre dışı
+bir düğmeyle değil, bir BEYANLA kapatır** (§14.6 — yapılamayan iş düğme
+olarak vaat edilmez) ve raporunda madde olarak yazar:
+
+1. **`GV.varlik.hurdayaAyir(kod, gerekce)` YOK.** `DB.assetStatuses`
+   `'Hurda'` içeriyor ve 1 kayıt o durumda, ama demirbaşı hurdaya ayıran bir
+   yordam yazılmamış. `a.durum = 'Hurda'` yazmak **yasaktır**.
+2. **`GV.varlik.zimmetAc(demirbas, personel)` YOK.** Yeni zimmet TUTANAĞI
+   açan yordam yok; `GV.varlik.kabulEt` var olan tutanağı onaylar.
+   `DB.assignments.push(...)` **yasaktır**.
+3. **`GV.varlik.iadeAl(zimmetKod)` YOK.** `iadeTarihi`/`iadeKontrol`/`eksik`/
+   `iadeAlan` alanları veride var (1/7), yazan yordam yok.
+4. **`GV.hr.olustur(v)` / `.guncelle(...)` YOK.** Personel formu kaydı nesne
+   literaliyle doğurur (teklif/fatura formlarındaki desen) ve doğum durumunu
+   literalde verir.
+<!-- brief-dogrula:yoksay-basla -->
+5. **`GV.izin.olustur(v)` YOK** — aynı desen.
+6. **`GV.arac.*` ve `GV.demirbas.*` diye bir ad alanı YOK.** Araç/demirbaş
+   tarafında var olan tek ad alanı `GV.varlik`tır ve içeriği §20.3'te tam
+   yazılıdır.
+<!-- brief-dogrula:yoksay-bitir -->
+7. **Alt defterlere (bakım · yakıt · ceza · muayene · kaza · gider · poliçe)
+   KAYIT EKLEYEN yordam YOK.** Yedi defter de **salt okunurdur**; araç
+   detayı "yeni bakım ekle" düğmesi basmaz.
+8. **`GV.approval` zincir ÖRNEĞİ açmaz** — §22.7.
+
+### 22.17 Yasaklar — bu dilime özel (§14'e EK)
+
+1. `a.durum = …` / `a.zimmetli = …` (demirbaş) — **türetilmiş görünüm**.
+2. `e.durum = …` (personel) — yalnız `GV.flow.gec('employee', …)`.
+3. `l.durum = …` (izin) · `p.durum = …` (proje · satın alma) — aynı kural.
+4. `aktif` okumak · yazmak · süzmek — her koleksiyonda (§22.5).
+5. `onayAdim` / `onayToplam` yazmak — türetilmiş sayaç (§22.7).
+6. Kapının arkasındaki alanı **forma basmak** — maskelenmiş `<input>`
+   kaydettiğinde gerçek değeri `••••••` ile ezer (§22.8).
+7. Küme sorusuna satır kapısı bağlamak (`maasGorebilir()` vs `(e)`) — §22.1.
+8. Sekme şeridine ikon koymak (7 sekmeli iki ekranda) — §22.13.
+9. Aynı sayfada iki `urlSync:true` liste (§18.9).
+10. Çizim anında `scrollIntoView` çağırmak (K-37 · §21.11).
+11. `DB.assignments.push(...)` · `DB.salaryHistory.push(...)` ·
+    alt defterlere satır yazmak — §22.16.
+12. Sözlüğü olmayan bir alan için `GV.badge` uydurmak — düz metin bas
+    (§21.11 son madde).
+
+### 22.18 Ajan raporunda ZORUNLU olanlar
+
+§21.10 aynen geçerlidir. Ek olarak her ajan şunları **sayıyla** bildirir:
+
+1. Yazdığı dosya · satır sayısı · `data-sec`/`data-screen`.
+2. Çağırdığı `GV.*` yordamlarının listesi — ve **brief'te bulamadığı** her
+   imza (bu bölüm eksikse ölçüm eksiktir).
+3. Kurduğu her kapı ve **iki yöndeki** ölçümü.
+4. Türettiği her değer ve **kaynağı**; boş bıraktığı her alan ve **sebebi**.
+5. Basmadığı düğme ve sebebi (§22.16 maddelerinden hangisi).
+6. Ortak katmanda bulduğu kusur — **düzeltmeden** rapor eder.
+
