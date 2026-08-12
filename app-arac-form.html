@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Yeni Araç — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="ekip" data-screen="varlik">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/hr.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   ARAÇ FORMU — rota 100 · brief §5 (CreateEditPage deseni) · §20.7 ·
+   §22.0 · §22.2 · §22.3 · §22.4 · §22.5 · §22.12 · §22.15 · §22.16 ·
+   §22.17
+
+   DESEN: `GV.pageHead` + `GV.form` + `GV.afterSave`. `CreateEditPage`
+   ADINDA bir bileşen yoktur (brief §5).
+
+   BU EKRANIN İKİ ÇEKİRDEK KURALI
+   ─────────────────────────────────────────────────────────────────────
+   1) ARAÇ BİR `GV.flow` VARLIĞI DEĞİLDİR (brief §22.3 · §22.12).
+      `DB.transitions.vehicle` YOKTUR: `durum` DÜZ ALANDIR, bu formdan
+      yazılır ve bir GEÇİŞ KAYDI ÜRETMEZ. `GV.flow.gec('vehicle', …)`
+      ÇAĞRILMAZ — olmayan bir varlık için çağırmak sessizce `null`
+      dönerdi ve ekran "geçiş yapıldı" sanırdı. Seçenekler de bir
+      sözlükten gelmez (`vehicleStatuses` YOK, V2-43): `DB.vehicles`ten
+      türetilir ve nereden türetildiği ekranda YAZILIR (§10.1).
+      Backend payı: `BE-P4`.
+
+   2) MÜLKİYET EKSENİ — `showIf` ile İKİYE AYRILIR (brief §22.12).
+      Ölçüldü: `Satın alınan` 3 kayıt · `Kiralık` 1 kayıt (`ARC-002`) ve
+      iki blok aynı kayıtta birlikte DOLMAZ.
+        · `Satın alınan` → alisTarihi · alisBedeli · satici · siparis
+        · `Kiralık`      → kiralamaFirmasi · sozlesmeBas · sozlesmeBit ·
+                           aylikKira · kmSiniri · depozito
+      `showIf` sözleşmesi (§5.2): görünmeyen alan DOĞRULANMAZ ve
+      `read()`te BOŞ döner — yani ekseni değiştirmek diğer bloğu formun
+      parçası olmaktan çıkarır. Kaydetme bunu SESSİZ yapmaz: düşen blok
+      ekranda yazılır ve kayıt biçimi defterin biçimine çekilir.
+      ⚠️ Kiralama bloğunun altı alanı brief §20.4'te EKSİK yazılıydı
+      (28 alan); §22.4 düzeltti — `DB.vehicles` 34 alan taşır.
+
+   KOD ÜRETİMİ: `ARC-###` — YIL DAMGASI YOK (§22.2 `kodUretYilsiz`) ve
+   sıra GLOBAL taranır. Bugünkü veriyle üretilen kod: `ARC-005`.
+
+   YAZILMAYAN / OKUNMAYAN
+     · `aktif` — TUZAKLI alan (§22.5 · K-33): `DB.vehicles` `durum`
+       eksenlidir, okuyan `undefined` alır ve bayat eksen sayacı artar.
+       Bu ekran onu okumaz, yazmaz, süzmez; kayıt doğarken de yazılmaz.
+       Pasiflik sorusu yalnız `GV.arsivli(r)` yordamındadır.
+     · Alt defterler (bakım · yakıt · ceza · muayene · kaza · gider ·
+       poliçe) — SATIR EKLEYEN YORDAM YOKTUR (§22.16.7). Yedi defter
+       salt okunurdur; bu form onlara dokunmaz ve "yeni bakım ekle"
+       gibi bir düğme BASMAZ (§14.6 — yapılamayan iş düğme olarak
+       vaat edilmez).
+     · `GV.arac.*` diye bir ad alanı YOKTUR (§22.16.6): araç tarafında
+       `GV.varlik` dışında bir yordam yok, `GV.varlik` da demirbaş/zimmet
+       defterinin sahibidir. Kayıt bu yüzden nesne LİTERALİYLE doğar
+       (§22.1b.4 — altı form ekranının tamamında aynı desen).
+
+   YÜKLENEN VERİ (brief §22.0 tablosu, sıra §1.1): org · crm · work ·
+   misc · ops · hr · lifecycle.
+   ⚠️ Ölçüm: `DB.vehicles` **`ops.js`tedir**, `hr.js`te değil — brief
+   §20.0 onu `hr.js` listesinde sayıyor ve o satır yanlış. Aynı yanlış
+   `DB.assets` · `DB.assignments` · `DB.vehicleExpenses` için de geçerli
+   (hepsi `ops.js`) ve `DB.salaryHistory` `org.js`tedir. İki dosya da bu
+   ekranda yüklendiği için ekran doğru koşar (raporda bildirildi).
+   `hr.js` burada `GV.hr.atanabilirler()`in okuduğu personel yüzeyinin
+   yanında duran defterleri getirir; `firsat.js` · `odeme.js` ·
+   `notes.js` · `reports.js` yüklenmez.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var esc = GV.esc;
+  var F   = GV.fmt;
+
+  var q    = new URLSearchParams(location.search);
+  var kod  = q.get('id');
+  var FILO = DB.vehicles || [];
+  var rec  = kod ? FILO.filter(function(x){ return x.kod === kod; })[0] : null;
+
+  var LISTE_HREF = 'app-varlik.html?t=filo';
+
+  /* ---- Küçük yardımcılar -------------------------------------------- */
+  function bosNull(x){
+    var s = (x == null) ? '' : String(x).trim();
+    return s === '' ? null : s;
+  }
+  function sayiYaNull(x){
+    var s = String(x == null ? '' : x).trim();
+    if(s === '') return null;
+    var n = parseFloat(s.replace(/\s/g, '').replace(',', '.'));
+    return isFinite(n) ? n : null;
+  }
+  function faint(s){ return '<span class="u-faint">' + esc(s) + '</span>'; }
+  function faintNot(html){ return '<p class="u-faint u-sm">' + html + '</p>'; }
+  function kodEt(s){ return '<span class="cell-code">' + esc(s) + '</span>'; }
+  function benzersiz(list){
+    return (list || []).filter(function(v, i, s){
+      return v != null && v !== '' && s.indexOf(v) === i; });
+  }
+  function trSirala(a, b){ return String(a).localeCompare(String(b), 'tr'); }
+  function alanDegerleri(alan){
+    return benzersiz(FILO.map(function(v){ return v[alan]; })).sort(trSirala);
+  }
+  function doluSayi(alan){
+    return FILO.filter(function(v){ return v[alan] != null && v[alan] !== ''; }).length;
+  }
+  function kisiAd(k){ return k ? (DB.empName(k) || k) : null; }
+  function depKaydi(k){ return (DB.departments || []).filter(function(d){ return d.kod === k; })[0] || null; }
+  function depAdi(k){ var d = depKaydi(k); return d ? d.ad : null; }
+  function projeKaydi(k){ return (DB.projects || []).filter(function(p){ return p.kod === k; })[0] || null; }
+  function siparisKaydi(k){ return (DB.orders || []).filter(function(o){ return o.kod === k; })[0] || null; }
+  function kart(ikon, baslik, meta, govde){
+    return '<section class="gv-card u-mt-4"><div class="gc-head">' +
+      '<h3 class="gc-title">' + GV.ico(ikon) + esc(baslik) + '</h3>' +
+      (meta ? '<span class="gc-meta">' + meta + '</span>' : '') +
+      '</div><div class="gc-body">' + govde + '</div></section>';
+  }
+  /* Tarih karşılaştırması ISO dizesi üzerinde yapılır: `DB.today` sabittir
+     ve bütün ekranlar onu esas alır (§13.2). `new Date()` ile "bugün"
+     alınmaz. */
+  function iso(x){ var s = bosNull(x); return s ? String(s).slice(0, 10) : null; }
+
+  /* =================================================================
+     0. ÜÇ KAPI — kayıt yok · müşteri oturumu · yetki yok
+     ================================================================= */
+  if(kod && !rec){
+    GV.pageHead({
+      eyebrow:'Ekip ve Kaynaklar', title:'Kayıt bulunamadı', sub:kod,
+      actions:[{ label:'Filo listesine dön', icon:'i-arrow-left', href:LISTE_HREF }]
+    });
+    mount.innerHTML = GV.errorState({
+      title:kod + ' bulunamadı',
+      desc:'Bu kod filo defterindeki ' + FILO.length + ' araçtan hiçbiriyle eşleşmedi. Adres ' +
+           'çubuğundaki kodu kontrol edin ya da varlık ekranının Filo yüzeyinden aracı seçin.',
+      action:'<a class="btn btn-acc" href="app-arac-form.html">Yeni araç kaydı aç</a>' });
+    return;
+  }
+
+  /* Müşteri oturumuna karşı kayıt kapısı (brief §6 adım 2 · §21.11).
+     Araç kaydı bir müşteriye ait DEĞİLDİR: `DB.vehicles` şemasında
+     `musteri` alanı yoktur, o yüzden kapıya `musteri:null` verilir —
+     yordam müşteri oturumunu her hâlükârda reddeder, personel oturumunu
+     geçirir. İkinci bir "müşteri mi" testi yazılmaz. */
+  if(!GV.guardRecord({ mount:'#rec', musteri:null, kod:rec ? rec.kod : null,
+      eyebrow:'Ekip ve Kaynaklar',
+      title:rec ? (rec.plaka || rec.kod) : 'Yeni Araç',
+      geriHref:LISTE_HREF, geriLabel:'Filo listesine dön' })) return;
+
+  var izinli = rec ? GV.perm.can('duzenle') : GV.perm.can('ekle');
+  if(!izinli){
+    GV.pageHead({
+      eyebrow:'Ekip ve Kaynaklar',
+      title:rec ? (rec.plaka || rec.kod) : 'Yeni Araç',
+      sub:'Bu ekran için yetkiniz yok',
+      actions:[{ label:'Filo listesine dön', icon:'i-arrow-left', href:LISTE_HREF }]
+    });
+    mount.innerHTML = GV.empty({ icon:'i-lock',
+      title:rec ? 'Araç kaydını düzenleme yetkiniz yok' : 'Yeni araç kaydı açma yetkiniz yok',
+      desc:'Rolünüz (' + GV.perm.role() + ') bu işlem için yetkili değil. Filo listesini ' +
+           'görüntülemeye devam edebilirsiniz.',
+      action:'<a class="btn btn-line" href="' + LISTE_HREF + '">Filo listesine dön</a>' });
+    return;
+  }
+
+  /* =================================================================
+     1. FİNANS KAPISI — para alanları çizilmeden ÖNCE ölçülür
+     -----------------------------------------------------------------
+     Araç kaydı üç para alanı taşır: `alisBedeli` (satın alma ekseni) ·
+     `aylikKira` ve `depozito` (kiralama ekseni). Yayındaki filo yüzeyi
+     üçünü de `finans` yetkisiyle maskeliyor (`app-varlik.html` — alış
+     bedeli kolonu `perm:'finans'`, çekmecede aylık kira `••••••`).
+     Aynı kapı bu formda ÇİZİM KARARIDIR: kapı kapalıysa alanlar
+     BASILMAZ (§22.17.6 — maskelenmiş bir `<input>` kaydedildiğinde
+     gerçek değerin üstüne `••••••` yazardı) ve kaydetmede OKUNMAZ;
+     kayıttaki tutar korunur.
+     ⚠️ `0` basmak yasaktır: `0` bir DEĞERDİR, "göremezsin" demek değil
+     (UID-11 · §2.3).
+     ================================================================= */
+  var canFinans = GV.perm.can('finans');
+  var PARA_ALAN = ['alisBedeli', 'aylikKira', 'depozito'];
+  /* Kapının İKİ YÖNÜ: kapalı kapıda kaç kayıtta kaç DEĞER gizlenir.
+     Sayılan şey kapı DURUMUDUR; tutarlar burada basılmıyor. */
+  var PARA_DEGER_N = FILO.reduce(function(s, v){
+    return s + PARA_ALAN.filter(function(a){ return v[a] != null; }).length; }, 0);
+  var PARA_KAYIT_N = FILO.filter(function(v){
+    return PARA_ALAN.some(function(a){ return v[a] != null; }); }).length;
+
+  /* =================================================================
+     2. GEÇİŞ TABLOSU — YOKLUĞU ÖLÇÜLÜR, VARSAYILMAZ
+     -----------------------------------------------------------------
+     Brief §22.3 "vehicle: YOKTUR" diyor; ekran bunu bir sabit olarak
+     yazmak yerine defterden ölçer — tablo bir gün eklenirse ekran
+     yanlış cümleyi basmaya devam etmesin (L-40 ile aynı gerekçe:
+     kuralın ikinci kopyası sessizce eskir).
+     ================================================================= */
+  var TRANS      = DB.transitions || {};
+  var VT         = TRANS.vehicle || null;         /* ölçüm: bugün null */
+  var TRANS_ADET = Object.keys(TRANS).length;
+
+  /* =================================================================
+     3. SÖZLÜKSÜZ ALANLAR — seçenekler DEFTERDEN türetilir (§10.1)
+     -----------------------------------------------------------------
+     `vehicleStatuses` · `mulkiyet` · `kullanim` · `tip` · `yakit` ·
+     `vites` · `renk` için ortak sözlük YOKTUR (brief §20.4 · §22.4).
+     Değerler mevcut kayıtlardan türetilir ve NEREDEN türetildiği
+     ekranda yazılır. Uydurma değer eklenmez.
+     ================================================================= */
+  var TIPLER     = alanDegerleri('tip');
+  var YAKITLAR   = alanDegerleri('yakit');
+  var VITESLER   = alanDegerleri('vites');
+  var RENKLER    = alanDegerleri('renk');
+  var MULKIYETLER= alanDegerleri('mulkiyet');
+  var KULLANIMLAR= alanDegerleri('kullanim');
+  var DURUMLAR   = alanDegerleri('durum');
+
+  /* KORUNAN SEÇENEK (brief §22.1b.5): düzenlenen kaydın kendi değeri
+     türetimin dışında kalabilir (defterden düşmüş bir renk, elle
+     girilmiş bir kullanım biçimi). O değer listeye EKLENİR — yoksa
+     `select` onu sessizce başka bir değere çevirir ve kaydetmek VERİ
+     KAYBI olur. Yeni kayıtta eklenmez; çelişki yayılmaz. */
+  function korunan(secenekler, alan, gerekce){
+    if(!rec) return secenekler;
+    var v = rec[alan];
+    if(v == null || v === '') return secenekler;
+    var varMi = secenekler.some(function(o){
+      return (o && typeof o === 'object' ? o.value : o) === v; });
+    if(varMi) return secenekler;
+    return secenekler.concat([{ value:v, label:v + ' · ' + gerekce }]);
+  }
+  /* Korunan seçeneğin FİİLEN eklendiği alanlar — raporlanabilir ölçüm. */
+  var KORUNAN_EKLENEN = [];
+  ['tip','yakit','vites','renk','mulkiyet','kullanim','durum'].forEach(function(a){
+    if(!rec) return;
+    var v = rec[a];
+    if(v == null || v === '') return;
+    var kume = { tip:TIPLER, yakit:YAKITLAR, vites:VITESLER, renk:RENKLER,
+                 mulkiyet:MULKIYETLER, kullanim:KULLANIMLAR, durum:DURUMLAR }[a];
+    if(kume.indexOf(v) === -1) KORUNAN_EKLENEN.push(a + ' = ' + v);
+  });
+
+  /* ---- Bağlı defterlerin seçenekleri ------------------------------- */
+  /* Atama listesi ortak yordamdan (brief §22.1b.2): KAYIT dizisi döner,
+     `{value,label}` değil; `ad`a göre Türkçe sıralı gelir ve çağıran
+     yeniden sıralamaz. Bugün 15 kayıt döner (16 personelin `Aktif`
+     olanları; `EMP-015` `Offboarding` olduğu için listede yok). */
+  var ATANABILIR  = GV.hr.atanabilirler() || [];
+  var SURUCU_SEC  = ATANABILIR.map(function(e){
+    return { value:e.kod, label:e.ad + ' · ' + (e.pozisyon || e.depAd || e.kod) }; });
+
+  /* Departmanlar: `aktif` bu koleksiyonda KANONDUR (brief §20.2 —
+     `durum` ekseni olmayan üç koleksiyondan biri) ve soru yine
+     `GV.arsivli`den geçer; alan doğrudan okunmaz. */
+  var DEPLER   = DB.departments || [];
+  var DEP_PASIF= DEPLER.filter(function(d){ return GV.arsivli(d); }).length;
+  var DEP_SEC  = DEPLER.map(function(d){
+    return { value:d.kod, label:d.ad + (GV.arsivli(d) ? ' · pasif departman' : '') }; });
+
+  /* Projeler: 14 kayıt, 7'si arşivli. Arşiv sorusu `GV.arsivli`den
+     geçer ve etikette yazılır — arşivli bir projeye araç bağlamak
+     yasak değil, ama sessiz de olmaz. */
+  var PROJELER = DB.projects || [];
+  var PROJE_SEC= PROJELER.map(function(p){
+    return { value:p.kod, label:p.kod + ' · ' + (p.ad || '—') +
+             (GV.arsivli(p) ? ' · arşivlenmiş proje' : '') }; });
+
+  /* Siparişler: `DB.orders` 4 kayıt. Bağ ARACIN üstündedir
+     (`DB.vehicles[].siparis`), siparişte ayna alan açılmaz. Sipariş
+     NETİ aracın `alisBedeli`ne eşittir (canon eksen 21) — etikette
+     tutar YALNIZ finans kapısı açıkken yazılır. */
+  var SIPARISLER = DB.orders || [];
+  var SIPARIS_SEC= SIPARISLER.map(function(o){
+    return { value:o.kod,
+             label:o.kod + ' · ' + (o.tarih ? F.date(o.tarih) : '—') +
+                   (canFinans && o.tutar != null ? ' · net ' + F.money(o.tutar) : '') };
+  });
+
+  /* =================================================================
+     4. DEFTER ÖLÇÜMLERİ — her sayı buradan gelir, elle yazılmaz
+     ================================================================= */
+  var SATIN_ALAN = ['alisTarihi', 'alisBedeli', 'satici', 'siparis'];
+  var KIRA_ALAN  = ['kiralamaFirmasi', 'sozlesmeBas', 'sozlesmeBit',
+                    'aylikKira', 'kmSiniri', 'depozito'];
+  var SATIN_ETIKET = 'Satın alınan';
+  var KIRA_ETIKET  = 'Kiralık';
+
+  var MULK_DAGILIM = MULKIYETLER.map(function(m){
+    return { deger:m, n:FILO.filter(function(v){ return v.mulkiyet === m; }).length }; });
+  var DURUM_DAGILIM = DURUMLAR.map(function(d){
+    return { deger:d, n:FILO.filter(function(v){ return v.durum === d; }).length }; });
+
+  /* İki bloğun aynı kayıtta birlikte dolmadığı ÖLÇÜLÜR (brief §22.12
+     bunu söylüyor; ekran onu bir varsayım olarak taşımaz). */
+  var IKI_BLOK_DOLU = FILO.filter(function(v){
+    var s = SATIN_ALAN.some(function(a){ return v[a] != null; });
+    var k = KIRA_ALAN.some(function(a){ return v[a] != null; });
+    return s && k;
+  }).length;
+
+  var ANA_SURUCU_N = doluSayi('anaSurucu');
+  var YEDEK_N      = doluSayi('yedekSurucu');
+  var PROJE_N      = doluSayi('proje');
+  var SIPARIS_N    = doluSayi('siparis');
+  var AYNI_SURUCU_N= FILO.filter(function(v){
+    return v.anaSurucu && v.yedekSurucu && v.anaSurucu === v.yedekSurucu; }).length;
+  var KM_TUTARLI_N = FILO.filter(function(v){
+    return v.sonBakimKm != null && v.sonrakiBakimKm != null &&
+           v.sonrakiBakimKm > v.sonBakimKm; }).length;
+  var TARIH_TUTARLI_N = FILO.filter(function(v){
+    return v.sonBakimTarihi && v.sonrakiBakimTarihi &&
+           iso(v.sonrakiBakimTarihi) > iso(v.sonBakimTarihi); }).length;
+  var KM_ILERI_N = FILO.filter(function(v){
+    return v.guncelKm != null && v.sonBakimKm != null && v.guncelKm >= v.sonBakimKm; }).length;
+  /* Pasiflik sorusu: `aktif` OKUNMAZ (§22.5). `GV.arsivli` `durum`
+     eksenli defterde kanonu `durum`dan okur ve varsayılan arşiv durumu
+     ('Arşivlendi') bu defterde hiç geçmez → bugün 0 arşivli araç. */
+  var ARSIVLI_N = FILO.filter(function(v){ return GV.arsivli(v); }).length;
+
+  /* Alt defterler — SALT OKUNUR (§22.16.7). Sayılar yalnız BEYAN için;
+     bu form onlara satır yazmaz ve düğme basmaz. */
+  function altDefter(kodu){
+    function say(list, alan){
+      return (list || []).filter(function(x){ return !kodu || x[alan || 'arac'] === kodu; }).length;
+    }
+    return [
+      { ad:'Bakım',   n:say(DB.maintenance),     defter:'DB.maintenance' },
+      { ad:'Yakıt',   n:say(DB.fuelLogs),        defter:'DB.fuelLogs' },
+      { ad:'Ceza',    n:say(DB.fines),           defter:'DB.fines' },
+      { ad:'Muayene', n:say(DB.inspections),     defter:'DB.inspections' },
+      { ad:'Kaza',    n:say(DB.accidents),       defter:'DB.accidents' },
+      { ad:'Gider',   n:say(DB.vehicleExpenses), defter:'DB.vehicleExpenses' },
+      { ad:'Poliçe',  n:say(DB.policies),        defter:'DB.policies' }
+    ];
+  }
+
+  /* ---- Üretilecek kod: brief §22.2 `kodUretYilsiz` ------------------ */
+  function kodUretYilsiz(){
+    var max = 0;
+    FILO.forEach(function(x){
+      var m = /^ARC-(\d+)$/.exec(x.kod || '');
+      if(m) max = Math.max(max, +m[1]);       /* sıra GLOBAL — yıl damgası YOK */
+    });
+    return 'ARC-' + String(max + 1).padStart(3, '0');
+  }
+
+  /* =================================================================
+     5. FORMA BASILAN ALAN LİSTELERİ VE ÖN DOLGU
+     -----------------------------------------------------------------
+     Listeler TEK yerde durur; kaydetme de bunları okur (L-40).
+     Para alanları AYRI listede: kapı kapalıyken ne basılsınlar ne
+     okunsunlar (§22.17.6).
+     ================================================================= */
+  var GENEL_METIN = ['plaka','marka','model','tip','renk','yakit','vites','motorNo','sasi',
+                     'mulkiyet','kullanim','anaSurucu','yedekSurucu','dep','proje','durum',
+                     'sonBakimTarihi','sonrakiBakimTarihi'];
+  var GENEL_SAYI  = ['modelYili','motorHacmi','guncelKm','sonBakimKm','sonrakiBakimKm'];
+  var SATIN_METIN = ['alisTarihi','satici','siparis'];
+  var SATIN_PARA  = ['alisBedeli'];
+  var KIRA_METIN  = ['kiralamaFirmasi','sozlesmeBas','sozlesmeBit'];
+  var KIRA_SAYI   = ['kmSiniri'];
+  var KIRA_PARA   = ['aylikKira','depozito'];
+
+  var ETIKET = {
+    plaka:'Plaka', marka:'Marka', model:'Model', modelYili:'Model yılı', tip:'Tip',
+    yakit:'Yakıt', vites:'Vites', renk:'Renk', motorHacmi:'Motor hacmi (cc)',
+    motorNo:'Motor no', sasi:'Şasi no', mulkiyet:'Mülkiyet',
+    alisTarihi:'Alış tarihi', alisBedeli:'Alış bedeli', satici:'Satıcı', siparis:'Sipariş',
+    kiralamaFirmasi:'Kiralama firması', sozlesmeBas:'Sözleşme başlangıcı',
+    sozlesmeBit:'Sözleşme bitişi', aylikKira:'Aylık kira', kmSiniri:'Yıllık km sınırı',
+    depozito:'Depozito', kullanim:'Kullanım biçimi', anaSurucu:'Ana sürücü',
+    yedekSurucu:'Yedek sürücü', dep:'Departman', proje:'Proje', durum:'Durum',
+    guncelKm:'Güncel km', sonBakimTarihi:'Son bakım tarihi', sonBakimKm:'Son bakım km',
+    sonrakiBakimTarihi:'Sonraki bakım tarihi', sonrakiBakimKm:'Sonraki bakım km'
+  };
+  function et(a){ return ETIKET[a] || a; }
+
+  var formKayit = {};
+  if(rec){
+    GENEL_METIN.concat(GENEL_SAYI, SATIN_METIN, KIRA_METIN, KIRA_SAYI).forEach(function(k){
+      formKayit[k] = rec[k] == null ? '' : rec[k];
+    });
+    /* Para alanları YALNIZ kapı açıkken ön dolguya girer. */
+    if(canFinans){
+      SATIN_PARA.concat(KIRA_PARA).forEach(function(k){
+        formKayit[k] = rec[k] == null ? '' : rec[k];
+      });
+    }
+  }
+
+  /* =================================================================
+     6. SAYFA BAŞLIĞI — form bileşeninden ÖNCE (brief §2.4)
+     -----------------------------------------------------------------
+     "Vazgeç" iki kipte de FİLO YÜZEYİNE döner (`?t=filo` — §20.7'nin
+     kayıtlı görünüm sözleşmesi; yüzey anahtarı `urlKeep:['t']` ile
+     korunuyor). Kaydettikten sonra hedef seçimini `GV.afterSave`
+     KENDİSİ ölçer (brief §5.4): araç detayı bu turda henüz yazılmadı
+     ve ekran onun yayında olup olmadığını TAHMİN ETMEZ.
+     ================================================================= */
+  GV.pageHead({
+    eyebrow:'Ekip ve Kaynaklar',
+    title:rec ? (rec.plaka || rec.kod) : 'Yeni Araç',
+    sub:rec
+      ? rec.kod + ' · ' + [rec.marka, rec.model].filter(Boolean).join(' ') +
+        ' · durum düz alandır, geçiş kaydı üretmez'
+      : 'Yeni araç · kod ' + kodUretYilsiz() + ' · filo defterinde ' + FILO.length + ' araç var',
+    actions:[
+      { label:'Vazgeç', icon:'i-arrow-left', href:LISTE_HREF },
+      { label:'Kaydet', icon:'i-check', cls:'btn-acc', run:function(){ kaydet(); } }
+    ]
+  });
+
+  mount.innerHTML = '<div id="aracForm"></div><div id="aracDurum"></div>' +
+                    '<div id="aracTuretim"></div><div id="aracBasilmayan"></div>' +
+                    '<div id="aracBackend"></div>';
+
+  /* =================================================================
+     7. DOĞRULAMALAR — ÜÇÜ DE REDDEDER, UYARMAZ (brief §22.12 · §14.12)
+     -----------------------------------------------------------------
+     1) `sonrakiBakimKm <= sonBakimKm`
+     2) `sonrakiBakimTarihi <= sonBakimTarihi`
+     3) `anaSurucu === yedekSurucu`
+     Üçü de alan bazlı `validate` ile kurulur: `form.submit()` hata
+     varsa `null` döner ve kayıt YAZILMAZ. "Uyar ama geçir" yasaktır.
+     ================================================================= */
+  function kmKontrol(deger, veri){
+    var son = sayiYaNull(deger);
+    var onc = sayiYaNull(veri.sonBakimKm);
+    if(son == null || onc == null) return '';
+    if(son <= onc)
+      return 'Sonraki bakım km değeri son bakım km değerinden BÜYÜK olmalı (' +
+             F.num(son) + ' ≤ ' + F.num(onc) + '). Kayıt bu hâliyle kaydedilmez.';
+    return '';
+  }
+  function bakimTarihKontrol(deger, veri){
+    var son = iso(deger);
+    var onc = iso(veri.sonBakimTarihi);
+    if(!son || !onc) return '';
+    if(son <= onc)
+      return 'Sonraki bakım tarihi son bakım tarihinden SONRA olmalı (' +
+             F.date(son) + ' ≤ ' + F.date(onc) + '). Kayıt bu hâliyle kaydedilmez.';
+    return '';
+  }
+  function yedekKontrol(deger, veri){
+    var y = bosNull(deger);
+    var a = bosNull(veri.anaSurucu);
+    if(!y || !a) return '';
+    if(y === a)
+      return 'Yedek sürücü ana sürücüyle aynı kişi olamaz (' +
+             (kisiAd(a) || a) + '). Kayıt bu hâliyle kaydedilmez.';
+    return '';
+  }
+  /* Ana sürücü tarafına da AYNI kural bağlanır: kullanıcı çelişkiyi
+     hangi alandan kurarsa hata orada görünsün — tek yönlü bir kontrol,
+     alan sırası değişince sessizce geçirirdi. Kural tek yordamda. */
+  function anaKontrol(deger, veri){
+    var a = bosNull(deger);
+    var y = bosNull(veri.yedekSurucu);
+    if(!a || !y) return '';
+    if(a === y)
+      return 'Ana sürücü yedek sürücüyle aynı kişi olamaz (' +
+             (kisiAd(y) || y) + '). Kayıt bu hâliyle kaydedilmez.';
+    return '';
+  }
+  /* Sözleşme tarihleri: kiralama bloğunun kendi içindeki tutarlılık.
+     Bu bir GÖZLEM DEĞİL, bir REDDİR — bitiş başlangıçtan önce olan bir
+     kira sözleşmesi defterde anlamsız bir aralık üretir. Ölçüldü:
+     `ARC-002` 2024-09-01 → 2027-08-31, tek kiralık kayıt tutarlı. */
+  function sozlesmeKontrol(deger, veri){
+    var bit = iso(deger);
+    var bas = iso(veri.sozlesmeBas);
+    if(!bit || !bas) return '';
+    if(bit <= bas)
+      return 'Sözleşme bitişi başlangıcından SONRA olmalı (' + F.date(bit) + ' ≤ ' +
+             F.date(bas) + ').';
+    return '';
+  }
+
+  /* =================================================================
+     8. ALANLAR
+     ================================================================= */
+  var kimlikAlanlar = [
+    { key:'plaka', label:ETIKET.plaka, type:'text', cols:4, required:true,
+      placeholder:'06 GW 1907',
+      hint:'Zorunlu: aracın defterdeki insan-okur kimliği. Kod (' +
+           (rec ? rec.kod : kodUretYilsiz()) + ') kaydederken defterden üretilir, elle ' +
+           'yazılmaz. Plaka BİÇİMİ zorlanmaz: biçim sözlüğü yok ve defterdeki ' + FILO.length +
+           ' kaydın biçimini geçersiz ilan etmek olurdu.' },
+    { key:'marka', label:ETIKET.marka, type:'text', cols:4, required:true,
+      placeholder:'Örn. Volkswagen',
+      hint:'Zorunlu. Marka sözlüğü YOKTUR; serbest metindir. Defterde ' +
+           benzersiz(FILO.map(function(v){ return v.marka; })).length + ' marka geçiyor.' },
+    { key:'model', label:ETIKET.model, type:'text', cols:4, required:true,
+      placeholder:'Örn. Passat 1.5 TSI',
+      hint:'Zorunlu. Model ve donanım aynı alanda tutulur — defterin biçimi budur ve ' +
+           'ikiye bölmek defteri ikiye bölerdi.' },
+    { key:'modelYili', label:ETIKET.modelYili, type:'number', cols:4, min:0,
+      hint:'Defterdeki değerler ' +
+           (function(){
+              var y = FILO.map(function(v){ return v.modelYili; })
+                          .filter(function(x){ return typeof x === 'number'; });
+              return y.length ? Math.min.apply(null, y) + '–' + Math.max.apply(null, y) : '—';
+            })() + ' aralığında. Bir üst/alt sınır DAYATILMAZ: model yılı sözlüğü yok ve ' +
+           'uydurma bir tavan var olan veriyi geçersiz ilan ederdi.' },
+    { key:'tip', label:ETIKET.tip, type:'select', cols:4,
+      options:korunan(TIPLER, 'tip', 'kayıtta yazılı; defterde başka araçta geçmiyor'),
+      hint:'Tip sözlüğü YOK: ' + TIPLER.length + ' seçenek mevcut ' + FILO.length +
+           ' araç kaydından türetildi (' + TIPLER.join(' · ') + '). Yeni bir değer bu ' +
+           'listeye ancak bir kayıtla girer.' },
+    { key:'renk', label:ETIKET.renk, type:'select', cols:4,
+      options:korunan(RENKLER, 'renk', 'kayıtta yazılı; defterde başka araçta geçmiyor'),
+      hint:'Renk sözlüğü YOK: ' + RENKLER.length + ' seçenek defterden türetildi (' +
+           RENKLER.join(' · ') + ').' }
+  ];
+
+  var teknikAlanlar = [
+    { key:'yakit', label:ETIKET.yakit, type:'select', cols:4,
+      options:korunan(YAKITLAR, 'yakit', 'kayıtta yazılı; defterde başka araçta geçmiyor'),
+      hint:'Yakıt sözlüğü YOK: ' + YAKITLAR.length + ' seçenek defterden türetildi (' +
+           YAKITLAR.join(' · ') + ').' },
+    { key:'vites', label:ETIKET.vites, type:'select', cols:4,
+      options:korunan(VITESLER, 'vites', 'kayıtta yazılı; defterde başka araçta geçmiyor'),
+      hint:'Vites sözlüğü YOK: ' + VITESLER.length + ' seçenek defterden türetildi (' +
+           VITESLER.join(' · ') + ').' },
+    { key:'motorHacmi', label:ETIKET.motorHacmi, type:'number', cols:4, min:0,
+      hint:'Santimetre küp (cc) olarak yazılır — defterin birimi budur (' +
+           (function(){
+              var h = FILO.map(function(v){ return v.motorHacmi; })
+                          .filter(function(x){ return typeof x === 'number'; });
+              return h.length ? F.num(Math.min.apply(null, h)) + '–' + F.num(Math.max.apply(null, h)) : '—';
+            })() + '). Litre cinsinden yazmak defteri ikiye bölerdi.' },
+    { key:'motorNo', label:ETIKET.motorNo, type:'text', cols:6,
+      hint:'Motor seri numarası. Defterde ' + doluSayi('motorNo') + '/' + FILO.length +
+           ' kayıtta dolu; boş kalması normaldir ve detayda "—" basılır.' },
+    { key:'sasi', label:ETIKET.sasi, type:'text', cols:6,
+      hint:'Şasi (VIN) numarası. Defterde ' + doluSayi('sasi') + '/' + FILO.length +
+           ' kayıtta dolu. Uzunluk/biçim doğrulaması YAZILMADI: VIN kuralı bu depoda ' +
+           'tanımlı değil ve uydurmak olurdu — arama kutusu bu alanı zaten tarıyor.' }
+  ];
+
+  /* ---- MÜLKİYET EKSENİ — showIf ile ikiye ayrılır (§22.12) ---------- */
+  var mulkiyetAlanlar = [
+    { key:'mulkiyet', label:ETIKET.mulkiyet, type:'select', cols:12, required:true,
+      options:korunan(MULKIYETLER, 'mulkiyet', 'kayıtta yazılı; defterde başka araçta geçmiyor'),
+      hint:'Zorunlu ve bu formun EKSENİDİR: seçim aşağıdaki iki bloktan hangisinin ' +
+           'sorulacağını belirler. Mülkiyet sözlüğü YOK — ' + MULKIYETLER.length +
+           ' seçenek defterden türetildi (' +
+           MULK_DAGILIM.map(function(x){ return x.deger + ' ' + x.n + ' kayıt'; }).join(' · ') +
+           '). Görünmeyen blok doğrulanmaz ve okunmaz: eksen değişince o bloğun alanları ' +
+           'formun parçası olmaktan çıkar.' }
+  ];
+
+  var satinAlanlar = [
+    { key:'alisTarihi', label:ETIKET.alisTarihi, type:'date', cols:6,
+      showIf:function(v){ return v.mulkiyet === SATIN_ETIKET; },
+      hint:'Satın alma ekseni. Defterde ' + doluSayi('alisTarihi') + '/' + FILO.length +
+           ' kayıtta dolu — kiralık araçta bu alan boştur.' },
+    { key:'satici', label:ETIKET.satici, type:'text', cols:6,
+      showIf:function(v){ return v.mulkiyet === SATIN_ETIKET; },
+      placeholder:'Örn. VW Plaza Ankara',
+      hint:'Serbest metin: satıcı/bayi sözlüğü YOKTUR (tedarikçi defteri demirbaş ' +
+           'tarafındadır ve araç kaydında `tedarikci` alanı yok). Defterde ' +
+           doluSayi('satici') + '/' + FILO.length + ' kayıtta dolu.' },
+    { key:'siparis', label:ETIKET.siparis, type:'select', cols:6,
+      showIf:function(v){ return v.mulkiyet === SATIN_ETIKET; },
+      options:korunan(SIPARIS_SEC, 'siparis', 'kayıtta yazılı; sipariş defterinde yok'),
+      hint:'Aracı doğuran satın alma siparişi (' + SIPARISLER.length + ' kayıt). Bağ ARACIN ' +
+           'üstünde tutulur, siparişte ayna alan açılmaz. Defterde ' + SIPARIS_N + '/' +
+           FILO.length + ' kayıtta dolu: iki araç satın alma modülünün veri penceresinden ' +
+           '(2025+) önce alındı, biri kiralık. Boş bırakmak DOĞRU cevaptır — uydurma bir ' +
+           'sipariş kodu yazmak yasaktır.' }
+  ];
+  if(canFinans) satinAlanlar.splice(1, 0,
+    { key:'alisBedeli', label:ETIKET.alisBedeli, type:'money', cols:6, currency:'₺', min:0,
+      showIf:function(v){ return v.mulkiyet === SATIN_ETIKET; },
+      hint:'Para alanı — finans yetkisinin arkasındadır. Sipariş seçilirse siparişin NET ' +
+           'tutarı bu bedele eşit olmalıdır (canon eksen 21); sağ panel farkı ölçer ama ' +
+           'kaydı REDDETMEZ: bu bir eşitlik BEYANIDIR, kapı değil.' });
+
+  var kiraAlanlar = [
+    { key:'kiralamaFirmasi', label:ETIKET.kiralamaFirmasi, type:'text', cols:6,
+      showIf:function(v){ return v.mulkiyet === KIRA_ETIKET; },
+      placeholder:'Örn. Filo Kiralama A.Ş.',
+      hint:'Kiralama ekseni. Serbest metin: kiralama firması sözlüğü YOKTUR ve defterde ' +
+           doluSayi('kiralamaFirmasi') + '/' + FILO.length + ' kayıtta dolu (tek kiralık araç).' },
+    { key:'sozlesmeBas', label:ETIKET.sozlesmeBas, type:'date', cols:6,
+      showIf:function(v){ return v.mulkiyet === KIRA_ETIKET; },
+      hint:'Kira sözleşmesinin başlangıcı.' },
+    { key:'sozlesmeBit', label:ETIKET.sozlesmeBit, type:'date', cols:6,
+      showIf:function(v){ return v.mulkiyet === KIRA_ETIKET; },
+      validate:sozlesmeKontrol,
+      hint:'Kira sözleşmesinin bitişi. Başlangıçtan önce ya da ona eşit bir bitiş ' +
+           'REDDEDİLİR.' },
+    { key:'kmSiniri', label:ETIKET.kmSiniri, type:'number', cols:6, min:0,
+      showIf:function(v){ return v.mulkiyet === KIRA_ETIKET; },
+      hint:'Sözleşmenin yıllık km sınırı. Aşım bedeli bu ekranda TÜRETİLMEZ: aşım fiyatı ' +
+           'defterde yok ve bir formül uydurmak olurdu.' }
+  ];
+  if(canFinans){
+    kiraAlanlar.push(
+      { key:'aylikKira', label:ETIKET.aylikKira, type:'money', cols:6, currency:'₺', min:0,
+        showIf:function(v){ return v.mulkiyet === KIRA_ETIKET; },
+        hint:'Para alanı — finans yetkisinin arkasındadır. Aylık kira gider defterine ' +
+             'AYRICA yazılmaz: gider defteri (DB.vehicleExpenses) salt okunurdur ve satır ' +
+             'ekleyen bir yordam yoktur.' },
+      { key:'depozito', label:ETIKET.depozito, type:'money', cols:6, currency:'₺', min:0,
+        showIf:function(v){ return v.mulkiyet === KIRA_ETIKET; },
+        hint:'Para alanı — finans yetkisinin arkasındadır. Sözleşme sonunda iade edilen ' +
+             'tutar; bu ekranda bir iade takibi YOKTUR.' });
+  }
+
+  var kullanimAlanlar = [
+    { key:'kullanim', label:ETIKET.kullanim, type:'select', cols:6,
+      options:korunan(KULLANIMLAR, 'kullanim', 'kayıtta yazılı; defterde başka araçta geçmiyor'),
+      hint:'Kullanım sözlüğü YOK: ' + KULLANIMLAR.length + ' seçenek defterden türetildi (' +
+           KULLANIMLAR.join(' · ') + '). "Ortak kullanım" araçlarda sabit sürücü ' +
+           'atanmaz — defterde ölçüldü.' },
+    { key:'anaSurucu', label:ETIKET.anaSurucu, type:'select', cols:6, validate:anaKontrol,
+      options:korunan(SURUCU_SEC, 'anaSurucu', 'kayıtta yazılı; kadroda atanabilir değil'),
+      hint:'Liste ortak yordamdan gelir (' + ATANABILIR.length + ' atanabilir personel, ' +
+           'yalnız "Aktif" durum) ve çağıran onu yeniden sıralamaz. Zorunlu DEĞİL: defterde ' +
+           ANA_SURUCU_N + '/' + FILO.length + ' araçta sürücü var, kalanı ortak kullanımda.' },
+    { key:'yedekSurucu', label:ETIKET.yedekSurucu, type:'select', cols:6, validate:yedekKontrol,
+      options:korunan(SURUCU_SEC, 'yedekSurucu', 'kayıtta yazılı; kadroda atanabilir değil'),
+      hint:'Ana sürücüyle AYNI kişi olamaz — çelişki REDDEDİLİR, uyarıyla geçilmez. ' +
+           'Defterde ' + YEDEK_N + '/' + FILO.length + ' araçta dolu; bugün hiçbir kayıtta ' +
+           'iki alan aynı kişiyi göstermiyor.' },
+    { key:'dep', label:ETIKET.dep, type:'select', cols:6,
+      options:korunan(DEP_SEC, 'dep', 'kayıtta yazılı; departman defterinde yok'),
+      hint:'Aracın bağlı olduğu departman (' + DEPLER.length + ' kayıt, ' + DEP_PASIF +
+           ' tanesi pasif ve etiketinde yazılı). Departman ADI araç kaydında TUTULMAZ; ' +
+           'ekranlar onu departman defterinden okur.' },
+    { key:'proje', label:ETIKET.proje, type:'select', cols:6,
+      options:korunan(PROJE_SEC, 'proje', 'kayıtta yazılı; proje defterinde yok'),
+      hint:'Opsiyonel. Ölçüldü: bugün hiçbir araç projeye bağlı değil (' + PROJE_N + '/' +
+           FILO.length + ' dolu) — alan defterde var, kullanımı yok. Boş bırakmak doğru ' +
+           'cevaptır; "—" bir eksik değil, bağın kurulmadığı bilgisidir. ' + PROJELER.length +
+           ' projenin arşivlenmiş olanları etiketinde yazılıdır.' }
+  ];
+
+  var durumAlanlar = [
+    { key:'durum', label:ETIKET.durum, type:'select', cols:6, required:true,
+      options:korunan(DURUMLAR, 'durum', 'kayıtta yazılı; defterde başka araçta geçmiyor'),
+      hint:'⚠️ Araç için GEÇİŞ TABLOSU TANIMLI DEĞİL: durum düz alan olarak buradan ' +
+           'düzenlenir ve bir geçiş kaydı ÜRETMEZ. Sözlüğü de yok — ' + DURUMLAR.length +
+           ' seçenek mevcut ' + FILO.length + ' kayıttan türetildi (' +
+           DURUM_DAGILIM.map(function(x){ return x.deger + ' ' + x.n; }).join(' · ') +
+           '). Zorunlu tutulur çünkü arşiv sorusu bu alanı KANON okur; boş bırakmak ' +
+           'kararı tuzaklı `aktif` alanına düşürürdü. Ön seçim YAPILMADI: doğum durumu ' +
+           'tanımlayan bir tablo olmadığı için hangi durumda doğacağını ekran uyduramaz.' },
+    { key:'guncelKm', label:ETIKET.guncelKm, type:'number', cols:6, min:0,
+      hint:'Kilometre sayacının bugünkü değeri. Yakıt defterindeki `km` alanı bu değeri ' +
+           'GÜNCELLEMEZ — iki defter ayrıdır ve bu form yakıt defterine satır yazmaz.' },
+    { key:'sonBakimTarihi', label:ETIKET.sonBakimTarihi, type:'date', cols:6,
+      hint:'Son yapılan periyodik/ağır bakımın tarihi. Bakım DEFTERİ ayrıdır ' +
+           '(DB.maintenance): bu alanı doldurmak oraya bir bakım kaydı EKLEMEZ; satır ' +
+           'ekleyen bir yordam yok.' },
+    { key:'sonBakimKm', label:ETIKET.sonBakimKm, type:'number', cols:6, min:0,
+      hint:'Son bakımın yapıldığı km. Ölçüldü: ' + KM_ILERI_N + '/' + FILO.length +
+           ' kayıtta güncel km bu değerden büyük ya da eşit.' },
+    { key:'sonrakiBakimTarihi', label:ETIKET.sonrakiBakimTarihi, type:'date', cols:6,
+      validate:bakimTarihKontrol,
+      hint:'Son bakım tarihinden SONRA olmalı; değilse kayıt REDDEDİLİR. Filo yüzeyindeki ' +
+           '"bakımı yaklaşan" ölçümü bu alanı bugüne (' + F.date(DB.today) + ') göre okur.' },
+    { key:'sonrakiBakimKm', label:ETIKET.sonrakiBakimKm, type:'number', cols:6, min:0,
+      validate:kmKontrol,
+      hint:'Son bakım km değerinden BÜYÜK olmalı; değilse kayıt REDDEDİLİR. Ölçüldü: ' +
+           KM_TUTARLI_N + '/' + FILO.length + ' kayıt bugün bu kuralı sağlıyor.' }
+  ];
+
+  /* =================================================================
+     9. FORM
+     ================================================================= */
+  var sekmeler = [
+    { key:'kimlik',   label:'Kimlik ve teknik',  icon:'i-car' },
+    { key:'mulkiyet', label:'Mülkiyet',          icon:'i-receipt' },
+    { key:'kullanim', label:'Kullanım ve atama', icon:'i-users' },
+    { key:'bakim',    label:'Durum ve bakım',    icon:'i-wrench' }
+  ];
+
+  var bolumler = [
+    { title:'Kimlik', icon:'i-car', tab:'kimlik',
+      desc:'Kod kaydederken defterden üretilir (' + (rec ? rec.kod : kodUretYilsiz()) +
+           '). Tip ve renk için ortak sözlük yoktur; seçenekler mevcut ' + FILO.length +
+           ' araç kaydından türetildi.',
+      fields:kimlikAlanlar },
+    { title:'Teknik', icon:'i-cpu', tab:'kimlik',
+      desc:'Motor ve şasi bilgisi. Yakıt ve vites seçenekleri de defterden türetildi — ' +
+           'bu alanların sözlüğü yok.',
+      fields:teknikAlanlar },
+    { title:'Mülkiyet ekseni', icon:'i-receipt', tab:'mulkiyet',
+      desc:'Seçim aşağıdaki iki bloktan hangisinin sorulacağını belirler. Ölçüldü: ' +
+           MULK_DAGILIM.map(function(x){ return x.deger + ' ' + x.n + ' kayıt'; }).join(' · ') +
+           ' ve iki blok aynı kayıtta birlikte dolu DEĞİL (' + IKI_BLOK_DOLU + '/' +
+           FILO.length + ').',
+      fields:mulkiyetAlanlar },
+    { title:'Satın alma bloğu', icon:'i-cart', tab:'mulkiyet',
+      desc:'Yalnız mülkiyet "' + SATIN_ETIKET + '" iken sorulur. Görünmeyen alan ' +
+           'doğrulanmaz ve okunmaz; eksen kiralığa çevrilirse bu dört alan formun parçası ' +
+           'olmaktan çıkar.' +
+           (canFinans ? '' : ' Alış bedeli bu oturumda BASILMADI — finans yetkisi kapalı.'),
+      fields:satinAlanlar },
+    { title:'Kiralama bloğu', icon:'i-file', tab:'mulkiyet',
+      desc:'Yalnız mülkiyet "' + KIRA_ETIKET + '" iken sorulur. Altı alanın tamamı ' +
+           'defterde tek kayıtta dolu (' + doluSayi('kiralamaFirmasi') + '/' + FILO.length +
+           ').' + (canFinans ? '' : ' Aylık kira ve depozito bu oturumda BASILMADI — ' +
+           'finans yetkisi kapalı.'),
+      fields:kiraAlanlar },
+    { title:'Kullanım ve atama', icon:'i-users', tab:'kullanim',
+      desc:'Sürücü listesi ortak atama yordamından gelir. Ana ve yedek sürücünün aynı kişi ' +
+           'olması REDDEDİLİR.',
+      fields:kullanimAlanlar },
+    { title:'Durum, km ve bakım planı', icon:'i-wrench', tab:'bakim',
+      desc:'Durum düz alandır: araç bir geçiş varlığı değildir ve bu alan bir geçiş kaydı ' +
+           'üretmez. Bakım planının iki tutarlılık kuralı da kaydı REDDEDER.',
+      fields:durumAlanlar }
+  ];
+
+  var form = GV.form({
+    mount:'#aracForm',
+    id:'aracForm',
+    record:formKayit,
+    tabs:sekmeler,
+    aside:function(veri){ return yanPanel(veri); },
+    sections:bolumler
+  });
+
+  if(!form){
+    mount.innerHTML = GV.errorState({ title:'Form çizilemedi',
+      desc:'Form bileşeni bağlanamadı. Sayfayı yeniden açmayı deneyin.' });
+    return;
+  }
+
+  /* =================================================================
+     10. SAĞ PANEL — mülkiyet ekseninin ve kapıların CANLI hâli
+     ================================================================= */
+  function yanPanel(v){
+    var out = '';
+    var mulk  = bosNull(v.mulkiyet);
+    var brans = (mulk === SATIN_ETIKET) ? 'satin' : (mulk === KIRA_ETIKET ? 'kira' : null);
+
+    /* ---- Kayıt özeti ------------------------------------------------ */
+    out += '<div class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-car') + 'Kayıt özeti</h3></div>' +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Kayıt no', rec
+            ? kodEt(rec.kod)
+            : kodEt(kodUretYilsiz()) + ' ' + faint('kaydederken defterden üretilir')],
+          ['Plaka', bosNull(v.plaka) ? kodEt(v.plaka) : faint('girilmedi')],
+          ['Marka / Model', (bosNull(v.marka) || bosNull(v.model))
+            ? esc([bosNull(v.marka), bosNull(v.model)].filter(Boolean).join(' ')) +
+              GV.cell.sub(esc([bosNull(v.modelYili), bosNull(v.tip), bosNull(v.renk)]
+                .filter(Boolean).join(' · ')))
+            : faint('girilmedi')],
+          ['Yakıt / Vites', (bosNull(v.yakit) || bosNull(v.vites))
+            ? esc([bosNull(v.yakit), bosNull(v.vites)].filter(Boolean).join(' · '))
+            : faint('seçilmedi')],
+          ['Mülkiyet', mulk ? esc(mulk) : '<span class="u-warn">seçilmedi — zorunlu</span>'],
+          ['Kullanım', bosNull(v.kullanim) ? esc(v.kullanim) : faint('seçilmedi')],
+          ['Durum', bosNull(v.durum)
+            ? GV.badge(v.durum) + GV.cell.sub('düz alan — geçiş kaydı üretmez')
+            : '<span class="u-warn">seçilmedi — zorunlu</span>'],
+          ['Güncel km', sayiYaNull(v.guncelKm) != null
+            ? GV.cell.num(sayiYaNull(v.guncelKm)) : faint('girilmedi')]
+        ]) +
+      '</div></div>';
+
+    /* ---- MÜLKİYET EKSENİ — iki dal, canlı --------------------------- */
+    var satinDolu = SATIN_ALAN.filter(function(a){ return bosNull(v[a]) != null; });
+    var kiraDolu  = KIRA_ALAN.filter(function(a){ return bosNull(v[a]) != null; });
+    var eksenSatir = [
+      ['Seçili eksen', brans
+        ? esc(mulk) + GV.cell.sub(brans === 'satin'
+            ? 'satın alma bloğu soruluyor; kiralama bloğu forma basılmadı'
+            : 'kiralama bloğu soruluyor; satın alma bloğu forma basılmadı')
+        : (mulk
+            ? '<span class="u-warn">' + esc(mulk) + ' — iki bloktan hiçbiri açılmadı</span>' +
+              GV.cell.sub('bu değer korunan seçenektir; defterde blok eşleşmesi yok')
+            : '<span class="u-warn">seçilmedi — eksen zorunludur</span>')],
+      ['Satın alma bloğu (4 alan)', brans === 'satin'
+        ? '<span class="u-ok">form içinde</span>' +
+          GV.cell.sub('dolu: ' + (satinDolu.length ? esc(satinDolu.map(et).join(', ')) : 'yok'))
+        : '<span class="u-muted">formda değil</span>' +
+          GV.cell.sub('görünmeyen alan doğrulanmaz ve okunmaz — ' +
+            esc(SATIN_ALAN.map(et).join(' · '))) ],
+      ['Kiralama bloğu (6 alan)', brans === 'kira'
+        ? '<span class="u-ok">form içinde</span>' +
+          GV.cell.sub('dolu: ' + (kiraDolu.length ? esc(kiraDolu.map(et).join(', ')) : 'yok'))
+        : '<span class="u-muted">formda değil</span>' +
+          GV.cell.sub('görünmeyen alan doğrulanmaz ve okunmaz — ' +
+            esc(KIRA_ALAN.map(et).join(' · '))) ],
+      ['Defter ölçümü',
+        MULK_DAGILIM.map(function(x){ return x.deger + ' ' + x.n + ' kayıt'; }).join(' · ') +
+        GV.cell.sub('iki blok aynı kayıtta birlikte dolu: ' + IKI_BLOK_DOLU + '/' +
+          FILO.length + ' — eksen defterde de tek yönlü')]
+    ];
+    /* Eksen DEĞİŞTİRİLDİYSE ne olacağı SESSİZ kalmaz. */
+    if(rec && brans){
+      var eskiBrans = (rec.mulkiyet === SATIN_ETIKET) ? 'satin'
+                    : (rec.mulkiyet === KIRA_ETIKET ? 'kira' : null);
+      if(eskiBrans && eskiBrans !== brans){
+        var dusen = (eskiBrans === 'satin' ? SATIN_ALAN : KIRA_ALAN)
+                      .filter(function(a){ return rec[a] != null; });
+        var dusenPara = dusen.filter(function(a){ return PARA_ALAN.indexOf(a) !== -1; });
+        eksenSatir.push(['Eksen değişiyor',
+          '<span class="u-warn">' + esc(rec.mulkiyet) + ' → ' + esc(mulk) + '</span>' +
+          GV.cell.sub('kayıtta dolu olup düşecek alan: ' +
+            (dusen.length ? esc(dusen.map(et).join(', ')) : 'yok') +
+            (dusenPara.length && !canFinans
+              ? ' — para alanlarına (' + esc(dusenPara.map(et).join(', ')) +
+                ') DOKUNULMAZ, finans kapısı kapalı'
+              : ''))]);
+      }
+    }
+    out += kart('i-receipt', 'Mülkiyet ekseni', esc(mulk || '—'),
+      GV.dl(eksenSatir) +
+      faintNot('Mekanizma ortak form bileşenindedir: <b>showIf</b> görünmeyen alanı hem ' +
+        'doğrulamadan hem <b>read()</b>ten düşürür. Yani eksen değiştirmek diğer bloğu ' +
+        'sessizce boşaltır — bu ekran o sessizliği kabul etmez ve düşen alanları burada ' +
+        'yazar, kaydetmeden önce görülsün.'));
+
+    /* ---- DURUM — geçiş tablosu yok ---------------------------------- */
+    out += GV.notice({ tone:'warn', icon:'i-alert',
+      title:'Araç için geçiş tablosu tanımlı değil',
+      text:'Durum düz alan olarak düzenlenir ve bir geçiş kaydı üretmez. Geçiş defterinde ' +
+           TRANS_ADET + ' varlık tanımlı, "vehicle" ' + (VT ? 'ARTIK VAR — bu cümle eskidi'
+             : 'aralarında YOK') + '; bu yüzden geçiş yordamı bu ekranda hiç çağrılmaz ' +
+           '(olmayan bir varlık için çağırmak sessizce boş dönerdi ve ekran "geçiş yapıldı" ' +
+           'sanırdı). Durum sözlüğü de yok: seçenekler mevcut ' + FILO.length +
+           ' kayıttan türetildi. Backend payı BE-P4 aşağıda beyan edildi.' });
+
+    /* ---- BAKIM PLANI — iki reddin canlı hâli ------------------------ */
+    var sbT = iso(v.sonBakimTarihi), srT = iso(v.sonrakiBakimTarihi);
+    var sbK = sayiYaNull(v.sonBakimKm), srK = sayiYaNull(v.sonrakiBakimKm);
+    var gK  = sayiYaNull(v.guncelKm);
+    var kalanGun = srT ? F.days(srT) : null;      /* days(iso) → TAM GÜN FARKI */
+    var bakimSatir = [
+      ['Son bakım', sbT || sbK != null
+        ? (sbT ? F.date(sbT) : faint('tarih yok')) +
+          GV.cell.sub(sbK != null ? GV.cell.num(sbK) + ' km\'de' : 'km yazılmadı')
+        : faint('girilmedi')],
+      ['Sonraki bakım', srT || srK != null
+        ? (srT ? F.date(srT) : faint('tarih yok')) +
+          GV.cell.sub(srK != null ? GV.cell.num(srK) + ' km\'de' : 'km yazılmadı')
+        : faint('girilmedi')],
+      ['Tarih kuralı', (srT && sbT)
+        ? (srT > sbT
+            ? '<span class="u-ok">geçiyor</span>' +
+              GV.cell.sub('sonraki tarih son bakımdan sonra')
+            : '<span class="u-danger">REDDEDİLİR</span>' +
+              GV.cell.sub('sonraki tarih son bakım tarihine eşit ya da ondan önce'))
+        : '<span class="u-muted">ölçülemedi</span>' +
+          GV.cell.sub('iki tarih birlikte dolmadan kural ölçülemez — "geçer" DEMEZ')],
+      ['Km kuralı', (srK != null && sbK != null)
+        ? (srK > sbK
+            ? '<span class="u-ok">geçiyor</span>' +
+              GV.cell.sub('aradaki fark ' + F.num(srK - sbK) + ' km')
+            : '<span class="u-danger">REDDEDİLİR</span>' +
+              GV.cell.sub('sonraki km son bakım km değerine eşit ya da ondan küçük'))
+        : '<span class="u-muted">ölçülemedi</span>' +
+          GV.cell.sub('iki km değeri birlikte dolmadan kural ölçülemez')],
+      /* ⚠️ `GV.fmt.days(iso)` iki TARİH arasındaki tam gün farkıdır, bir
+         süre biçimlendiricisi DEĞİLDİR (§21.11 düzeltmesi): bir sayıyı
+         ona vermek `NaN` üretip DOM'a basardı. Gün SAYISI hücre
+         tarafında `GV.cell.gun(n, tone)` ile basılır. */
+      ['Bakıma kalan', kalanGun != null
+        ? GV.cell.gun(kalanGun, kalanGun < 0 ? 'danger' : (kalanGun <= 30 ? 'warn' : null)) +
+          GV.cell.sub(kalanGun < 0
+            ? 'planlanan bakım tarihi bugüne (' + F.date(DB.today) + ') göre GEÇTİ — negatif ' +
+              'gün farkı bir hata değil, gecikmenin ölçüsüdür'
+            : 'sonraki bakım tarihi bugüne (' + F.date(DB.today) + ') göre; filo ' +
+              'yüzeyindeki "bakımı yaklaşan" ölçümü de bu farkı 30 günle karşılaştırır')
+        : faint('—') + GV.cell.sub('sonraki bakım tarihi girilmedi')]
+    ];
+    if(gK != null && srK != null && gK >= srK){
+      bakimSatir.push(['Gözlem — km aşımı',
+        '<span class="u-warn">güncel km sonraki bakım km\'sini geçti</span>' +
+        GV.cell.sub('fark ' + F.num(gK - srK) + ' km. Bu bir KAPI DEĞİLDİR: bakım gecikmesi ' +
+          'bir veri hatası değil, bir işletme durumudur ve reddedilecek bir çelişki değil')]);
+    }
+    if(gK != null && sbK != null && gK < sbK){
+      bakimSatir.push(['Gözlem — sayaç geriye gitti',
+        '<span class="u-warn">güncel km son bakım km\'sinden küçük</span>' +
+        GV.cell.sub('ölçüldü: defterde ' + KM_ILERI_N + '/' + FILO.length + ' kayıtta güncel ' +
+          'km son bakım km\'sine eşit ya da ondan büyük. Bu bir KAPI DEĞİLDİR — brief bu ' +
+          'ekran için üç ret tanımlıyor, dördüncüsünü ekran uydurmaz')]);
+    }
+    out += kart('i-wrench', 'Bakım planı', null,
+      GV.dl(bakimSatir) +
+      faintNot('İki kural da <b>reddeder</b>, uyarıp geçmez. Ölçülemeyen kural "geçer" ' +
+        'diye basılmaz: iki değer birlikte dolmadan kural ölçülemez ve doğru cevap ' +
+        '"ölçülemedi"dir. Bakım DEFTERİ (' + (DB.maintenance || []).length + ' kayıt) bu ' +
+        'formdan yazılmaz — satır ekleyen bir yordam yok.'));
+
+    /* ---- SÜRÜCÜ VE ATAMA ------------------------------------------- */
+    var ana = bosNull(v.anaSurucu), yed = bosNull(v.yedekSurucu);
+    var surucuSatir = [
+      ['Ana sürücü', ana
+        ? GV.user(ana, { sm:true })
+        : faint('atanmadı') + GV.cell.sub(bosNull(v.kullanim) === 'Ortak kullanım'
+            ? 'ortak kullanım — sabit sürücü atanmaması normaldir'
+            : 'defterde ' + ANA_SURUCU_N + '/' + FILO.length + ' araçta dolu')],
+      ['Yedek sürücü', yed ? GV.user(yed, { sm:true }) : faint('atanmadı')],
+      ['Çakışma kuralı', (ana && yed)
+        ? (ana === yed
+            ? '<span class="u-danger">REDDEDİLİR</span>' +
+              GV.cell.sub('ana ve yedek sürücü aynı kişi')
+            : '<span class="u-ok">geçiyor</span>' + GV.cell.sub('iki farklı kişi'))
+        : '<span class="u-muted">ölçülemedi</span>' +
+          GV.cell.sub('iki alan birlikte dolmadan çakışma ölçülemez')],
+      ['Atama listesi', ATANABILIR.length + ' personel' +
+        GV.cell.sub('ortak yordamdan geldi (yalnız "Aktif" durum); ekran ikinci bir ' +
+          'atanabilirlik kuralı yazmaz')],
+      ['Defter ölçümü', 'ana sürücü ' + ANA_SURUCU_N + '/' + FILO.length + ' · yedek ' +
+        YEDEK_N + '/' + FILO.length + ' · ikisi aynı kişi ' + AYNI_SURUCU_N + '/' + FILO.length]
+    ];
+    if(bosNull(v.proje)){
+      var pk = projeKaydi(bosNull(v.proje));
+      surucuSatir.push(['Proje bağı', kodEt(v.proje) +
+        GV.cell.sub(pk ? esc(pk.ad || '—') + (GV.arsivli(pk) ? ' · arşivlenmiş proje' : '')
+                       : 'proje defterinde bulunamadı')]);
+    }else{
+      surucuSatir.push(['Proje bağı', faint('—') +
+        GV.cell.sub('bugün hiçbir araç projeye bağlı değil (' + PROJE_N + '/' + FILO.length +
+          ' dolu); boş bırakmak doğru cevaptır')]);
+    }
+    out += kart('i-users', 'Kullanım ve atama', null, GV.dl(surucuSatir));
+
+    /* ---- GÖZLEMLER — kural DEĞİL, ölçüm ---------------------------- */
+    /* ⚠️ MÜKERRER PLAKA/ŞASİ BİR KAPI DEĞİLDİR. Araç defteri için
+       mükerrerlik yordamı yazılmamış (`GV.sales.hesapMukerrer` HESAP
+       defteri içindir) ve olmayan bir kuralı reddetmek uydurmak olurdu;
+       her zaman boş dönen bir doğrulama ise sahte bir kapı görüntüsü
+       olurdu. Ekran ölçümü GÖSTERİR, kaydı reddetmez. */
+    function ayniAlan(alan, deger){
+      var d = String(bosNull(deger) || '').toLocaleUpperCase('tr').replace(/\s+/g, '');
+      if(!d) return [];
+      return FILO.filter(function(x){
+        return (!rec || x.kod !== rec.kod) &&
+               String(x[alan] || '').toLocaleUpperCase('tr').replace(/\s+/g, '') === d;
+      });
+    }
+    var ayniPlaka = ayniAlan('plaka', v.plaka);
+    var ayniSasi  = ayniAlan('sasi', v.sasi);
+    if(ayniPlaka.length || ayniSasi.length){
+      out += GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Bu değer başka bir araç kaydında da yazılı',
+        text:(ayniPlaka.length ? 'Aynı plaka: ' +
+                ayniPlaka.map(function(x){ return x.kod + ' · ' + x.plaka; }).join(' · ') + '. '
+              : '') +
+             (ayniSasi.length ? 'Aynı şasi no: ' +
+                ayniSasi.map(function(x){ return x.kod + ' · ' + x.sasi; }).join(' · ') + '. '
+              : '') +
+             'Bu bir KAPI DEĞİLDİR: araç defteri için mükerrer kontrolü yordamı yazılmamış ve ' +
+             'olmayan bir kuralı reddetmek uydurmak olurdu. Karşılaştırma ' + FILO.length +
+             ' kayıt üzerinde koştu; büyük/küçük harf ve boşluk yok sayıldı. Plaka ' +
+             'benzersizliği sunucu kısıtı olarak backend payında beyan edildi.' });
+    }
+
+    /* ---- FİNANS KAPISI — iki yön birlikte -------------------------- */
+    var paraSatir = [
+      ['Para alanları', (canFinans
+        ? '<span class="u-ok">açık</span>' : '<span class="u-muted">kapalı</span>') +
+        GV.cell.sub('kapı <b>GV.perm.can(\'finans\')</b> · rol ' + esc(GV.perm.role()) +
+          ' · alanlar: ' + esc(PARA_ALAN.map(et).join(' · ')))],
+      ['Kapının iki yönü', PARA_KAYIT_N + '/' + FILO.length + ' kayıtta en az bir para ' +
+        'değeri var · toplam ' + PARA_DEGER_N + ' değer' +
+        GV.cell.sub('sayılan şey KAPI DURUMUDUR, tutar değil: kapalı oturumda bu ' +
+          PARA_DEGER_N + ' değer ne basılır ne okunur')]
+    ];
+    if(canFinans && brans === 'satin'){
+      var sipKod = bosNull(v.siparis);
+      var sip    = sipKod ? siparisKaydi(sipKod) : null;
+      var bedel  = sayiYaNull(v.alisBedeli);
+      paraSatir.push(['Sipariş neti = alış bedeli', sip
+        ? (sip.tutar != null && bedel != null
+            ? (Number(sip.tutar) === Number(bedel)
+                ? '<span class="u-ok">eşit</span>' +
+                  GV.cell.sub(F.money(sip.tutar) + ' · canon eksen 21')
+                : '<span class="u-warn">fark var: ' +
+                  esc(F.money(sip.tutar)) + ' ≠ ' + esc(F.money(bedel)) + '</span>' +
+                  GV.cell.sub('bu bir BEYAN, kapı değil — kayıt reddedilmez'))
+            : faint('—') + GV.cell.sub('iki tutar birlikte dolmadan eşitlik ölçülemez'))
+        : faint('—') + GV.cell.sub('sipariş seçilmedi; ' + SIPARIS_N + '/' + FILO.length +
+            ' araçta sipariş bağı var')]);
+    }
+    out += kart('i-wallet', 'Finans kapısı', canFinans ? 'açık' : 'kapalı',
+      GV.dl(paraSatir) +
+      faintNot(canFinans
+        ? 'Kapı açık: para alanları basıldı ve kaydetmede okunacak.'
+        : 'Kapalı alan <b>hiç çizilmedi</b>. Maskelenmiş bir <b>&lt;input&gt;</b> ' +
+          'kaydedildiğinde gerçek tutarın üstüne maske yazardı; bu yüzden alanlar ne ' +
+          'basılır ne okunur ve kayıttaki tutar korunur. <b>0</b> basmak da yasaktı: 0 bir ' +
+          'DEĞERDİR, "göremezsin" demek değil.'));
+
+    /* ---- ALT DEFTERLER — SALT OKUNUR ------------------------------- */
+    var defterler = altDefter(rec ? rec.kod : null);
+    out += kart('i-list', 'Alt defterler — bu form onlara dokunmaz',
+      defterler.reduce(function(s, d){ return s + d.n; }, 0) + ' kayıt',
+      GV.dl(defterler.map(function(d){
+        return [d.ad, (d.n === 0
+          ? faint('0') + GV.cell.sub(rec
+              ? 'bu araç için ' + d.defter + ' defterinde kayıt yok — "olay olmadı" demek değil'
+              : 'yeni kayıt: henüz bir araç yok, sayım defterin tamamı üzerinde')
+          : F.num(d.n) + ' kayıt' + GV.cell.sub(esc(d.defter)))];
+      })) +
+      faintNot('Yedi defter de <b>salt okunurdur</b>: bakım · yakıt · ceza · muayene · kaza ' +
+        '· gider · poliçe defterlerine satır EKLEYEN bir yordam yazılmamış. Bu yüzden bu ' +
+        'formda "yeni bakım ekle" gibi bir düğme <b>yok</b> — devre dışı bir düğme bile bir ' +
+        'vaattir. Defterler araç DETAYINA aittir.' +
+        (rec ? ' <a href="app-arac-detay.html?id=' + encodeURIComponent(rec.kod) +
+               '">Araç detayını aç</a>' : '')));
+
+    /* ---- Kaydetme neye dokunur ------------------------------------- */
+    var yazilacak = GENEL_METIN.concat(GENEL_SAYI);
+    var blokAlan  = brans === 'satin' ? SATIN_METIN.concat(canFinans ? SATIN_PARA : [])
+                  : brans === 'kira'  ? KIRA_METIN.concat(KIRA_SAYI, canFinans ? KIRA_PARA : [])
+                  : [];
+    out += kart('i-edit', 'Kaydetme neye dokunur', null,
+      GV.dl([
+        ['Yazılacak', esc(yazilacak.map(et).join(', '))],
+        ['Mülkiyet bloğu', blokAlan.length
+          ? esc(blokAlan.map(et).join(', ')) +
+            GV.cell.sub(brans === 'satin'
+              ? 'kiralama bloğunun alanları kayıttan düşürülür (defterin biçimi: satın ' +
+                'alınan araçta kira alanları hiç yok)'
+              : 'satın alma alanları kayıtta boş bırakılır (defterin biçimi: kiralık araçta ' +
+                'alış alanları null)')
+          : '<span class="u-muted">iki bloktan hiçbiri açık değil — hiçbirine dokunulmaz</span>'],
+        ['Para alanları', canFinans
+          ? 'seçili bloğun para alanları yazılır'
+          : '<span class="u-muted">okunmayacak — kapı kapalı, kayıttaki tutar korunur</span>'],
+        ['Dokunulmayacak', 'aktif (tuzaklı alan) · bakım · yakıt · ceza · muayene · kaza · ' +
+          'gider · poliçe defterleri · departman adı (araç kaydında tutulmaz)']
+      ]));
+
+    return out;
+  }
+
+  /* =================================================================
+     11. KAYDETME
+     -----------------------------------------------------------------
+     `GV.arac.olustur` YOKTUR (§22.16.6): kayıt nesne LİTERALİYLE doğar
+     ve `durum` literalde verilir. Kayda sonradan durum yazan satır
+     yoktur; geçiş yordamı ÇAĞRILMAZ çünkü araç bir geçiş varlığı değil.
+     ================================================================= */
+  function bransOku(v){
+    var mulk = bosNull(v.mulkiyet);
+    return (mulk === SATIN_ETIKET) ? 'satin' : (mulk === KIRA_ETIKET ? 'kira' : null);
+  }
+
+  function kaydet(){
+    var v = form.submit();
+    if(!v) return false;                  /* doğrulama düştü — bileşen söyledi */
+    return rec ? guncelle(v) : yeniKayit(v);
+  }
+
+  function yeniKayit(v){
+    var brans  = bransOku(v);
+    var depKod = bosNull(v.dep);
+    if(depKod && !depKaydi(depKod)){
+      GV.toast(depKod + ' departman defterinde bulunamadı; departman bağı kurulamadı.', 'danger');
+      return false;
+    }
+    var projeKod = bosNull(v.proje);
+    if(projeKod && !projeKaydi(projeKod)){
+      GV.toast(projeKod + ' proje defterinde bulunamadı; proje bağı kurulamadı.', 'danger');
+      return false;
+    }
+
+    var hedefKod = kodUretYilsiz();
+    var yeni = {
+      kod:hedefKod,
+      plaka:bosNull(v.plaka),
+      marka:bosNull(v.marka),
+      model:bosNull(v.model),
+      modelYili:sayiYaNull(v.modelYili),
+      tip:bosNull(v.tip),
+      yakit:bosNull(v.yakit),
+      vites:bosNull(v.vites),
+      motorHacmi:sayiYaNull(v.motorHacmi),
+      motorNo:bosNull(v.motorNo),
+      sasi:bosNull(v.sasi),
+      renk:bosNull(v.renk),
+      mulkiyet:bosNull(v.mulkiyet),
+      /* Satın alma ekseni: defterin biçimi KİRALIK kayıtta bu dördünü de
+         `null` tutuyor, o biçim korunur. */
+      alisTarihi:brans === 'satin' ? bosNull(v.alisTarihi) : null,
+      alisBedeli:(brans === 'satin' && canFinans) ? sayiYaNull(v.alisBedeli) : null,
+      satici:brans === 'satin' ? bosNull(v.satici) : null,
+      siparis:brans === 'satin' ? bosNull(v.siparis) : null,
+      kullanim:bosNull(v.kullanim),
+      anaSurucu:bosNull(v.anaSurucu),
+      yedekSurucu:bosNull(v.yedekSurucu),
+      dep:depKod,
+      proje:projeKod,
+      /* ⚠️ Durum LİTERALDE. Araç için geçiş tablosu yok; bu alan düz
+         alandır ve bir geçiş kaydı üretmez (BE-P4). */
+      durum:bosNull(v.durum),
+      guncelKm:sayiYaNull(v.guncelKm),
+      sonBakimTarihi:bosNull(v.sonBakimTarihi),
+      sonBakimKm:sayiYaNull(v.sonBakimKm),
+      sonrakiBakimTarihi:bosNull(v.sonrakiBakimTarihi),
+      sonrakiBakimKm:sayiYaNull(v.sonrakiBakimKm)
+      /* `aktif` YAZILMAZ — tuzaklı alan (§22.5 · K-33). Pasiflik sorusu
+         `GV.arsivli`dendir ve bu defterde kanon `durum`dur. */
+    };
+    /* Kiralama bloğu YALNIZ kiralık kayıtta AÇILIR: satın alınan
+       araçlarda bu altı anahtar defterde HİÇ YOK ve biçim korunur —
+       `null` yazmak da olmayan bir ekseni varmış gibi göstermek olurdu. */
+    if(brans === 'kira'){
+      yeni.kiralamaFirmasi = bosNull(v.kiralamaFirmasi);
+      yeni.sozlesmeBas     = bosNull(v.sozlesmeBas);
+      yeni.sozlesmeBit     = bosNull(v.sozlesmeBit);
+      yeni.aylikKira       = canFinans ? sayiYaNull(v.aylikKira) : null;
+      yeni.kmSiniri        = sayiYaNull(v.kmSiniri);
+      yeni.depozito        = canFinans ? sayiYaNull(v.depozito) : null;
+    }
+
+    (DB.vehicles || (DB.vehicles = [])).unshift(yeni);
+
+    GV.audit.yaz({
+      kayit:hedefKod, modul:'Filo',
+      islem:'Araç kaydı oluşturuldu · ' + (yeni.plaka || '—') + ' · ' +
+            [yeni.marka, yeni.model].filter(Boolean).join(' ') + ' · mülkiyet ' +
+            (yeni.mulkiyet || '—') + ' · durum ' + (yeni.durum || '—') +
+            ' (düz alan, geçiş kaydı üretilmedi)',
+      yeni:yeni.durum || null, tone:'ok', icon:'i-car' });
+
+    if(!canFinans)
+      GV.toast('Para alanları (alış bedeli · aylık kira · depozito) finans yetkiniz ' +
+               'olmadığı için ne basıldı ne yazıldı; kayıt tutar olmadan doğdu.', 'info', 6000);
+
+    GV.afterSave({
+      kod:hedefKod, liste:LISTE_HREF, detay:'app-arac-detay.html', yeni:true,
+      mesaj:hedefKod + ' oluşturuldu; mülkiyet "' + (yeni.mulkiyet || '—') + '" ekseninde ' +
+            (brans === 'kira' ? 'kiralama bloğu' : brans === 'satin' ? 'satın alma bloğu'
+                                                                    : 'hiçbir blok') +
+            ' yazıldı. Durum "' + (yeni.durum || '—') + '" olarak düz alan biçiminde ' +
+            'kaydedildi — araç için geçiş tablosu tanımlı değil, bir geçiş kaydı ' +
+            'üretilmedi. Bakım · yakıt · ceza · muayene · kaza · gider · poliçe ' +
+            'defterlerine satır yazılmadı.'
+    });
+    return true;
+  }
+
+  function guncelle(v){
+    var brans  = bransOku(v);
+    var depKod = bosNull(v.dep);
+    if(depKod && !depKaydi(depKod)){
+      GV.toast(depKod + ' departman defterinde bulunamadı; departman bağı değiştirilmedi.', 'danger');
+      return false;
+    }
+    var projeKod = bosNull(v.proje);
+    if(projeKod && !projeKaydi(projeKod)){
+      GV.toast(projeKod + ' proje defterinde bulunamadı; proje bağı değiştirilmedi.', 'danger');
+      return false;
+    }
+
+    var degisen = [];
+    function metinYaz(k, deger){
+      var yeniD = bosNull(deger);
+      var eskiD = (rec[k] == null || rec[k] === '') ? null : rec[k];
+      if(String(yeniD) !== String(eskiD)){ degisen.push(k); rec[k] = yeniD; }
+    }
+    function sayiYaz(k, deger){
+      var yeniD = sayiYaNull(deger);
+      var eskiD = rec[k] == null ? null : rec[k];
+      if(yeniD !== eskiD){ degisen.push(k); rec[k] = yeniD; }
+    }
+
+    GENEL_METIN.forEach(function(k){ metinYaz(k, v[k]); });
+    GENEL_SAYI.forEach(function(k){ sayiYaz(k, v[k]); });
+
+    /* ---- MÜLKİYET BLOKLARI ----------------------------------------
+       `showIf` görünmeyen alanı `read()`ten düşürür; o yüzden burada
+       "formda olmayan alanı yazma" kuralı MUTLAKTIR. Seçilen eksenin
+       bloğu yazılır, DİĞER bloğun kayıttaki değeri düşürülür — çünkü
+       eksen değişince o değerler kaydı kendisiyle çelişik yapar
+       (kiralık bir araçta alış bedeli, satın alınmış bir araçta aylık
+       kira). Para alanları kapı kapalıysa hiç ELLENMEZ. */
+    if(brans === 'satin'){
+      SATIN_METIN.forEach(function(k){ metinYaz(k, v[k]); });
+      if(canFinans) SATIN_PARA.forEach(function(k){ sayiYaz(k, v[k]); });
+      KIRA_METIN.concat(KIRA_SAYI).forEach(function(k){
+        if(rec[k] != null){ degisen.push(k + ' (düşürüldü — eksen satın almaya çevrildi)'); }
+        if(k in rec) delete rec[k];
+      });
+      KIRA_PARA.forEach(function(k){
+        if(!canFinans) return;                 /* kapı kapalı — dokunulmaz */
+        if(rec[k] != null){ degisen.push(k + ' (düşürüldü — eksen satın almaya çevrildi)'); }
+        if(k in rec) delete rec[k];
+      });
+    }else if(brans === 'kira'){
+      KIRA_METIN.forEach(function(k){ metinYaz(k, v[k]); });
+      KIRA_SAYI.forEach(function(k){ sayiYaz(k, v[k]); });
+      if(canFinans) KIRA_PARA.forEach(function(k){ sayiYaz(k, v[k]); });
+      SATIN_METIN.forEach(function(k){
+        if(rec[k] != null){ degisen.push(k + ' (boşaltıldı — eksen kiralığa çevrildi)'); }
+        rec[k] = null;
+      });
+      if(canFinans) SATIN_PARA.forEach(function(k){
+        if(rec[k] != null){ degisen.push(k + ' (boşaltıldı — eksen kiralığa çevrildi)'); }
+        rec[k] = null;
+      });
+    }
+    /* brans === null (korunan seçenek): iki bloktan hiçbiri forma
+       basılmadı → hiçbirine dokunulmaz. Kayıttaki değerler korunur. */
+
+    var paraDokunulmadi = !canFinans &&
+      PARA_ALAN.some(function(k){ return rec[k] != null; });
+
+    GV.audit.yaz({
+      kayit:rec.kod, modul:'Filo',
+      islem:degisen.length
+        ? 'Araç kaydı güncellendi — değişen alan: ' +
+          degisen.map(function(k){ return ETIKET[k] || k; }).join(', ')
+        : 'Araç kaydı kaydedildi — basılan alanlarda değişiklik yok',
+      tone:'info', icon:'i-edit' });
+
+    if(paraDokunulmadi)
+      GV.toast('Para alanları finans yetkiniz olmadığı için ne basıldı ne okundu; ' +
+               'kayıttaki tutarlar korundu.', 'info', 6000);
+
+    GV.afterSave({
+      kod:rec.kod, liste:LISTE_HREF, detay:'app-arac-detay.html', yeni:false,
+      mesaj:'Araç kaydı güncellendi. Mülkiyet ekseni "' + (rec.mulkiyet || '—') + '": ' +
+            (brans ? 'yalnız o bloğun alanları yazıldı, diğer blok kayıttan düşürüldü.'
+                   : 'iki bloktan hiçbiri forma basılmadığı için hiçbirine dokunulmadı.') +
+            ' Durum "' + (rec.durum || '—') + '" — düz alan olarak yazıldı, geçiş kaydı ' +
+            'üretilmedi.' +
+            (paraDokunulmadi ? ' Para alanları okunmadı, kayıttaki tutar korundu.' : '')
+    });
+    return true;
+  }
+
+  /* =================================================================
+     12. DURUM VE GEÇİŞ BEYANI — formun altında, kalıcı
+     ================================================================= */
+  (function durumBeyani(){
+    var el = document.getElementById('aracDurum');
+    if(!el) return;
+    el.innerHTML = kart('i-refresh', 'Durum neden düz alan',
+      TRANS_ADET + ' varlık geçiş defterinde',
+      GV.dl([
+        ['Geçiş tablosu', VT
+          ? '<span class="u-warn">vehicle tablosu ARTIK VAR — bu ekranın beyanı eskidi</span>'
+          : '<span class="u-muted">araç için tanımlı değil</span>' +
+            GV.cell.sub('geçiş defterinde ' + TRANS_ADET + ' varlık var, "vehicle" yok')],
+        ['Sonuç', 'Durum <b>düz alan</b> olarak düzenlenir ve <b>bir geçiş kaydı üretmez</b>' +
+          GV.cell.sub('geçiş yordamı bu ekranda hiç çağrılmadı: olmayan bir varlık için ' +
+            'çağırmak sessizce boş dönerdi')],
+        ['Seçenekler', DURUM_DAGILIM.map(function(x){
+            return esc(x.deger) + ' ' + x.n + ' kayıt'; }).join(' · ') +
+          GV.cell.sub('durum sözlüğü YOK (vehicleStatuses tanımlı değil); seçenekler mevcut ' +
+            FILO.length + ' araç kaydından türetildi')],
+        ['Pasiflik / arşiv', ARSIVLI_N + '/' + FILO.length + ' araç arşivli' +
+          GV.cell.sub('soru yalnız <b>GV.arsivli(r)</b> yordamındadır. Bu defter durum ' +
+            'eksenlidir, o yüzden <b>aktif</b> alanı TUZAKLIDIR ve bu ekran onu okumaz, ' +
+            'yazmaz, süzmez. "Serviste" bir emeklilik değil geçici bir durumdur — filo ' +
+            'yüzeyinde pasif sayılmaz ve listede görünür')]
+      ]) +
+      faintNot('Bu ekranın durum tarafındaki sözleşmesinin tamamı budur. Bir "durum ' +
+        'değiştir" düğmesi <b>basılmadı</b>: geçiş motoru bu varlığı tanımıyor, düğme bir ' +
+        'geçiş vaadi olurdu. Backend payı <b>BE-P4</b> aşağıda beyan edildi.'));
+  })();
+
+  /* =================================================================
+     13. TÜRETİLEN SEÇENEKLER — kaynağı ekranda YAZILI (§10.1)
+     ================================================================= */
+  (function turetim(){
+    var el = document.getElementById('aracTuretim');
+    if(!el) return;
+    function satir(ad, kume, alan){
+      return [ad, (kume.length ? esc(kume.join(' · ')) : faint('defterde değer yok')) +
+        GV.cell.sub(kume.length + ' seçenek · kaynak <b>DB.vehicles[].' + alan + '</b> · ' +
+          doluSayi(alan) + '/' + FILO.length + ' kayıtta dolu')];
+    }
+    el.innerHTML = kart('i-sliders', 'Sözlüğü olmayan alanlar — seçenekler nereden geldi',
+      '7 alan',
+      GV.dl([
+        satir('Durum', DURUMLAR, 'durum'),
+        satir('Mülkiyet', MULKIYETLER, 'mulkiyet'),
+        satir('Kullanım biçimi', KULLANIMLAR, 'kullanim'),
+        satir('Tip', TIPLER, 'tip'),
+        satir('Yakıt', YAKITLAR, 'yakit'),
+        satir('Vites', VITESLER, 'vites'),
+        satir('Renk', RENKLER, 'renk')
+      ]) +
+      '<p class="u-sm">Bu yedi alanın ortak sözlüğü <b>yoktur</b> (<b>vehicleStatuses</b> ' +
+        'dahil). Seçenekler mevcut ' + FILO.length + ' araç kaydından türetildi; uydurma ' +
+        'değer eklenmedi. Yeni bir değer bu listelere ancak bir kayıtla girer.</p>' +
+      faintNot('KORUNAN SEÇENEK: düzenlenen kaydın kendi değeri türetimin dışında kalırsa ' +
+        'listeye <b>eklenir</b> — yoksa seçim kutusu onu sessizce başka bir değere çevirir ve ' +
+        'kaydetmek veri kaybı olurdu. Bu kayıtta korunan seçenek: ' +
+        (rec ? (KORUNAN_EKLENEN.length ? esc(KORUNAN_EKLENEN.join(' · '))
+                                       : 'yok — yedi değerin hepsi türetilen listelerde var')
+             : 'yeni kayıt, korunacak bir değer yok') + '.'));
+  })();
+
+  /* =================================================================
+     14. BASILMAYAN ALANLAR VE DÜĞMELER — sebepleri YAZILI
+     ================================================================= */
+  (function basilmayan(){
+    var el = document.getElementById('aracBasilmayan');
+    if(!el) return;
+    var satir = [
+      ['aktif', 'TUZAKLI alan (K-18 → K-33). DB.vehicles durum eksenli bir defterdir, o ' +
+        'yüzden bu alan tuzaklıdır: okuyan undefined alır ve bayat eksen sayacı artar. Bu ' +
+        'ekran onu okumaz, yazmaz, süzmez — kayıt doğarken de yazılmaz. Pasiflik sorusu ' +
+        'GV.arsivli yordamındadır. (Yakıt · gider · poliçe defterlerinde aynı alan ' +
+        'TUZAKSIZDIR ama orada da okunmaz — soru hep aynı yordamdan geçer.)'],
+      ['Bakım · yakıt · ceza · muayene · kaza · gider · poliçe',
+        'Yedi defterin hiçbirine SATIR EKLEYEN yordam yazılmamış. Bu form onlara dokunmaz ' +
+        've "yeni bakım ekle" gibi bir düğme BASMAZ: devre dışı bir düğme bile vaat sayılır. ' +
+        'Defterler araç detayının işidir. Aracın bakım planı alanları (son/sonraki bakım) ' +
+        'kayıt üstündeki PLANDIR, bakım defterinin kendisi değil.'],
+      ['Sigorta / kasko poliçesi',
+        'Poliçe defteri araca bağlıdır (' + (DB.policies || []).length + ' kayıt) ama bir ' +
+        'poliçe kaydı AÇAN yordam yok; ayrıca poliçe bir olay değil bir mülkiyet ' +
+        'niteliğidir ve araç detayının özet yüzeyinde durur. Bu form poliçe sormaz.'],
+      ['Zimmet / tutanak',
+        'Araç zimmeti bu depoda DEMİRBAŞ ekseninde tanımlıdır (DB.assignments demirbaş ' +
+        'kodlarına bağlanır); araç için bir tutanak defteri yok. Ana/yedek sürücü alanı bir ' +
+        'ZİMMET DEĞİLDİR ve kabul/onay taşımaz — öyle sunmak olmayan bir imza vaat etmek olurdu.'],
+      ['Departman adı', 'Araç kaydında böyle bir alan yok: departman ADI departman ' +
+        'defterinden okunur. Ekran ikinci bir kopya yazmaz.'],
+      ['kalanGun benzeri sayaçlar', 'Bakıma kalan gün ve km FARKI türetilir, kayda ' +
+        'YAZILMAZ: türetilmiş bir sayıyı kaydetmek onu ilk yenilenmede bayatlatır.']
+    ];
+    el.innerHTML = kart('i-list', 'Bu formun basmadığı alanlar, defterler ve düğmeler',
+      satir.length + ' madde', GV.dl(satir));
+  })();
+
+  /* =================================================================
+     15. BACKEND PAYI — brief §10.2 (b) biçimi · §20.6 · §22.15
+     ================================================================= */
+  document.getElementById('aracBackend').innerHTML =
+    '<section class="gv-card u-mt-8"><div class="gc-head">' +
+      '<h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+      '<span class="u-faint u-sm">2 madde</span></div>' +
+      '<div class="gc-body">' +
+        '<ul class="odl-gap">' +
+          '<li><span class="odl-gap-kod">BE-P4</span>' +
+            '<span>Araç için durum makinesi yok; <b>durum</b> düz alan olarak yazılır ve bir ' +
+              'geçiş kaydı üretmez. Gerçek sistemde araç durumunun kimin hangi koşulda ' +
+              'değiştirebileceği sunucuda tanımlı olmalıdır</span>' +
+            '<span class="odl-gap-bolum">§22.15</span></li>' +
+          '<li><span class="odl-gap-kod">BE-S5</span>' +
+            '<span>Denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır</span>' +
+            '<span class="odl-gap-bolum">§9 audit_event</span></li>' +
+        '</ul>' +
+        '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+          '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+        '<p class="u-faint u-sm"><b>BE-P1 burada beyan EDİLMEDİ</b> ve bu bilinçlidir: o ' +
+          'madde "durum geçişi sunucuda yeniden doğrulanmaz" der, oysa bu ekranda bir geçiş ' +
+          'HİÇ YOK. İlgisiz bir madde beyan etmek, olmayan bir mekanizmanın varmış gibi ' +
+          'görünmesine yol açardı. Aynı sebeple <b>BE-S4</b> (belge yükleme) de yok: bu form ' +
+          'dosya sormuyor.</p>' +
+        '<p class="u-faint u-sm">Prototip sınırı — <b>para alanlarının kapısı yalnız ' +
+          'arayüzdedir.</b> Alış bedeli, aylık kira ve depozito bu oturumda ' +
+          (canFinans ? 'basıldı (finans yetkisi açık)' : 'basılmadı (finans yetkisi kapalı)') +
+          '; ama <b>kayıt nesnesinin tamamı istemcinin belleğindedir</b>. Gerçek sistemde ' +
+          'bu alanlar sunucuda yetkiye göre süzülmeli — maskelenmiş bir tutar istemciye hiç ' +
+          'gitmemelidir. Bu, personel tarafındaki BE-K1 maddesinin filo karşılığıdır ve ' +
+          'brief\'te kendi kodu yok; ekran kod UYDURMAK yerine sınırı yazdı.</p>' +
+        '<p class="u-faint u-sm">Prototip sınırı — <b>düzenleme yetkisinin KAPSAMI bu formda ' +
+          'uygulanmıyor.</b> Yetki matrisi bu rolde <b>duzenle = ' +
+          esc(GV.perm.scope('duzenle')) + '</b> diyor, ama kayıt bazlı düzenleme kapsamını ' +
+          'ölçen bir ortak yordam yok (kayıt kapısı yalnız müşteri oturumuna karşı çalışıyor). ' +
+          'Ekran kendi kapsam kuralını UYDURMADI; eksik beyan edildi.</p>' +
+        '<p class="u-faint u-sm">Prototip sınırı — <b>mükerrer plaka kontrolü bir KAPI ' +
+          'DEĞİLDİR.</b> Araç defteri için mükerrerlik yordamı yazılmamış (hesap defterinin ' +
+          'mükerrer yordamı araç için geçerli değil), o yüzden aynı plakayı reddeden bir ' +
+          'kural yazılmadı: olmayan bir kuralı uydurmak yerine sınır beyan edildi. Gerçek ' +
+          'sistemde plaka benzersizliği sunucuda bir kısıt olmalıdır.</p>' +
+      '</div>' +
+    '</section>';
+});
+</script>
+</body>
+</html>
