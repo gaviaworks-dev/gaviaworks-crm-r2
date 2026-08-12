@@ -1952,10 +1952,15 @@ Ayrıldı     → (yok, TERMINAL)       girisZorunlu: cikisTarihi · cikisNedenK
 ```
 Yetki **yedi geçişte de** `ik / sahip / genelmudur`.
 
-⚠️ **DÜZELTME — `DB.reasonCodes[].tur` BİR DİZİDİR.** Bu satır önce
-"`tur:'cikis'` taşıyanlar" diyordu ve o okuma **SIFIR kod bulur**: alan
-`['iade','revizyon']` gibi bir dizidir, bir kod birden çok türe hizmet eder.
-Ölçüldü — `c.tur === 'cikis'` **0**, `c.tur.indexOf('cikis') !== -1` **7**:
+⚠️ **DÜZELTME — `DB.reasonCodes[].tur` BİR DİZİDİR.**
+<!-- brief-dogrula:yoksay-basla -->
+Bu satır önce "`tur:'cikis'` taşıyanlar" diyordu ve o okuma **SIFIR kod
+bulur**: `c.tur === 'cikis'` → **0**, `c.tur.indexOf('cikis') !== -1` → **7**.
+`[B5.2]` ekseni artık bu sınıfı yakalıyor; bu blok ölçüm dışında çünkü yanlış
+yazımı ÖRNEK olarak anıyor.
+<!-- brief-dogrula:yoksay-bitir -->
+Alan `['iade','revizyon']` gibi bir dizidir — bir kod birden çok türe hizmet
+eder — ve dizi alan `indexOf` ile okunur:
 
 ```js
 var CIKIS = (DB.reasonCodes || []).filter(function(c){
@@ -2632,10 +2637,15 @@ GV.fmt.rel('2026-08-25')       // 'bugün' · 'yarın' · 'dün' · '3 gün sonr
 ⚠️ **DÜZELTME — `GV.fmt.days` yukarıda BİR SÜRE BİÇİMLENDİRİCİSİ GİBİ
 yazılıydı ve yanlıştı.** Gerçek imza `days(iso, today)`: iki tarih arasındaki
 **tam gün farkını** döndürür (`today` verilmezse `DB.today`), bir sayıyı
-"3 gün" diye biçimlendirmez. `GV.fmt.days(3)` çağrısı `new Date('3T00:00:00')`
-üretip **`NaN`** döndürür ve o `NaN` DOM'a basılır — dilim 6'da bir ajan bu
-satırı brief'ten okuyup tam olarak bunu yaşadı. Gün SAYISI basacaksan
-`GV.fmt.num(n) + ' gün'` ya da hücre tarafında `GV.cell.gun(n, tone)` kullan.
+"3 gün" diye biçimlendirmez.
+<!-- brief-dogrula:yoksay-basla -->
+Yanlış yazım `GV.fmt.days(3)`tü: o çağrı `new Date('3T00:00:00')` üretip
+**`NaN`** döndürür ve o `NaN` DOM'a basılır — dilim 6'da bir ajan bu satırı
+brief'ten okuyup tam olarak bunu yaşadı. `[B5.4]` ekseni artık bu sınıfı
+yakalıyor; bu blok ölçüm dışında çünkü hatayı ÖRNEK olarak anıyor.
+<!-- brief-dogrula:yoksay-bitir -->
+Gün SAYISI basacaksan `GV.fmt.num(n) + ' gün'` ya da hücre tarafında
+`GV.cell.gun(n, tone)` kullan.
 ⚠️ `GV.fmt.mny` **YOKTUR** (§4.3). Para HTML'i `GV.cell.mny`dir.
 
 **`GV.list` — brief'te yazılı olmayan üç bayrak (üçü de gerçek):**
