@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Yeni Satın Alma Talebi — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="finans" data-screen="satinalma">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   SATIN ALMA TALEBİ FORMU — rota 115 · ekran brief §5 · §22.7
+
+   DESEN: `GV.pageHead` + `GV.form` + `GV.afterSave`. Bu depoda
+   `CreateEditPage` ADINDA bir bileşen yoktur; desen budur (brief §5).
+
+   ÜÇ KİP, TEK EKRAN:
+     (argümansız)   → yeni talep. `app-satinalma.html` "Yeni Talep" düğmesi
+                      bu adresi parametresiz açar.
+     ?id=SAT-…      → düzenleme
+     ?proje=PRJ-…   → o projeye bağlı yeni talep (proje alanı ön dolu)
+
+   BU EKRANIN ASIL İŞİ ONAY ZİNCİRİ ÖNİZLEMESİDİR (brief §22.7). Sağ
+   panel `GV.approval.akisTanim('Satın alma talebi')` TANIMINI okur ve
+   tahmini maliyet değiştikçe kaç adımın çalışacağını TÜRETİR. Adım sayısı
+   hiçbir yerde yazılı değildir; eşikler akış kaydından gelir.
+
+   DÖRT MUTASYON YASAĞI — bu formda istisnası yok:
+     · `p.durum = …`              YASAK. Doğum durumu geçiş tablosunun İLK
+       kaydıdır ve nesne literalinde verilir; geçişler `GV.flow.gec` ile
+       satın alma ekranındaki talep çekmecesinde yürür (brief §7.4 · §22.17).
+     · `p.onayAdim` / `p.onayToplam` YASAK. İkisi de TÜRETİLMİŞ sayaçtır;
+       `GV.approval.tazeleSayaclar()` her yüklemede zincirden yeniden
+       hesaplar. Yeni kayıt literalinde de verilmezler (brief §22.7).
+     · `DB.purchaseApprovals.push(...)` YASAK. Zincir ÖRNEĞİ açan yordam
+       yoktur (`GV.approval.karar` var olan satırı sonuçlandırır, satır
+       AÇMAZ — brief §22.16 madde 8). Form yalnız TANIMI gösterir.
+     · `p.aktif` YASAK. `DB.purchases` `durum` taşır; §22.5 gereği bu
+       defterde `aktif` TUZAKLIDIR. Arşiv ekseni `GV.arsivli(p)` üzerinden
+       `durum`dan okunur; yeni kayıt literalinde `aktif` alanı YOK.
+
+   `hr.js` YÜKLENMEZ (brief §22.0): `DB.purchases` `ops.js`tedir, bu ekran
+   zaman/özlük defterine hiç dokunmaz. `firsat.js` · `odeme.js` · `notes.js`
+   de yüklenmez.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var esc = GV.esc;
+  var F   = GV.fmt;
+
+  /* Onay akışının TÜR anahtarı — `DB.approvalFlows[].tur` değeri.
+     `app-satinalma.html` de aynı dizeyi kullanır: iki ekran tek anahtar. */
+  var TUR  = 'Satın alma talebi';
+  var PARA = '₺';
+
+  var canFinans = GV.perm.can('finans');
+
+  /* ---- Geçiş tablosu: doğum durumunun TEK kaynağı -------------------
+     "Taslak" dizesini elle yazmak, tablo değiştiğinde sessizce yanlış
+     durumda kayıt doğurmak demektir (brief §7.4). Ölçülemiyorsa söylenir
+     ve kayıt AÇILMAZ. */
+  var TP            = (DB.transitions || {}).purchase || {};
+  var ILK_DURUM     = Object.keys(TP)[0] || null;
+  var ILK_KURAL     = (ILK_DURUM && TP[ILK_DURUM]) || {};
+  var CIKIS_ZORUNLU = ILK_KURAL.zorunlu || [];
+  var CIKIS_ETIKET  = ILK_KURAL.etiket || null;
+
+  var q        = new URLSearchParams(location.search);
+  var kodArg   = q.get('id');
+  var projeArg = q.get('proje');
+
+  var rec = kodArg
+    ? (DB.purchases || []).filter(function(x){ return x.kod === kodArg; })[0] || null
+    : null;
+
+  /* ---- Küçük yardımcılar -------------------------------------------- */
+  function bosNull(x){
+    var s = (x == null) ? '' : String(x).trim();
+    return s === '' ? null : s;
+  }
+  function benzersiz(list){
+    return (list || []).filter(function(v, i, s){
+      return v != null && v !== '' && s.indexOf(v) === i; });
+  }
+  function sayi(v){
+    var n = parseFloat(String(v == null ? '' : v).replace(',', '.'));
+    return isFinite(n) ? n : null;
+  }
+  function faint(s){ return '<span class="u-faint">' + esc(s) + '</span>'; }
+  function kodEt(s){ return '<span class="cell-code">' + esc(s) + '</span>'; }
+  function projeKaydi(k){
+    return k ? ((DB.projects || []).filter(function(x){ return x.kod === k; })[0] || null) : null;
+  }
+  function depKaydi(k){
+    return k ? ((DB.departments || []).filter(function(x){ return x.kod === k; })[0] || null) : null;
+  }
+  function depAd(k){ var d = depKaydi(k); return d ? d.ad : null; }
+
+  function basitBaslik(baslik, alt){
+    GV.pageHead({
+      eyebrow:'Finans', title:baslik, sub:alt,
+      actions:[{ label:'Satın alma listesine dön', icon:'i-arrow-left', href:'app-satinalma.html' }]
+    });
+  }
+
+  /* =================================================================
+     KAPILAR — dördü de REDDEDER, uyarıp geçmez (brief §14 madde 12)
+     ================================================================= */
+
+  /* ---- 1) Kayıt yok (brief §10) ------------------------------------ */
+  if(kodArg && !rec){
+    basitBaslik('Kayıt bulunamadı', kodArg);
+    mount.innerHTML = GV.errorState({
+      title:kodArg + ' bulunamadı',
+      desc:'Bu kod hiçbir satın alma talebiyle eşleşmedi. Adres çubuğundaki kodu kontrol edin ' +
+           'ya da satın alma listesinden kaydı seçin.',
+      action:'<a class="btn btn-acc" href="app-satinalma-form.html">Yeni talep aç</a>' });
+    return;
+  }
+
+  /* ---- 2) `?proje=` bir KAYITLA eşleşmek zorundadır ----------------
+     Eşleşmeyen kodu sessizce yutmak, kullanıcıya "projeye bağladım"
+     dedirtip hiçbir yere bağlamamak olurdu. Düzenleme kipinde parametre
+     OKUNMAZ: kaydın kendi proje bağı esastır. */
+  var onProje = (!rec && projeArg) ? projeKaydi(projeArg) : null;
+  if(!rec && projeArg && !onProje){
+    basitBaslik('Ön dolgu kaydı bulunamadı', 'Proje: ' + projeArg);
+    mount.innerHTML = GV.errorState({
+      title:projeArg + ' bulunamadı',
+      desc:'Adres çubuğundan gelen proje kodu hiçbir proje kaydıyla eşleşmedi; form o bağı ' +
+           'uydurmaz. Projeyi formdan seçerek devam edebilirsiniz.',
+      action:'<a class="btn btn-acc" href="app-satinalma-form.html">Boş formla devam et</a>' });
+    return;
+  }
+
+  /* ---- 3) Yetki kapısı --------------------------------------------- */
+  var izinli = rec ? GV.perm.can('duzenle') : GV.perm.can('ekle');
+  if(!izinli){
+    basitBaslik(rec ? 'Talep ' + rec.kod : 'Yeni Satın Alma Talebi', 'Bu ekran için yetkiniz yok');
+    mount.innerHTML = GV.empty({
+      icon:'i-lock',
+      title:rec ? 'Talebi düzenleme yetkiniz yok' : 'Yeni talep açma yetkiniz yok',
+      desc:'Rolünüz (' + GV.perm.role() + ') bu işlem için yetkili değil. Satın alma ' +
+           'taleplerini görüntülemeye devam edebilirsiniz.',
+      action:'<a class="btn btn-line" href="app-satinalma.html">Satın alma listesine dön</a>' });
+    return;
+  }
+
+  /* ---- 4) Oturum kapısı — `talepEden` OTURUMDAN gelir --------------
+     Talebi açan kişi kullanıcıya SORULMAZ (brief §22.7): alan
+     `GV.session.emp`den okunur. Müşteri oturumunda `emp` null'dır
+     (brief §2.2) ve o kişi adına talep uydurulamaz — kayıt açılmaz. */
+  var OTURUM_EMP = (GV.session && GV.session.emp) || null;
+  if(!rec && !OTURUM_EMP){
+    basitBaslik('Yeni Satın Alma Talebi', 'Talep eden oturumdan çözülemedi');
+    mount.innerHTML = GV.empty({
+      icon:'i-user',
+      title:'Bu form personel oturumu ister',
+      desc:'Satın alma talebinin `talepEden` alanı oturumdan (GV.session.emp) okunur ve ' +
+           'kullanıcıya sorulmaz. Bu oturumda personel kodu yok (müşteri oturumu), bu yüzden ' +
+           'talebi kimin açtığı türetilemedi ve uydurulmadı; kayıt açılmadı.',
+      action:'<a class="btn btn-line" href="app-satinalma.html">Satın alma listesine dön</a>' });
+    return;
+  }
+
+  /* ---- 5) Doğum durumu ölçülemiyorsa yeni kayıt AÇILMAZ ------------- */
+  if(!rec && !ILK_DURUM){
+    basitBaslik('Yeni Satın Alma Talebi', 'Doğum durumu türetilemedi');
+    mount.innerHTML = GV.errorState({
+      title:'Satın alma geçiş tablosu yüklenemedi',
+      desc:'Yeni talebin doğacağı durum DB.transitions.purchase tablosunun ilk kaydından ' +
+           'ölçülür. Tablo yüklenmediği için bu değer türetilemedi ve uydurulmadı; ' +
+           'kayıt açılmadı.' });
+    return;
+  }
+
+  /* Düzenlemede talebi açan kişi DEĞİŞMEZ: kaydın kendi `talepEden`i esastır. */
+  var TALEP_EDEN = rec ? (rec.talepEden || null) : OTURUM_EMP;
+
+  /* =================================================================
+     SÖZLÜK ÖLÇÜMÜ — hiçbir seçenek listesi ekranda YAZILI DEĞİL
+     ================================================================= */
+  var TUM = DB.purchases || [];
+
+  /* ⚠️ KATEGORİ — kaynak `DB.purchases`tir, `DB.assetCategories` DEĞİL.
+     Ölçüldü (brief §22.4): satın alma defterindeki 'Araç' değeri 20
+     kayıtlık demirbaş sözlüğünde YOK. Sözlüğü kaynak saymak, defterde
+     var olan bir kategoriyi seçilemez yapardı. */
+  var KATEGORILER = benzersiz(TUM.map(function(p){ return p.kategori; })).sort();
+
+  /* ⚠️ BÜTÇE KODU — sözlüğü YOK (brief §22.4). Seçenekler defterden
+     türetilir, listede olmayan kod serbest metin olarak yazılır. */
+  var BUTCE_KODLARI = benzersiz(TUM.map(function(p){ return p.butceKodu; })).sort();
+
+  /* Öncelik ORTAK sözlükten okunur — 4 değer (`DB.priorities`). */
+  var ONCELIKLER = DB.priorities || [];
+
+  /* Departman: `durum` ekseni yok, `aktif` orada KANONDUR ve pasiflik
+     `GV.arsivli(d)` üzerinden sorulur (brief §21.4 · §22.5). */
+  var DEPARTMANLAR = (DB.departments || []).map(function(d){
+    return { value:d.kod, label:d.ad + (GV.arsivli(d) ? ' · pasif' : '') };
+  });
+  var PASIF_DEP = (DB.departments || []).filter(function(d){ return GV.arsivli(d); }).length;
+
+  var PROJELER = (DB.projects || []).map(function(p){
+    return { value:p.kod,
+             label:p.ad + ' · ' + (p.durum || '—') + (p.arsiv === true ? ' · arşiv' : '') };
+  });
+  var PROJE_BAGLI = TUM.filter(function(p){ return !!p.proje; }).length;
+
+  /* ---- Onay akışı TANIMI — koşum değil, tanım --------------------- */
+  var AKIS   = GV.approval.akisTanim(TUR) || null;
+  var ADIMLAR = (AKIS && AKIS.adimlar) || [];
+
+  /* Bir tutarda kaç adım çalışır — TÜRETİLİR, yazılmaz (brief §22.7). */
+  function calisanAdimlar(tutar){
+    if(tutar == null) return null;
+    return ADIMLAR.filter(function(a){
+      return a.esik == null || (a.kosul === 'tutar' && tutar >= a.esik);
+    });
+  }
+
+  /* =================================================================
+     KOD ÜRETİMİ — sıra GLOBAL (brief §22.2)
+     -----------------------------------------------------------------
+     `SAT` defterinde numara YILLAR ARASINDA ilerliyor
+     (`SAT-2025-010 · SAT-2026-011…016`). Yıl-içi tarama defterin sırasını
+     bozar; bu yüzden max GLOBAL alınır, yıl damgası KAYIT yılıdır.
+     ================================================================= */
+  function kodUret(){
+    var yil = String(DB.today).slice(0, 4), max = 0;
+    (DB.purchases || []).forEach(function(x){
+      var m = new RegExp('^SAT-\\d{4}-(\\d+)$').exec(x.kod || '');
+      if(m) max = Math.max(max, +m[1]);
+    });
+    return 'SAT-' + yil + '-' + String(max + 1).padStart(3, '0');
+  }
+
+  /* =================================================================
+     PARA KAPISI (UID-11 · brief §22.17 madde 6)
+     -----------------------------------------------------------------
+     Maskelenmiş bir `<input>` basmak yasaktır: kaydedildiğinde gerçek
+     değeri '••••••' ile ezer. Bu yüzden kapı ŞÖYLE kurulur:
+       · yeni kayıt          → tutar alanı AÇIK (kullanıcı kendi tahminini
+                               girer; kendi girdiği değer maskelenmez)
+       · düzenleme + finans  → tutar alanı AÇIK
+       · düzenleme + finans YOK → alan HİÇ BASILMAZ, kayıttaki tutar
+                               '••••••' olarak gösterilir ve kaydetme o
+                               alana DOKUNMAZ.
+     ================================================================= */
+  var tutarKapali = !!rec && !canFinans;
+
+  function paraHtml(v){
+    if(v == null) return faint('—');
+    return canFinans ? GV.cell.mny(v) : '<span class="cell-mask">••••••</span>';
+  }
+
+  /* =================================================================
+     SAYFA BAŞLIĞI — form bileşeninden ÖNCE (brief §2.4)
+     ================================================================= */
+  GV.pageHead({
+    eyebrow:'Finans',
+    title:rec ? 'Talep ' + rec.kod : 'Yeni Satın Alma Talebi',
+    sub:rec
+      ? (rec.urun || '—') + ' · ' + (rec.durum || '—') + ' · durum bu formdan değişmez'
+      : (onProje ? onProje.kod + ' projesine bağlı yeni talep · ' : 'Yeni talep · ') +
+        ILK_DURUM + ' durumunda doğar',
+    actions:[
+      { label:'Vazgeç', icon:'i-arrow-left', href:'app-satinalma.html' },
+      { label:'Kaydet', icon:'i-check', cls:'btn-acc', run:function(){ kaydet(); } }
+    ]
+  });
+
+  mount.innerHTML =
+    '<div id="satNot"></div>' +
+    '<div id="satForm"></div>' +
+    '<div id="satBackend" class="u-mt-8"></div>';
+
+  /* =================================================================
+     AÇILIŞ NOTLARI
+     ================================================================= */
+  var acilis = '';
+
+  if(!AKIS){
+    acilis += GV.notice({ tone:'warn', icon:'i-alert',
+      title:'Onay zinciri tanımı okunamadı',
+      text:'Sağ panelin zincir önizlemesi GV.approval.akisTanim("' + TUR + '") üzerinden ' +
+           'ölçülür. Tanım gelmediği için kaç onay adımının çalışacağı TÜRETİLEMEDİ; ' +
+           'adım sayısı uydurulmadı ve "0 adım" yazılmadı. Talep kaydedilebilir; ' +
+           'zincir onaya gönderildiğinde sunucu tarafında kurulur.' });
+  }
+
+  if(onProje){
+    acilis += GV.notice({ tone:'info', icon:'i-briefcase',
+      title:onProje.kod + ' projesine bağlı açıldı',
+      text:'Proje alanı adres çubuğundaki koddan ön dolduruldu (' + esc(onProje.ad) + ' · ' +
+           esc(onProje.durum || '—') + '). Bağı kaldırıp genel gider talebi olarak da ' +
+           'kaydedebilirsiniz. Ölçüldü: ' + TUM.length + ' talebin ' + PROJE_BAGLI +
+           ' tanesi bir projeye bağlı.' });
+  }
+
+  if(tutarKapali){
+    acilis += GV.notice({ tone:'warn', icon:'i-wallet',
+      title:'Tahmini maliyet alanı rolünüzde basılmadı',
+      text:'Rolünüz (' + GV.perm.role() + ') finans yetkisi taşımıyor. Kayıttaki tutar ' +
+           '"••••••" olarak gösterilir ve tutar alanı HİÇ BASILMAZ: maskelenmiş bir giriş ' +
+           'alanı kaydedildiğinde gerçek değeri "••••••" ile ezerdi. Kaydetme o alana ' +
+           'dokunmaz, kayıttaki değer korunur. Zincirin kaç adım çalışacağı da bu yüzden ' +
+           'gösterilmez — adım sayısı tutardan türer ve eşik dilimini açığa çıkarırdı.' });
+  }
+
+  if(!rec){
+    acilis += GV.notice({ tone:'neutral', icon:'i-user-check',
+      title:'Talep eden oturumdan alındı: ' + esc(DB.empName(OTURUM_EMP) || OTURUM_EMP),
+      text:'Bu alan kullanıcıya sorulmaz (brief §22.7); `talepEden` = ' + esc(OTURUM_EMP) +
+           '. Departman da oturumdan ön dolduruldu; başka bir departman adına talep açacaksanız ' +
+           'aşağıdaki "Bütçe ve sahiplik" sekmesinden değiştirin.' });
+  }
+
+  document.getElementById('satNot').innerHTML = acilis;
+
+  /* =================================================================
+     SAĞ PANEL — ONAY ZİNCİRİ ÖNİZLEMESİ (bu ekranın asıl işi)
+     -----------------------------------------------------------------
+     `aside` her alan değişiminde yeniden çizilir (ui.js:2145-2152), yani
+     tutar yazıldıkça zincir CANLI olarak yeniden türetilir.
+
+     ⚠️ Bu bir TANIMdır, bir KOŞUM değil. Zincir örneği üretilmez
+     (`DB.purchaseApprovals`e satır yazmanın yordamı yok, brief §22.16
+     madde 8) ve yeni kayıtta `GV.approval.adim(...)` null döner — ekran
+     "zincir örneği henüz açılmadı" der, `0/0` BASMAZ.
+     ================================================================= */
+  function muhatapKaydi(veri, tutar){
+    /* `adimMuhatap` ilişki adımlarını KAYITTAN çözer; rol adımlarında
+       kayıt kullanılmaz. Elimizdeki taze veriyi veriyoruz ki tanım
+       koşuma en yakın hâliyle okunsun. */
+    return { kod:rec ? rec.kod : null, talepEden:TALEP_EDEN,
+             personel:TALEP_EDEN, dep:veri.dep || null, tahminiMaliyet:tutar };
+  }
+
+  /* Tek satırlık, `cell-sub` İÇİNE girecek metin. `GV.cell.sub` escape
+     ETMEZ (brief §2.8) — kaçış burada yapılır. */
+  function muhatapMetni(m){
+    if(!m) return 'muhatap çözülemedi';
+    if(!m.cozuldu){
+      return 'muhatap çözülemedi — ' +
+             esc(m.neden || 'sebep bildirilmedi; kişi uydurulmaz');
+    }
+    if(m.tur === 'rol'){
+      /* `tur:'rol'` → `kisi` HER ZAMAN null: rol bir KÜMEdir (brief §22.1). */
+      return esc(m.ad) + ' rolü · KÜME (anahtar ' + esc(m.anahtar || '—') + ') · ' +
+             'kişi zincir koşumunda belirlenir, formda uydurulmaz';
+    }
+    if(m.tur === 'iliski'){
+      return esc(m.ad || m.anahtar || 'ilişki') + ' → ' +
+             (m.kisi ? esc(DB.empName(m.kisi) || m.kisi) : 'çözülemedi');
+    }
+    return 'muhatap türü çözülemedi — ' + esc(m.neden || 'sebep bildirilmedi');
+  }
+
+  function zincirOnizleme(veri){
+    if(!AKIS){
+      return GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Zincir önizlemesi yok',
+        text:'Onay akışı tanımı okunamadı; adım listesi türetilemedi.' });
+    }
+
+    /* Tutar hangi kaynaktan geliyor:
+         · alan basıldıysa formun anlık değeri (canlı)
+         · basılmadıysa (finans yetkisi yok) TUTAR BİLİNMİYOR sayılır */
+    var tutar = tutarKapali ? null : sayi(veri.tahminiMaliyet);
+    var calisan = calisanAdimlar(tutar);
+
+    var out = '<div class="gv-card">' +
+      '<div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-stamp') + 'Onay zinciri önizlemesi</h3>' +
+        '<span class="gc-meta">' + esc(AKIS.kod) + ' · sürüm ' + esc(String(AKIS.surum)) + '</span>' +
+      '</div>' +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Akış', esc(AKIS.ad) + GV.cell.sub(kodEt(AKIS.kod) + ' · ' + esc(AKIS.durum || '—') +
+                                              ' · yürürlük ' + F.date(AKIS.yururluk))],
+          ['Bu tutarda çalışacak adım', calisan
+            ? '<b>' + calisan.length + '</b> / ' + ADIMLAR.length +
+              GV.cell.sub('sayı TÜRETİLDİ: eşikleri akış tanımından okuyup girilen tutarla ' +
+                          'karşılaştırdı; hiçbir yerde yazılı değil')
+            : faint('—') + GV.cell.sub(tutarKapali
+                ? 'tutar rolünüzde maskeli olduğu için adım sayısı gösterilmiyor'
+                : 'tahmini maliyet girilmedi; kaç adımın çalışacağı türetilemedi')]
+        ], { skipEmpty:false }) +
+      '</div></div>';
+
+    /* ---- Adımlar tek tek — hangisi çalışır, hangisi neden çalışmaz --- */
+    var satirlar = [];
+    ADIMLAR.forEach(function(a){
+      var m = GV.approval.adimMuhatap(a, muhatapKaydi(veri, tutar));
+      var kosul = a.esik == null
+        ? 'her zaman çalışır'
+        : 'yalnız tutar ' + F.money(a.esik, PARA) + ' ve üzerindeyse çalışır';
+      var durumMetni;
+      if(calisan == null){
+        durumMetni = faint('ölçülemedi');
+      }else if(calisan.indexOf(a) !== -1){
+        durumMetni = '<span class="u-ok">çalışır</span>';
+      }else{
+        durumMetni = faint('bu tutarda çalışmaz');
+      }
+      /* ⚠️ SLA gün SAYISIdır ve düz basılır. `GV.fmt.days` süre
+         biçimlendiricisi DEĞİL, iki tarih arası fark yordamıdır
+         (ölçüldü: `GV.fmt.days(1)` → NaN) — rapor edildi, dokunulmadı. */
+      var slaMetni = (a.sla == null || a.sla === '')
+        ? 'SLA akış tanımında yazılı değil'
+        : 'SLA ' + esc(String(a.sla)) + ' gün';
+      satirlar.push([
+        'Adım ' + a.sira + ' · ' + esc(a.ad),
+        durumMetni +
+        GV.cell.sub(esc(kosul) + ' · ' + slaMetni) +
+        GV.cell.sub('Muhatap: ' + muhatapMetni(m))
+      ]);
+    });
+
+    out += '<div class="gv-card">' +
+      '<div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-users') + 'Adımlar ve muhatapları</h3>' +
+        '<span class="gc-meta">' + ADIMLAR.length + ' adım tanımlı</span>' +
+      '</div>' +
+      '<div class="gc-body">' + GV.dl(satirlar) + '</div></div>';
+
+    /* ---- Zincir ÖRNEĞİ — yeni kayıtta YOK, `0/0` basılmaz ----------- */
+    var ornek = rec ? GV.approval.adim(TUR, rec.kod) : null;
+    if(!rec){
+      out += GV.notice({ tone:'neutral', icon:'i-info',
+        title:'Zincir örneği henüz açılmadı',
+        text:'Yukarıdaki liste zincirin TANIMIdır, bir koşumu değil. Yeni talepte ' +
+             'GV.approval.adim("' + TUR + '", kod) null döner; "0/0" yazmak ölçülmemişi ' +
+             'ölçülmüş göstermek olurdu. Zincir örneği bu formdan üretilmez: ' +
+             'DB.purchaseApprovals\'e satır açan bir yordam yoktur ' +
+             '(GV.approval.karar var olan satırı sonuçlandırır, satır AÇMAZ).' });
+    }else if(ornek){
+      out += '<div class="gv-card">' +
+        '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-hourglass') +
+          'Zincir örneği</h3></div>' +
+        '<div class="gc-body">' +
+          GV.dl([
+            ['Adım', '<b>' + ornek.adim + ' / ' + ornek.toplam + '</b>' +
+              GV.cell.sub(ornek.sonuclandi ? 'zincir tamamlandı'
+                : ornek.reddedildi ? 'zincirde ret var'
+                : ornek.siradaki ? 'sırada: ' + esc(ornek.siradaki.rol) : 'bekleyen adım yok')],
+            ['Sayaç alanları', faint('bu form yazmaz') +
+              GV.cell.sub('onayAdim ve onayToplam TÜRETİLMİŞ sayaçlardır; ' +
+                          'GV.approval.tazeleSayaclar() her yüklemede zincirden ' +
+                          'yeniden hesaplar (brief §22.7)')]
+          ]) +
+        '</div></div>';
+
+      /* ⚠️ ÖLÇÜLEN VERİ ÇELİŞKİSİ (düzeltilmedi, beyan edildi):
+         örnek satır sayısı TANIMIN eşiklerinden türeyen sayıyla
+         uyuşmayabilir. Bugünkü defterde iki talepte uyuşmuyor.
+         Karşılaştırma tutardan türer; tutar rolde maskeliyse YAPILMAZ —
+         adım sayısı eşik dilimini açığa çıkarırdı (UID-11). */
+      var tanimSayi = tutarKapali
+        ? null
+        : calisanAdimlar(rec.tahminiMaliyet == null ? null : sayi(rec.tahminiMaliyet));
+      if(tanimSayi && ornek.toplam !== tanimSayi.length){
+        out += GV.notice({ tone:'warn', icon:'i-alert',
+          title:'Zincir örneği tanımla uyuşmuyor',
+          text:'Bu kaydın zincir örneği ' + ornek.toplam + ' adım taşıyor; akış tanımı ise ' +
+               'kaydın tutarında ' + tanimSayi.length + ' adım öngörüyor. İkisi ayrı ölçümdür: ' +
+               'örnek DB.purchaseApprovals satırlarından, tanım DB.approvalFlows eşiklerinden ' +
+               'gelir. Form ikisinden birini seçip diğerini SESSİZCE düzeltmez — hangisinin ' +
+               'doğru olduğuna kod adına karar vermek olurdu. Kaynak veri bulgusu olarak ' +
+               'rapor edildi.' });
+      }
+    }else{
+      out += GV.notice({ tone:'neutral', icon:'i-info',
+        title:'Bu talepte zincir örneği yok',
+        text:'DB.purchaseApprovals içinde ' + esc(rec.kod) + ' için adım kaydı yok; adım ' +
+             'sayacı türetilemiyor ve "0/0" yazmak ölçülmemişi ölçülmüş göstermek olurdu. ' +
+             'Yukarıdaki liste zincirin TANIMIdır.' });
+    }
+
+    /* ---- Talep özeti ------------------------------------------------ */
+    var pr = projeKaydi(rec ? rec.proje : null);
+    out += '<div class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-cart') + 'Talep özeti</h3></div>' +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Talep no', rec ? kodEt(rec.kod) : faint('kaydederken üretilir')],
+          ['Durum', rec
+            ? GV.badge(rec.durum) + GV.cell.sub('salt okunur — geçişler satın alma ekranında')
+            : GV.badge(ILK_DURUM) + GV.cell.sub('yeni talep bu durumda doğar')],
+          ['Talep eden', TALEP_EDEN
+            ? GV.user(TALEP_EDEN, { sm:true }) +
+              GV.cell.sub(rec ? 'kaydın kendi alanı — düzenlemede değişmez' : 'oturumdan alındı')
+            : faint('—')],
+          ['Departman', (veri.dep && depAd(veri.dep))
+            ? esc(depAd(veri.dep)) + GV.cell.sub(kodEt(veri.dep))
+            : faint('seçilmedi')],
+          ['Proje', veri.proje
+            ? esc((projeKaydi(veri.proje) || {}).ad || veri.proje) + GV.cell.sub(kodEt(veri.proje))
+            : faint('—') + GV.cell.sub('projeye bağlı değil, genel gider talebi')],
+          ['Tahmini maliyet', tutarKapali
+            ? paraHtml(rec.tahminiMaliyet)
+            : (sayi(veri.tahminiMaliyet) == null
+                ? faint('—') + GV.cell.sub('girilmedi')
+                : GV.cell.mny(sayi(veri.tahminiMaliyet)) + GV.cell.sub('NET eksende girilir'))],
+          ['Talep tarihi', rec
+            ? '<span class="cell-date">' + F.date(rec.olusturma) + '</span>' +
+              GV.cell.sub('kaydın kendi tarihi — düzenlemede değişmez')
+            : '<span class="cell-date">' + F.date(DB.today) + '</span>' +
+              GV.cell.sub('sistemin ölçüm günü (DB.today)')]
+        ], { skipEmpty:false }) +
+      '</div></div>';
+
+    /* ---- Onaya gönderme bu formun işi DEĞİL ------------------------- */
+    out += GV.notice({ tone:'neutral', icon:'i-refresh',
+      title:'Onaya gönderme düğmesi bu formda yok',
+      text:'Durum geçişi formun işi değil (brief §7.4). "' + esc(ILK_DURUM) + '" durumundan ' +
+           'çıkış — geçiş tablosundaki etiketiyle "' + esc(CIKIS_ETIKET || '—') + '" — ' +
+           'GV.flow.adimlar("purchase", kod) düğmesiyle satın alma ekranındaki talep ' +
+           'çekmecesinde yapılır. Bu formda devre dışı bir düğme basılmaz: yapılamayan iş ' +
+           'düğme olarak vaat edilmez. Çıkış için zorunlu alan' +
+           (CIKIS_ZORUNLU.length ? 'lar: ' + esc(CIKIS_ZORUNLU.join(' · ')) +
+             ' — form ikisini de zorunlu tutar ki kayıt doğduğu anda ilerletilebilir olsun.'
+            : ' geçiş tablosunda yazılı değil.') });
+
+    return out;
+  }
+
+  /* =================================================================
+     FORM TASLAĞI
+     ================================================================= */
+  /* Bütçe kodu iki alanla sorulur: sözlük YOK, seçenek defterden türer,
+     listede olmayan kod serbest metinle yazılır. `GV.form` `datalist`
+     yuvası taşımıyor (V2-18) — o borç yerine iki alan + `showIf` kurulur;
+     gizli alan doğrulanmaz ve `read()`te boş döner (brief §5.2). */
+  var recButceListede = !!(rec && rec.butceKodu && BUTCE_KODLARI.indexOf(rec.butceKodu) !== -1);
+
+  var formKayit = {
+    urun:            rec ? (rec.urun || '') : '',
+    kategori:        rec ? (rec.kategori || '') : '',
+    miktar:          rec ? (rec.miktar == null ? '' : rec.miktar) : 1,
+    tahminiMaliyet:  rec ? (rec.tahminiMaliyet == null ? '' : rec.tahminiMaliyet) : '',
+    ihtiyacTarihi:   rec ? (rec.ihtiyacTarihi || '') : '',
+    oncelik:         rec ? (rec.oncelik || '') : '',
+    gerekce:         rec ? (rec.gerekce || '') : '',
+    aciklama:        rec ? (rec.aciklama || '') : '',
+    ozellik:         rec ? (rec.ozellik || '') : '',
+    butceKoduSecim:  recButceListede ? rec.butceKodu : '',
+    butceKoduSerbest:(rec && rec.butceKodu && !recButceListede) ? rec.butceKodu : '',
+    dep:             rec ? (rec.dep || '') : ((GV.session && GV.session.dep) || ''),
+    proje:           rec ? (rec.proje || '') : (onProje ? onProje.kod : ''),
+    /* Görüntü alanı — adı `*Bilgi`: kayda yazılmaz, yalnız gösterilir. */
+    talepEdenBilgi:  TALEP_EDEN ? (DB.empName(TALEP_EDEN) || TALEP_EDEN) : '—',
+    durumBilgi:      rec ? (rec.durum || '') : ILK_DURUM
+  };
+
+  /* Tutar kapalıysa alanın değeri forma HİÇ GİRMEZ (maskelenmiş girdi
+     kaydedildiğinde gerçek değeri ezer — brief §22.17 madde 6). */
+  if(tutarKapali) delete formKayit.tahminiMaliyet;
+
+  function butceSerbestGorunur(v){ return !v.butceKoduSecim; }
+
+  var tutarAlani = {
+    key:'tahminiMaliyet', label:'Tahmini maliyet (NET)', type:'money', cols:6,
+    required:true, currency:PARA,
+    hint:'Onay zincirinin okuduğu alan budur: eşikler bu tutara bakar ve sağ panelde kaç ' +
+         'adımın çalışacağı canlı türetilir. "' + esc(ILK_DURUM) + '" durumundan çıkmak için ' +
+         'geçiş tablosunda zorunlu iki alandan biri (' + esc(CIKIS_ZORUNLU.join(' · ') || '—') + ').',
+    validate:function(deger){
+      var n = sayi(deger);
+      if(n == null) return '';
+      return n <= 0 ? 'Tahmini maliyet sıfırdan büyük olmalı.' : '';
+    }
+  };
+
+  var temelAlanlar = [
+    { key:'urun', label:'Ürün / hizmet', type:'text', cols:12, required:true,
+      placeholder:'Örn. Geliştirici dizüstü bilgisayar',
+      hint:'"' + esc(ILK_DURUM) + '" durumundan çıkmak için geçiş tablosunun şart koştuğu ' +
+           'iki alandan biri; bu yüzden formda da zorunludur.' },
+
+    { key:'kategori', label:'Kategori', type:'select', cols:6,
+      placeholder:'Kategori seçin',
+      options:KATEGORILER,
+      hint:'Sözlüğü YOK. ' + KATEGORILER.length + ' seçenek satın alma defterinden ' +
+           '(DB.purchases) türetildi. Demirbaş sözlüğü (DB.assetCategories) kaynak ' +
+           'DEĞİLDİR: defterdeki "Araç" değeri o 20 kayıtlık sözlükte yok, sözlüğü kaynak ' +
+           'saymak defterde var olan bir kategoriyi seçilemez yapardı.' },
+
+    { key:'miktar', label:'Miktar', type:'number', cols:3, min:1,
+      hint:'Adet. Boş bırakılırsa kayda yazılmaz.' },
+
+    { key:'oncelik', label:'Öncelik', type:'select', cols:3,
+      placeholder:'Öncelik seçin',
+      options:ONCELIKLER,
+      hint:ONCELIKLER.length + ' değerlik ortak sözlükten (DB.priorities) okunur.' },
+
+    { key:'ihtiyacTarihi', label:'İhtiyaç tarihi', type:'date', cols:6,
+      hint:'Talebin açıldığı tarihten (' + F.date(rec ? rec.olusturma : DB.today) + ') önce ' +
+           'olamaz. Boş bırakılabilir; tarih uydurulmaz.',
+      validate:function(deger){
+        var taban = rec ? rec.olusturma : DB.today;
+        if(!deger || !taban) return '';
+        return deger < taban
+          ? 'İhtiyaç tarihi talep tarihinden (' + F.date(taban) + ') önce olamaz.'
+          : '';
+      } }
+  ];
+
+  /* Tutar alanı yalnız kapı açıkken forma girer. */
+  if(!tutarKapali) temelAlanlar.splice(2, 0, tutarAlani);
+
+  var form = GV.form({
+    mount:'#satForm',
+    id:'satinalmaForm',
+    record:formKayit,
+    tabs:[
+      { key:'temel', label:'Temel bilgiler',   icon:'i-cart' },
+      { key:'ek',    label:'Daha fazla bilgi', icon:'i-list' }
+    ],
+    aside:function(veri){ return zincirOnizleme(veri); },
+    sections:[
+      { title:'Talebin konusu ve tutarı', icon:'i-cart', tab:'temel',
+        desc:'İlk görünümde yalnız bu alanlar istenir. Ürün ayrıntısı, bütçe kodu, ' +
+             'departman ve proje bağı "Daha fazla bilgi" sekmesindedir ve zorunlu değildir.',
+        fields:temelAlanlar },
+
+      { title:'Gerekçe', icon:'i-stamp', tab:'temel',
+        desc:'Onay zincirinin okuduğu alan gerekçedir: adımdaki rol kararını bu metne ' +
+             'bakarak verir. Geçiş tablosu bu alanı ŞART KOŞMAZ (çıkış zorunluları: ' +
+             esc(CIKIS_ZORUNLU.join(' · ') || '—') + '); zorunluluk formun kendi kuralıdır ' +
+             've bu ayrım burada yazılıdır.',
+        fields:[
+          { key:'gerekce', label:'Talep gerekçesi', type:'textarea', cols:12, rows:3,
+            required:true,
+            placeholder:'Örn. Mevcut cihazlar 3 yaşını doldurdu, derleme süreleri arttı',
+            hint:'Gerekçesiz talep onay zincirinde karara bağlanamaz; bu yüzden form onu ' +
+                 'zorunlu tutar.' }
+        ] },
+
+      { title:'Ürün ayrıntısı', icon:'i-package', tab:'ek',
+        desc:'İkisi de serbest metindir; satın alma defterinde de metin olarak durur ' +
+             '(sözlük yok, uydurulmadı).',
+        fields:[
+          { key:'aciklama', label:'Açıklama', type:'textarea', cols:12, rows:2,
+            placeholder:'Örn. Yeni geliştirici ve yedek cihaz ihtiyacı' },
+          { key:'ozellik', label:'Teknik özellik', type:'text', cols:12,
+            placeholder:'Örn. M3 Pro · 18 GB · 512 GB',
+            hint:'Boş bırakılırsa kayda null yazılır. Ölçüldü: defterde 2 kayıt bu alanda ' +
+                 '"—" taşıyor; "boş" anlamına gelen bir DEĞER yazmak boşluğu ölçülmüş ' +
+                 'göstermek olurdu, bu form onu tekrarlamaz.' }
+        ] },
+
+      { title:'Bütçe ve sahiplik', icon:'i-wallet', tab:'ek',
+        desc:'Bütçe kodunun sözlüğü YOK: seçenekler defterden türetilir, listede olmayan kod ' +
+             'serbest metinle yazılır. Talep eden alanı oturumdan gelir ve düzenlenemez.',
+        fields:[
+          { key:'butceKoduSecim', label:'Bütçe kodu', type:'select', cols:6,
+            placeholder:'Listede yok — elle yazacağım',
+            options:BUTCE_KODLARI,
+            hint:'Sözlüğü YOK. ' + BUTCE_KODLARI.length + ' seçenek satın alma defterindeki ' +
+                 'bütçe kodlarından türetildi. Boş bırakırsanız yandaki serbest alan açılır.' },
+
+          { key:'butceKoduSerbest', label:'Bütçe kodu (elle)', type:'text', cols:6,
+            showIf:butceSerbestGorunur,
+            placeholder:'Örn. BTC-DONANIM-2026',
+            hint:'Defterdeki ' + BUTCE_KODLARI.length + ' kodun hepsi BTC-<AD>-<YIL> ' +
+                 'biçiminde; bu bir GÖZLEMDİR, doğrulanan bir kural değil — form biçimi ' +
+                 'zorlamaz. Boş bırakılırsa kayda bütçe kodu yazılmaz.' },
+
+          { key:'dep', label:'Departman', type:'select', cols:6,
+            placeholder:'Departman seçin',
+            options:DEPARTMANLAR,
+            hint:(DB.departments || []).length + ' departman listelenir; ' + PASIF_DEP +
+                 ' tanesi pasif ve etiketinde yazılı (pasiflik GV.arsivli üzerinden okundu). ' +
+                 (rec ? 'Kaydın kendi departmanı seçilidir.'
+                      : 'Varsayılan, oturumun departmanıdır.') },
+
+          { key:'proje', label:'Proje', type:'select', cols:6,
+            placeholder:'Projeye bağlama — genel gider talebi',
+            options:PROJELER,
+            hint:'İsteğe bağlıdır. Ölçüldü: ' + TUM.length + ' talebin ' + PROJE_BAGLI +
+                 ' tanesi bir projeye bağlı; kalanı genel gider talebidir. Bağ kurulmazsa ' +
+                 'alan boş kalır ve sebebi sağ panelde yazılır.' },
+
+          { key:'talepEdenBilgi', label:'Talep eden', type:'text', cols:6, readonly:true,
+            hint:'Oturumdan (GV.session.emp = ' + esc(TALEP_EDEN || '—') + ') geldi ve ' +
+                 'kullanıcı seçmez (brief §22.7). Bu alan kayda yazılmaz; kayda giden değer ' +
+                 'kodun kendisidir.' },
+
+          { key:'durumBilgi', label:'Durum', type:'text', cols:6, readonly:true,
+            hint:rec
+              ? 'Salt okunur BİLGİ. Durum bu formdan değişmez; geçişler GV.flow.gec ile ' +
+                'satın alma ekranındaki talep çekmecesinde yürür.'
+              : 'Yeni talep geçiş tablosunun İLK durumunda doğar. Değer nesne literalinde ' +
+                'verilir; kayda sonradan durum yazan satır yoktur.' }
+        ] }
+    ]
+  });
+
+  if(!form){
+    mount.innerHTML = GV.errorState({ title:'Form çizilemedi',
+      desc:'Form bileşeni bağlanamadı. Sayfayı yeniden açmayı deneyin.' });
+    return;
+  }
+
+  /* =================================================================
+     KAYDETME
+     ================================================================= */
+  function kaydet(){
+    var v = form.submit();
+    if(!v) return false;      /* doğrulama düştü; bileşen zaten söyledi */
+
+    /* Bütçe kodu: seçim varsa o, yoksa serbest metin. Gizli alan
+       `read()`te boş döner, bu yüzden ikisinin sırası tek kuraldır. */
+    var butceKodu = bosNull(v.butceKoduSecim) || bosNull(v.butceKoduSerbest);
+
+    var miktar = sayi(v.miktar);
+    var hedefKod;
+
+    if(!rec){
+      /* ---- YENİ KAYIT ---------------------------------------------
+         Doğum durumu nesne literalinde verilir (geçiş tablosunun İLK
+         kaydı). `onayAdim` · `onayToplam` BİLEREK YOK: ikisi de türetilmiş
+         sayaçtır (brief §22.7). `aktif` de BİLEREK YOK: bu defterde
+         `durum` ekseni var, `aktif` tuzaklıdır (brief §22.5). */
+      hedefKod = kodUret();
+      var yeni = {
+        kod:hedefKod,
+        talepEden:TALEP_EDEN,
+        dep:bosNull(v.dep),
+        proje:bosNull(v.proje),
+        urun:String(v.urun || '').trim(),
+        kategori:bosNull(v.kategori),
+        aciklama:bosNull(v.aciklama),
+        ozellik:bosNull(v.ozellik),
+        miktar:miktar,
+        tahminiMaliyet:sayi(v.tahminiMaliyet),
+        ihtiyacTarihi:bosNull(v.ihtiyacTarihi),
+        oncelik:bosNull(v.oncelik),
+        gerekce:bosNull(v.gerekce),
+        butceKodu:butceKodu,
+        durum:ILK_DURUM,
+        olusturma:DB.today
+      };
+      (DB.purchases || (DB.purchases = [])).unshift(yeni);
+
+      var onizleme = calisanAdimlar(yeni.tahminiMaliyet);
+      GV.audit.yaz({
+        kayit:hedefKod, modul:'Satın Alma',
+        islem:'Satın alma talebi oluşturuldu · ' + yeni.urun +
+              (yeni.proje ? ' · proje ' + yeni.proje : ' · projeye bağlı değil') +
+              (onizleme ? ' · zincir tanımı ' + onizleme.length + ' adım öngörüyor' +
+                          ' (örnek açılmadı)' : ''),
+        yeni:ILK_DURUM, tone:'ok', icon:'i-plus' });
+    }else{
+      /* ---- DÜZENLEME ----------------------------------------------
+         Listede BİLEREK yok: `durum` (bu ekrandan değişmez) ·
+         `olusturma` (kaydın tarihi geçmişe yazılmaz) · `talepEden`
+         (talebi açan değişmez) · `onayAdim`/`onayToplam` (türetilmiş) ·
+         `aktif` (tuzaklı). `tahminiMaliyet` de finans yetkisi yoksa
+         listeye HİÇ girmez — maskelenmiş alan gerçek değeri ezmesin. */
+      hedefKod = rec.kod;
+      var alanlar = {
+        dep:bosNull(v.dep),
+        proje:bosNull(v.proje),
+        urun:String(v.urun || '').trim(),
+        kategori:bosNull(v.kategori),
+        aciklama:bosNull(v.aciklama),
+        ozellik:bosNull(v.ozellik),
+        miktar:miktar,
+        ihtiyacTarihi:bosNull(v.ihtiyacTarihi),
+        oncelik:bosNull(v.oncelik),
+        gerekce:bosNull(v.gerekce),
+        butceKodu:butceKodu
+      };
+      if(!tutarKapali) alanlar.tahminiMaliyet = sayi(v.tahminiMaliyet);
+
+      var degisen = [];
+      Object.keys(alanlar).forEach(function(k){
+        var eskiD = rec[k] == null ? '' : String(rec[k]);
+        var yeniD = alanlar[k] == null ? '' : String(alanlar[k]);
+        if(eskiD !== yeniD) degisen.push(k);
+        rec[k] = alanlar[k];
+      });
+
+      GV.audit.yaz({
+        kayit:hedefKod, modul:'Satın Alma',
+        islem:(degisen.length
+                ? 'Satın alma talebi güncellendi — değişen alan: ' + degisen.join(', ')
+                : 'Satın alma talebi kaydedildi — alan değişmedi') +
+              (tutarKapali ? ' · tahmini maliyet rolde maskeli olduğu için dokunulmadı' : ''),
+        tone:'info', icon:'i-edit' });
+    }
+
+    /* ---- Nereye dönülecek (brief §5.4) -----------------------------
+       ⚠️ `detay` HEDEFİ VERİLMİYOR: `app-satinalma-detay.html` diye bir
+       ekran YOKTUR. Satın alma talebinin detayı `app-satinalma.html`in
+       kendi çekmecesidir ve o çekmece `?ac=<kod>` ile açılır (o ekranın
+       derin bağlantı sözleşmesi). Bu yüzden hedef listedir; çekmeceye
+       giden bağlantı `alt` düğmesi olarak verilir. */
+    var sonTutar = rec ? (tutarKapali ? null : sayi(rec.tahminiMaliyet))
+                       : sayi(v.tahminiMaliyet);
+    var son = calisanAdimlar(sonTutar);
+    GV.afterSave({
+      kod:hedefKod,
+      liste:'app-satinalma.html',
+      yeni:!rec,
+      mesaj:rec
+        ? 'Talep güncellendi; durum (' + (rec.durum || '—') + ') değiştirilmedi — geçişler ' +
+          'satın alma ekranındaki talep çekmecesinde yürür.'
+        : 'Talep ' + ILK_DURUM + ' durumunda oluşturuldu' +
+          (son ? '; akış tanımı bu tutarda ' + son.length + ' onay adımı öngörüyor' : '') +
+          '. Zincir örneği açılmadı: onaya gönderme, talep çekmecesindeki geçiş düğmesiyle ' +
+          'yapılır.',
+      alt:[
+        { label:'Talebi satın alma ekranında aç', cls:'btn-acc',
+          href:'app-satinalma.html?ac=' + encodeURIComponent(hedefKod) }
+      ]
+    });
+    return true;
+  }
+
+  /* =================================================================
+     BACKEND PAYI — brief §10.2 (b) · §22.15
+     ================================================================= */
+  document.getElementById('satBackend').innerHTML =
+    '<section class="gv-card">' +
+      '<div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+        '<span class="gc-meta">3 madde</span>' +
+      '</div>' +
+      '<div class="gc-body">' +
+        '<ul class="odl-gap">' +
+          '<li><span class="odl-gap-kod">BE-P3</span>' +
+            '<span>Onay zinciri örneği sunucuda açılmaz; bu ekran zincirin TANIMINI gösterir, ' +
+              'bir koşumunu değil</span>' +
+            '<span class="odl-gap-bolum">§22.15</span></li>' +
+          '<li><span class="odl-gap-kod">BE-P1</span>' +
+            '<span>Durum geçişi sunucuda yeniden doğrulanmaz; doğum durumu ve çıkış ' +
+              'zorunluları yalnız istemcide ölçülür</span>' +
+            '<span class="odl-gap-bolum">§19.6</span></li>' +
+          '<li><span class="odl-gap-kod">BE-S5</span>' +
+            '<span>Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır</span>' +
+            '<span class="odl-gap-bolum">§9 audit_event</span></li>' +
+        '</ul>' +
+        '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+          '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+        '<p class="u-faint u-sm">Eşik ve zincir de istemcide ölçülür: gerçek sistemde onay ' +
+          'zincirinin sürümü, eşikleri ve SLA\'sı sunucuda uygulanır; arayüzde kaç adım ' +
+          'göründüğü tek başına bir yetki ya da tutar kontrolü sayılmaz. Kaydın tutar alanını ' +
+          'rolden gizlemek de aynı sınıftadır: maskelenmiş alan gerçek sistemde istemciye ' +
+          'hiç gitmemelidir.</p>' +
+      '</div>' +
+    '</section>';
+});
+</script>
+</body>
+</html>
