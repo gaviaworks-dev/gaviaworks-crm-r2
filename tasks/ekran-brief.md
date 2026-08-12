@@ -1871,14 +1871,26 @@ kullanılamıyordu. `bosSub` verilirse o, verilmezse `sub` çağrılır.
 | `app-varlik.html` | `ekip` | `varlik` | `rec` |
 
 **Veri dosyaları:** `org.js` · `crm.js` · `work.js` · `misc.js` · `ops.js` ·
-**`hr.js`** · `lifecycle.js`. `hr.js` bu dilimde **HER ekranda zorunludur** —
-⚠️ **düzeltme: `DB.employees` `hr.js`te DEĞİL, `org.js:245`tedir** (§1.2 doğru
-yazıyor; bu satır yanlıştı). `hr.js` personel tarafında yalnız `aktif`
-tuzağını kurar. `hr.js`te olanlar:
-`DB.leaves` · `DB.timelogs` · `DB.timesheets` · `DB.assets` ·
-`DB.assignments` · `DB.vehicles` · `DB.performance` · `DB.trainings` ·
-`DB.salaryHistory` · `DB.vehicleExpenses` hepsi orada.
-`firsat.js` ve `odeme.js` **yüklenmez**.
+**`hr.js`** · `lifecycle.js`. `firsat.js` ve `odeme.js` **yüklenmez**.
+
+⚠️ **DÜZELTME — BU SATIR ON BİR KOLEKSİYONU `hr.js`E YAZIYORDU, BEŞİ ORADA.**
+İki ajan bağımsız olarak yanlış buldu; ölçüldü ve tablo hâline getirildi.
+Yanlış eşleme zararsız görünür (§22.0 her ekrana yedi dosyayı da yüklettiği
+için ekranlar doğru koşuyor) ama §1.2'nin kuralı *"kullanmadığın veri
+dosyasını yükleme"*dir — o kuralı uygulamaya çalışan biri yanlış dosyayı
+düşürür ve koleksiyon sessizce kaybolur.
+
+| Dosya | Bu dilimde kullanılan koleksiyonlar |
+|---|---|
+| `org.js` | **`DB.employees`** · **`DB.salaryHistory`** · `DB.departments` · `DB.roles` · `DB.permMatrix` · `DB.reasonCodes` · `DB.transitions` · `DB.flowEntities` · `DB.approvalTypes` · `DB.approvalFlows` · `DB.holidays` · `DB.workTypes` · `DB.employeeStatuses` · `DB.leaveStatuses` · `DB.purchaseStatuses` |
+| `hr.js` | `DB.leaves` · `DB.timelogs` · `DB.timesheets` · `DB.performance` · `DB.trainings` · `DB.capacity` · `DB.onboarding` · `DB.onboardingTemplates` · `DB.leaveTypes` **(+ `aktif` tuzağını kurar)** |
+| `ops.js` | **`DB.assets`** · **`DB.assignments`** · **`DB.assetClaimDrops`** · **`DB.assetCategories`** · **`DB.assetStatuses`** · **`DB.vehicles`** · **`DB.maintenance`** · **`DB.policies`** · **`DB.fuelLogs`** · **`DB.fines`** · **`DB.inspections`** · **`DB.accidents`** · **`DB.vehicleExpenses`** · **`DB.suppliers`** · **`DB.orders`** · `DB.purchases` · `DB.purchaseApprovals` · `DB.tickets` · `DB.approvals` |
+| `work.js` | `DB.projects` · `DB.tasks` · `DB.activities` · `DB.milestones` · `DB.bugs` · `DB.projectStatuses` · `DB.projectSources` · `DB.projectPhases` · `DB.priorities` · `DB.healthLevels` |
+| `misc.js` | `DB.contracts` · `DB.invoices` · `DB.documents` · `DB.notifications` · `DB.logs` |
+| `crm.js` | `DB.customers` · `DB.contacts` · `DB.quotes` |
+| `lifecycle.js` | `DB.accounts` · `DB.opportunities` · `DB.lifecycleStages` |
+
+**Yani demirbaş ve filo tarafının TAMAMI `ops.js`tedir, `hr.js`te değil.**
 
 ### 20.1 ⚠️ KİŞİSEL VERİ KAPISI — ekrandan ÖNCE kurulur
 
@@ -3011,6 +3023,48 @@ kullanıcıya sorması gereksiz, sessizce ezmesi ise veri kaybıdır:
 müşteri kimliği bir personel kaydı değil bir **kontak kaydıdır**
 (`DB.contacts` · `GV.session.kontak` — §2.2). Bir personele `musteri` rolü
 vermek, oturum modelinin iki tarafını karıştırmaktır.
+
+### 22.1f BEŞİNCİ AJANIN brief'te BULAMADIĞI imzalar
+
+**1 · `GV.form` SEKME ŞERİDİ, `GV.tabs`TAN FARKLI BİR DİL KONUŞUR.** İkisi
+karıştırılamaz ve `ui.js`in kendi yorumu bu konuda **yanlış** ("birebir aynı
+dil; ikinci bir sekme dili yok" diyor — değil):
+
+| | `GV.tabs` (detay ekranı) | `GV.form` `cfg.tabs` |
+|---|---|---|
+| Tetikleyici | `role="tab"` + **`data-tab="<key>"`** | `role="tab"` + **`data-ftab="<key>"`** |
+| Panel | `role="tabpanel"` + **`data-panel="<key>"`** | `.gv-tabpanel` + **`id="fpanel_<key>"`** |
+| Olay | `document`'a **`gv:tab`** atar | olay **atmaz** |
+
+Fark **bilinçlidir**: `GV.tabs` panelleri **belge genelinde** arar
+(`ui.js:1943`), yani aynı sayfada bir form sekmesi ile bir detay sekmesi aynı
+dili konuşsaydı biri diğerinin panelini gizlerdi. Yanlış olan yorumdur, kod
+değil (borç **V2-88**). Ölçüm betiği yazan biri bunu bilmezse "her alan gizli"
+ölçer — bir ajan tam bunu yaşadı.
+
+**2 · KABUĞUN DOSYA KAPISI FORM EKRANLARINI DA SÜZER.** §1.3 ve §2.3 yalnız
+`SCREEN_DENY`den söz ediyordu; oysa `dosyaIzinli()` menüde girdisi olmayan
+ekranda **modül kapısını** da uyguluyor (`Perm.modul(modulOf(sec, screen))`).
+Ölçüldü: `app-arac-form.html`de **27 rolün 15'i** kabuk 403'ü görüyor —
+`GV.perm.can('duzenle')` o rollerde `true` olmasına rağmen. Sonuç: **bir form
+ekranının kendi yetki boş-durumu bugün ULAŞILAMAZ olabilir.** Ekran onu yine
+kurar (kapı ölü değil, ulaşılamaz — §22.1e.3 sınıfı) ve bunu ölçüm olarak
+beyan eder; "kapı çalışıyor" demek yanlış olurdu.
+
+**3 · ARAÇTA DOĞUM DURUMU KARARI — `required`, ÖN SEÇİM YOK.** Araç için ne
+geçiş tablosu ne durum sözlüğü var (§22.3 · §22.12), yani doğum durumunu
+söyleyen **hiçbir kaynak yok**. Üç yol vardı ve seçilen üçüncüsü:
+- `'Aktif'` ön seçmek → **veri uydurmak**; defterde 4/4 dolu ama "yeni araç
+  aktiftir" hükmü hiçbir yerde yazılı değil.
+- Boş bırakmak → arşiv sorusunu tuzaklı `aktif` alanına düşürür (`GV.arsivli`
+  `durum` yoksa `aktif`e düşer — §22.5) ve sessizce yanlış cevap verir.
+- **`required:true` + ön seçim yok** → kullanıcı söyler, ekran uydurmaz.
+  Seçenekler defterden türetilir ve kaynağı yazılır.
+
+**4 · SÖZLEŞME TARİHİ DOĞRULAMASI — brief'in üç reddine DÖRDÜNCÜ eklendi.**
+§22.12 üç ret sayıyordu (`sonrakiBakimKm` · `sonrakiBakimTarihi` ·
+`anaSurucu === yedekSurucu`); kiralama bloğunda `sozlesmeBit > sozlesmeBas`
+da aynı sınıftır ve eklendi. Aynı disiplin: **reddeder**, uyarmaz.
 
 ### 22.2 KOD ÜRETİMİ — sıra GLOBAL, yıl damgası kayıt yılıdır
 
