@@ -63,6 +63,14 @@ document.addEventListener('gv:ready', function(){
   var kod = q.get('id');
   var rec = kod ? (DB.tasks || []).filter(function(x){ return x.kod === kod; })[0] : null;
 
+  /* KİMLİK KAPISI — ADR-R2-47 · V2-100. Görev ŞİRKET İÇİ bir defterdir
+     (`DB.tasks[].sorumlu` bir EMP kodudur, müşteri ekseni yoktur). Portal
+     kimliğine bu ekran açılmaz; ölçüldü, açıkken 16 personeli ADIYLA ve
+     14 projeyi seçenek olarak basıyordu. Kayıt kapısı (`GV.guardRecord`)
+     bunu göremezdi: yeni kayıt kipinde ortada kayıt yok. */
+  if(!GV.guardIcEkran({ mount:'#rec', eyebrow:'Proje ve Operasyon', title:'Görev',
+                        geriHref:'app-panel.html', geriLabel:'Gündeme dön' })) return;
+
   /* ---- Kayıt okuma yüzeyleri — tarih yakınlığı bağ değildir ---------- */
   function projeKaydi(k){ return (DB.projects || []).filter(function(x){ return x.kod === k; })[0] || null; }
   function hesapKaydi(k){ return (DB.accounts || []).filter(function(x){ return x.kod === k; })[0] || null; }

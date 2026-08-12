@@ -703,16 +703,29 @@
     if(!me.musteri) return true;                       /* personel oturumu */
     if(c.musteri && String(c.musteri) === String(me.musteri)) return true;
     var mount = typeof c.mount === 'string' ? document.querySelector(c.mount) : c.mount;
-    if(GV.pageHead) GV.pageHead({
-      eyebrow:c.eyebrow || '', title:c.title || 'Kayıt', sub:'Bu kayıt size ait değil',
-      actions:c.geriHref ? [{ label:c.geriLabel || 'Listeye dön', icon:'i-arrow-left', href:c.geriHref }] : []
-    });
     /* Kod YALNIZ ziyaretçinin kendi yazdığı adresten geldiyse yankılanır.
        Ekranın kendi varsayılanına (`DB.<koleksiyon>[0]`) düşmüş bir kodu
        basmak, yabancı bir kaydın numarasını sızdırmak olurdu. */
     var urlId = '';
     try{ urlId = new URLSearchParams(location.search).get('id') || ''; }catch(e){}
     var yankila = c.kod && String(c.kod) === String(urlId);
+    /* ⚠️ BAŞLIK ÇAĞIRANDAN ALINMAZ (V2-100 · ADR-R2-47). Bu yordamın kendi
+       sözü "yetkisiz ekran yabancı kayıttan HİÇBİR ŞEY yazmaz"dı, ama
+       başlığı çağıranın gönderdiği `title` dolduruyordu ve dört çağıran
+       oraya kaydın OKUNUR ADINI koyuyordu (`p.ad` · `h.unvan` · `rec.ad` ·
+       `rec.baslik`). Ölçüldü: `app-proje-detay.html?id=PRJ-2026-003`
+       müşteri oturumunda 403 basarken sayfa başlığına "Marmara Enerji
+       Mobil Operasyon ERP — Faz 1" yazıyordu — kapı reddediyor, sayfa
+       yine de yabancı kaydın adını söylüyordu.
+       Kural bir kez BURADA durur: kapı reddettiğinde başlık kendi
+       yordamından gelir, çağıranın cümlesinden değil. Böylece 26 detay
+       ekranının hiçbiri kendi başlığını denetlemek zorunda kalmaz. */
+    if(GV.pageHead) GV.pageHead({
+      eyebrow:c.eyebrow || '',
+      title:yankila ? String(c.kod) : 'Kayıt',
+      sub:'Bu kayıt size ait değil',
+      actions:c.geriHref ? [{ label:c.geriLabel || 'Listeye dön', icon:'i-arrow-left', href:c.geriHref }] : []
+    });
     if(mount) mount.innerHTML = '<div class="gv-card">' + GV.empty({
       icon:'i-lock', title:'Bu kaydı görüntüleme yetkiniz yok',
       desc:(yankila ? '“' + esc(c.kod) + '” kaydı ' : 'Açmaya çalıştığınız kayıt ') +
@@ -720,6 +733,45 @@
            ' adına açılmış bir kayıt değil. Yalnız kendi firmanıza ait kayıtları görüntüleyebilirsiniz.',
       action:c.geriHref
         ? '<a class="btn btn-acc" href="' + c.geriHref + '">' + esc(c.geriLabel || 'Listeye dön') + '</a>' : ''
+    }) + '</div>';
+    document.title = 'Yetkisiz erişim — GaviaWorks CRM';
+    return false;
+  };
+
+  /* İÇ EKRAN KAPISI — KİMLİK düzeyi (ADR-R2-47 · V2-100)
+     `GV.guardRecord` bir KAYDIN sahibini sorar ve `?id=` verilmeyen ekranda
+     hiç çalışmaz. Ölçüldü (13 Ağustos, gerçek Chromium, `YTK-001`):
+     `app-gorev-form.html` müşteri kimliğinde 16 personeli ADIYLA ve 14
+     projeyi (başka firmaların projeleri dahil) `<option>` olarak basıyordu;
+     `app-proje-form.html` 15 personeli basıyordu. İkisi de YENİ KAYIT
+     kipindeydi, yani ortada sahibi sorulacak bir kayıt yoktu ve kayıt
+     kapısı hiç devreye girmiyordu.
+
+     Bu yordam sorunun ÜÇÜNCÜ hâlidir: "bu EKRAN şirket içi bir defterin
+     yazma yüzeyi mi, ve oturum şirket içi mi?" Portal kimliği bir iç görev
+     ya da proje AÇMAZ — `permMatrix.musteri.ekle` `'musteri'`dir, yani
+     "müşteri kapsamındaki kaydı ekleyebilir" demektir; `can('ekle')` o
+     kapsamı boolean'a indirdiği için ekranlar onu "her şeyi ekleyebilir"
+     diye okuyordu. Kapsamı ekranın yorumuna bırakmak yerine kapı burada
+     tek yerde duruyor.
+       GV.guardIcEkran({ mount, eyebrow, title, geriHref, geriLabel })
+         → true  : personel oturumu, ekran çizilebilir
+         → false : gerekçe BASILDI, çağıran hemen `return` eder
+     Gerekçe `GV.perm.icVeriNeden()`ten gelir; ekran kendi cümlesini
+     kurmaz (L-40 · bayat beyan dersi). */
+  GV.guardIcEkran = function(c){
+    c = c || {};
+    if(!GV.perm || GV.perm.icVeri()) return true;
+    var mount = typeof c.mount === 'string' ? document.querySelector(c.mount) : c.mount;
+    if(GV.pageHead) GV.pageHead({
+      eyebrow:c.eyebrow || '', title:c.title || 'Kayıt', sub:'Bu ekran portal oturumuna kapalı',
+      actions:c.geriHref ? [{ label:c.geriLabel || 'Geri dön', icon:'i-arrow-left', href:c.geriHref }] : []
+    });
+    if(mount) mount.innerHTML = '<div class="gv-card">' + GV.empty({
+      icon:'i-lock', title:'Bu ekran şirket içi bir kayıt yüzeyidir',
+      desc:GV.perm.icVeriNeden(),
+      action:c.geriHref
+        ? '<a class="btn btn-acc" href="' + c.geriHref + '">' + esc(c.geriLabel || 'Geri dön') + '</a>' : ''
     }) + '</div>';
     document.title = 'Yetkisiz erişim — GaviaWorks CRM';
     return false;
@@ -918,40 +970,22 @@
        tam liste basmak, kapsam varmış gibi göstermekten iyidir; L-23). */
     function scopeBilgi(){ return kapsamNot; }
     var kapsamNot = '';
+    /* ⚠️ SÜZME KURALI ARTIK BURADA DEĞİL. Eskiden bu yordam kapsamı kendisi
+       çözüyordu; aynı kuralın ikinci bir okuyucusu doğduğunda (panel kartları,
+       V2-100) kural iki yerde yaşayacaktı — L-40'ın tam tarifi. Uygulama tek
+       yere, `GV.perm.kapsa`ya taşındı; bu yordam yalnız ekranın bildirdiği
+       ALAN EŞLEMESİNİ verir ve dönen notu basar. Davranış birebir korundu:
+       eşlenmemiş kapsam ve çözülemeyen oturum değeri hâlâ SESSİZ GEÇMEZ. */
     function afterScope(rows){
       kapsamNot = '';
-      if(!cfg.scopeField || !GV.perm || !GV.perm.scope) return rows;
-      var k = GV.perm.scope('gor');
-      if(!k || k === 'tum' || k === 'yok') return rows;
-      var alan = cfg.scopeField[k];
-      if(!alan){
-        /* Eşlenmemiş kapsam SESSİZ geçmez (L-23): kullanıcı yetkisinin kısıtlı
-           olduğunu bilir, listenin kısıtlanmadığını da bilmelidir. Eksik eşleme
-           burada görünür olur — yazılmayan süzgeç saklanmaz. */
-        var ad = k === 'proje' ? 'proje' : k === 'departman' ? 'departman'
-               : k === 'musteri' ? 'müşteri' : k;
-        kapsamNot = 'Kapsamınız ' + ad + ' bazlı, ancak bu ekranda ' + ad +
-                    ' süzgeci tanımlı değil — tüm kayıtlar listeleniyor.';
-        return rows;
-      }
-      var me = GV.session || {};
-      var deger = k === 'kendi' ? me.emp : k === 'departman' ? me.dep : k === 'musteri' ? me.musteri : null;
-      if(!deger){
-        kapsamNot = 'Kapsam süzgeci uygulanamadı — oturumda karşılığı olan bir değer yok.';
-        return rows;
-      }
-      /* Eşleme bir ALAN ADI ya da bir YORDAM olabilir (REVİZE 13). Yordam
-         gerekiyor çünkü kapsam alanı kayıtta her zaman doğrudan yazılı değil:
-         teslim kaydında müşteri yoktur, projesinde yazılıdır. Yordam kaydı alır,
-         karşılaştırılacak değeri (ya da değer dizisini) döndürür. */
-      var out = rows.filter(function(r){
-        var v = typeof alan === 'function' ? alan(r) : r[alan];
-        return Array.isArray(v) ? v.indexOf(deger) !== -1 : v === deger;
-      });
-      kapsamNot = k === 'kendi' ? 'Yalnız kendi kayıtlarınız gösteriliyor.'
-                : k === 'departman' ? 'Yalnız departmanınızın kayıtları gösteriliyor.'
+      if(!cfg.scopeField || !GV.perm || !GV.perm.kapsa) return rows;
+      var r = GV.perm.kapsa(rows, cfg.scopeField);
+      if(r.not){ kapsamNot = r.not; return r.satir; }
+      if(!r.kapsandi) return r.satir;
+      kapsamNot = r.kapsam === 'kendi' ? 'Yalnız kendi kayıtlarınız gösteriliyor.'
+                : r.kapsam === 'departman' ? 'Yalnız departmanınızın kayıtları gösteriliyor.'
                 : 'Yalnız size ait kayıtlar gösteriliyor.';
-      return out;
+      return r.satir;
     }
 
     function afterTab(rows){

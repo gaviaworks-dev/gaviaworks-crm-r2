@@ -306,7 +306,81 @@
       return v && v !== 'yok';
     },
     scope:function(action){ return this.matrix()[action] || 'yok'; },
-    mask:function(value, action){ return this.can(action || 'maas') ? value : '••••••'; }
+    mask:function(value, action){ return this.can(action || 'maas') ? value : '••••••'; },
+
+    /* =================================================================
+       İÇ VERİ KAPISI — KİMLİK düzeyi (ADR-R2-47 · V2-100)
+       R2'nin iki kapısı vardı ve ikisi de KAYIT düzeyindeydi:
+         · `GV.guardRecord`     → "bu KAYIT bu oturuma ait mi?"
+         · `GV.list` scopeField → "bu SATIR bu oturuma ait mi?"
+       İkisi de bir kaydın SAHİBİNİ sorar. Toplayan yüzey (panel kartı,
+       KPI sayacı, form seçeneği) kayıt açmaz — defterin TAMAMINI sayar,
+       yani sorulacak bir sahip yoktur ve iki kapı da onu görmez. Ölçüldü
+       (13 Ağustos, gerçek Chromium, `YTK-001` oturumu): panel müşteri
+       kimliğine 5 iç bildirim · 6 iç proje · 15 personel sayısı · 2 izin
+       talebini İSMİYLE · "Bekleyen onay 10" basıyordu.
+
+       Üçüncü soru bu yordamdır: **bu KİMLİK şirket içi veriyi görebilir
+       mi?** Cevap oturumun kendisinden gelir, ekranın yorumundan değil.
+         GV.perm.icVeri()       → true: personel · false: portal kimliği
+         GV.perm.icVeriNeden()  → kapalıysa GEREKÇE cümlesi
+       Gerekçe de burada durur: kapalı bir yüzeyin sebebini ekran kendi
+       cümlesiyle anlatırsa kural iki yerde yaşar ve yordam değişince
+       cümle sessizce bayatlar (L-40 · dilim 7 bayat beyan dersi). */
+    icVeri:function(){ return !(session && session.musteri); },
+    /* İÇ KÜME — şirket içi bir defterden gelen seçenek/liste kümesi
+       (personel kadrosu, iç onay zinciri, denetim defteri). Portal
+       kimliğinde BOŞ döner. Küme boşaldığında yüzeyin BOŞ GÖRÜNMESİ
+       yetmez, sebebi de basılmalıdır — sebep `icVeriNeden()`tedir. */
+    icKume:function(rows){ return this.icVeri() ? (rows || []) : []; },
+    icVeriNeden:function(){
+      if(this.icVeri()) return '';
+      /* Özne "blok" ya da "ekran" DEĞİL "yüzey": aynı cümle hem bir panel
+         kartını hem bir form ekranını anlatıyor. İki ayrı cümle yazmak,
+         aynı kuralı iki yerde tutmak olurdu. */
+      return (session.musteriAd || 'firmanız') + ' portal oturumundasınız. ' +
+             'Bu yüzey şirket içi bir deftere dayanıyor ve o defter müşteri ekseni ' +
+             'taşımıyor; kapsamınıza indirgenemediği için hiç basılmıyor.';
+    },
+
+    /* KAPSAM SÜZGECİ — `GV.list` `afterScope`unun ÇAĞRILABİLİR hâli.
+       Aynı kural iki yerde yaşamasın diye tek uygulama burada durur;
+       `ui.js` bunu çağırır, kendi kopyasını taşımaz (V2-101/3).
+         GV.perm.kapsa(satirlar, { kendi:'sorumlu', musteri:'musteri' })
+           → { satir, kapsandi, not }
+       `alanMap` bir ALAN ADI ya da bir YORDAM taşıyabilir: kapsam alanı
+       kayıtta her zaman doğrudan yazılı değildir (teslim kaydında müşteri
+       yoktur, projesinde yazılıdır).
+       Eşlenmemiş kapsam SESSİZ GEÇMEZ — `not` doldurulur ve çağıran onu
+       basar; süzülmeyen listeyi süzülmüş gibi göstermek yasaktır (L-23). */
+    kapsa:function(rows, alanMap){
+      rows = rows || [];
+      var k = this.scope('gor');
+      if(!alanMap || !k || k === 'tum' || k === 'yok')
+        return { satir:rows, kapsandi:false, not:'' };
+      var alan = alanMap[k];
+      var adlar = { proje:'proje', departman:'departman', musteri:'müşteri', kendi:'kendi kaydınız' };
+      if(!alan)
+        return { satir:rows, kapsandi:false,
+                 not:'Kapsamınız ' + (adlar[k] || k) + ' bazlı, ancak bu yüzeyde ' +
+                     (adlar[k] || k) + ' süzgeci tanımlı değil — tüm kayıtlar gösteriliyor.' };
+      var me = session || {};
+      var deger = k === 'kendi' ? me.emp : k === 'departman' ? me.dep
+                : k === 'musteri' ? me.musteri : null;
+      if(!deger)
+        return { satir:rows, kapsandi:false,
+                 not:'Kapsam süzgeci uygulanamadı — oturumda karşılığı olan bir değer yok.' };
+      var sec = typeof alan === 'function' ? alan : function(r){ return r[alan]; };
+      /* Değer DİZİ olabilir (bir kayıt birden çok projeye bağlı olabilir);
+         `GV.list` bu davranışı taşıyordu ve taşımaya devam eder. */
+      return {
+        satir:rows.filter(function(r){
+          var v = sec(r);
+          return Array.isArray(v) ? v.indexOf(deger) !== -1 : v === deger;
+        }),
+        kapsandi:true, kapsam:k, not:''
+      };
+    }
   };
   GV.perm = Perm;
 

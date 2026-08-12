@@ -170,11 +170,45 @@ document.addEventListener('gv:ready', function(){
                          .filter(function(v){ return v != null && v !== ''; });
   var PAKET_CELISKI  = PAKET_KAYITTA.filter(function(v){ return PAKET_TIPLERI.indexOf(v) === -1; });
 
-  var HESAPLAR = (DB.accounts || []);
-  var PROJELER = (DB.projects || []);
-  var PERSONEL = GV.hr.atanabilirler();
+  /* =================================================================
+     KİMLİK KAPISI — ADR-R2-47 · V2-100
+     Bu ekran portal kimliğine AÇIK kalır ve bu bilinçlidir: müşteri
+     yetkilisinin kendi talebini açması portalın işidir (`DB.tickets`
+     7/7 kaydı `kanal:'Müşteri portalı'`, açan 7/7 bir `YTK-*`). Ama
+     ekranın seçenek listeleri şirketin TÜM defterlerinden geliyordu.
+     Ölçüldü (gerçek Chromium, `YTK-001`): 16 personel ADIYLA · 14 proje ·
+     20 hesap · bütün firmaların yetkilileri `<option>` olarak basılıydı.
+     `display:none` bir sekmede durmaları kapı DEĞİLDİR — DOM'a yazılan
+     veri istemciye gitmiştir.
+
+     İki ayrı kural uygulanır ve ikisi de ortak katmandan okunur:
+       · müşteri ekseni OLAN defter → `GV.perm.kapsa` ile KAPSANIR
+       · müşteri ekseni OLMAYAN defter (kadro) → `GV.perm.icKume` ile BOŞALIR
+     Boşalan yüzeyin gerekçesi `GV.perm.icVeriNeden()`ten gelir; ekran
+     kendi cümlesini kurmaz, kurarsa kural iki yerde yaşar (L-40). */
+  var icVeri  = GV.perm.icVeri();
+  var icNeden = GV.perm.icVeriNeden();
+  function kapsam(rows, alanMap){ return GV.perm.kapsa(rows, alanMap).satir; }
+
+  /* Defter hakkında SAYI basan her cümle bu kümeden beslenir. Ham
+     `TALEPLER` sözlük türetmek için kalır (kategori/etki değerleri veri
+     değil SÖZLÜKTÜR), ama "kaç talep var" sorusunun cevabı kapsamlıdır. */
+  var KAPSAMLI_TALEP = kapsam(TALEPLER, { musteri:'musteri' });
+  var PROJELI_TALEP  = KAPSAMLI_TALEP.filter(function(t){ return !!t.proje; });
+
+  /* `DB.accounts` kapsam alanı KENDİ KODUDUR: hesabın müşterisi kendisidir. */
+  /* ⚠️ YALNIZ `musteri` EKSENİ BİLDİRİLİR. `kendi`/`departman` kapsamının
+     doğru eşlemesi bu defterlerde tek alan değil (proje tarafında
+     `app-proje.html` pm ∪ teknikSorumlu ∪ musteriSorumlu ∪ ekip yordamını
+     kullanıyor); burada ikinci ve daha DAR bir kopyasını yazmak aynı soruya
+     iki cevap üretirdi. Personel kimliğinin gördüğü küme bu turda
+     DEĞİŞMEDİ; eksik eşleme V2-106'da yazılı. */
+  var HESAPLAR = kapsam((DB.accounts || []), { musteri:'kod' });
+  var PROJELER = kapsam((DB.projects || []), { musteri:'musteri' });
+  var PERSONEL = GV.perm.icKume(GV.hr.atanabilirler());
   /* `contacts` — `durum` ekseni yok, `aktif` kanon (K-33). */
-  var KONTAKLAR = (DB.contacts || []).filter(function(c){ return c.aktif !== false; });
+  var KONTAKLAR = kapsam((DB.contacts || []).filter(function(c){ return c.aktif !== false; }),
+                         { musteri:'musteri' });
 
   /* ⚠️ DÜZENLEME KİPİNDE SESSİZ SİLME OLMAZ — ölçülerek yakalandı.
      Bir `<select>`in seçenek listesinde kayıttaki değer YOKSA alan boş
@@ -353,13 +387,23 @@ document.addEventListener('gv:ready', function(){
     aside:function(veri){ return yanPanel(veri); },
     sections:[
       { title:'Talep', icon:'i-support', tab:'talep',
+        /* ⚠️ CÜMLE ARTIK ELLE YAZILI DEĞİL. Eski hâli "yayındaki 7 talebin
+           6'sı bir projeye bağlı, DST-2026-117 hiçbir projeye bağlı değil"
+           diyordu: iki sayı ve BİR TALEP KODU elle yazılmıştı. İkisi de
+           defter değişince bayatlar, üstelik portal kimliğine YABANCI bir
+           talebin kodunu söylüyordu (V2-100 sınıfı). Sayılar artık
+           KAPSANMIŞ defterden türetiliyor; kod hiç basılmıyor. */
         desc:'Zorunlu iki alan var: başlık ve müşteri. Ortak yordam ' +
              '(GV.destek.olustur) ikisi olmadan kayıt açmaz. Proje ZORUNLU DEĞİLDİR — ' +
-             'ölçüldü: yayındaki 7 talebin 6’sı bir projeye bağlı, DST-2026-117 hiçbir ' +
-             'projeye bağlı değil ve bu bir eksiklik değil, bir ölçümdür.',
+             'ölçüldü: görebildiğiniz ' + KAPSAMLI_TALEP.length + ' talepten ' +
+             PROJELI_TALEP.length + ' tanesi bir projeye bağlı; kalanı bir eksiklik değil, ' +
+             'bir ölçümdür.',
         fields:[
           { key:'baslik', label:'Talep başlığı', type:'text', cols:12, required:true,
-            placeholder:'Örn. Randevu formunda tarih seçici mobilde açılmıyor',
+            /* ⚠️ ÖRNEK METİN DEFTERDEN ALINMAZ. Eski placeholder gerçek bir
+               talebin (DST-2026-114) başlığıydı; portal kimliğinde başka
+               bir firmanın talep başlığını yazıyordu. */
+            placeholder:'Örn. Rapor ekranı beklenenden yavaş açılıyor',
             hint:'Tek cümlede sorunu söyleyin; ayrıntı açıklama alanına yazılır.' },
 
           { key:'musteri', label:'Müşteri', type:'select', cols:6, required:true,
@@ -380,7 +424,9 @@ document.addEventListener('gv:ready', function(){
               return { value:p.kod, label:GV.destek.paketAdi(p) + ' · ' + (hesapAd(p.musteri) || p.musteri || '—') };
             }), 'proje', 'kayıtta yazılı; proje defterinde bulunamadı'),
             hint:'Zorunlu değil. Seçilen proje talebin müşterisine ait olmalıdır; ' +
-                 'defterdeki 14 projenin 14’ünde müşteri alanı yazılı.',
+                 'görebildiğiniz ' + PROJELER.length + ' projeden ' +
+                 PROJELER.filter(function(p){ return !!p.musteri; }).length +
+                 ' tanesinde müşteri alanı yazılı.',
             validate:function(v, veri){
               if(!v) return '';
               var p = projeKaydi(v);
@@ -430,9 +476,15 @@ document.addEventListener('gv:ready', function(){
 
           { key:'kanal', label:'Geliş kanalı', type:'select', cols:6,
             options:korunanSecenek(KANALLAR, 'kanal', 'kayıtta yazılı; sözlükte yok'),
-            hint:'Sözlükte ' + KANALLAR.length + ' kanal var. Ölçüldü: mevcut 7 talebin ' +
-                 '7’si “Müşteri portalı” — bu tekdüzelik uydurma değil, açan kişinin 7/7 ' +
-                 'bir müşteri yetkilisi (YTK-*) olmasından geliyor.' }
+            /* Sayılar ölçülür, yazılmaz: eski hâlinde "7 talebin 7'si" iki kez
+               elle yazılıydı ve defter büyüdüğü an yalana dönerdi. */
+            hint:(function(){
+              var portal = KAPSAMLI_TALEP.filter(function(t){ return t.kanal === 'Müşteri portalı'; }).length;
+              return 'Sözlükte ' + KANALLAR.length + ' kanal var. Ölçüldü: görebildiğiniz ' +
+                     KAPSAMLI_TALEP.length + ' talepten ' + portal + ' tanesi “Müşteri portalı” — ' +
+                     'bu tekdüzelik uydurma değil, açan kişinin bir müşteri yetkilisi ' +
+                     '(YTK-*) olmasından geliyor.';
+            })() }
         ] },
 
       { title:'Yönlendirme', icon:'i-user-check', tab:'yonlendirme',
@@ -444,8 +496,10 @@ document.addEventListener('gv:ready', function(){
             options:korunanSecenek(PERSONEL.map(function(e){
               return { value:e.kod, label:e.ad + ' · ' + (e.pozisyon || e.depAd || e.kod) };
             }), 'sorumlu', 'kayıtta yazılı; kadroda aktif değil'),
-            hint:'Boş bırakılabilir; talep atanmamış olarak açılır. ' + PERSONEL.length +
-                 ' aktif personel listeleniyor.' },
+            hint:icVeri
+              ? 'Boş bırakılabilir; talep atanmamış olarak açılır. ' + PERSONEL.length +
+                ' aktif personel listeleniyor.'
+              : 'Talebi bir kişiye siz atayamazsınız; atama şirket içinde yapılır. ' + icNeden },
 
           { key:'acan', label:'Talebi açan yetkili', type:'select', cols:6,
             options:korunanSecenek(KONTAKLAR.map(function(c){
@@ -798,7 +852,9 @@ document.addEventListener('gv:ready', function(){
      'taleplerden türetildi. SLA matrisini etkilemez</span>'],
     ['Kanal (' + KANALLAR.length + ')',
      '<span class="cell-code">DB.ticketChannels</span>' +
-     '<span class="cell-sub">mevcut 7 talebin 7’si “Müşteri portalı”; kalan altı değer yeni kayıtlar için</span>'],
+     '<span class="cell-sub">görebildiğiniz ' + KAPSAMLI_TALEP.length + ' talepten ' +
+     KAPSAMLI_TALEP.filter(function(t){ return t.kanal === 'Müşteri portalı'; }).length +
+     ' tanesi “Müşteri portalı”; kalan değerler yeni kayıtlar için</span>'],
     ['Müşteri (' + HESAPLAR.length + ')',
      '<span class="cell-code">DB.accounts</span>' +
      '<span class="cell-sub">yaşam evresi OKUNMADI (K-21 bayat alan); hesap yalnız unvan için açıldı</span>'],

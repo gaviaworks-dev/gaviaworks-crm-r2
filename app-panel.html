@@ -82,11 +82,46 @@ document.addEventListener('gv:ready', function(){
   }
   var bugunku  = acikGorev().filter(function(x){ return x.termin === t; });
   var geciken  = acikGorev().filter(function(x){ return x.termin < t; });
-  var onaylar  = (DB.approvals || []).filter(function(x){ return x.durum === 'Bekliyor'; });
+  /* =================================================================
+     İÇ VERİ KAPISI — V2-100 · ADR-R2-47
+     Panelin kartları KAYIT AÇMAZ, defter TOPLAR. `GV.guardRecord` bir
+     kaydın sahibini sorar, `GV.list` scopeField bir satırın sahibini —
+     toplayan yüzeyin sorulacak bir sahibi yoktur ve iki kapı da onu
+     görmez. Ölçüldü (13 Ağustos, gerçek Chromium, `YTK-001`): bu ekran
+     müşteri portalı kimliğine 5 iç bildirim · 6 iç proje (3'ü adıyla) ·
+     15 personel sayısı · 2 izin talebini İSMİYLE · "Bekleyen onay 10"
+     basıyordu. Kimlik düzeyi kapı `GV.perm.icVeri()`dir.
+     Kapalı yüzeyin GEREKÇESİ de yordamdan okunur (`icVeriNeden`) —
+     ekran kendi cümlesini kurarsa kural iki yerde yaşar ve bayatlar. */
+  var icVeri  = GV.perm.icVeri();
+  var icNeden = GV.perm.icVeriNeden();
+
+  /* Müşteri ekseni OLAN defter KAPSANIR, olmayan defter BASILMAZ.
+     `DB.approvals` müşteri alanı taşımaz (ölçüldü: kod · tur · kayit ·
+     baslik · talepEden · onaylayan · tutar · tarih · durum · aciliyet ·
+     link) — indirgenemeyen defter portal kimliğine boş döner. */
+  /* ⚠️ EŞLEME YALNIZ `musteri` EKSENİ İÇİN BİLDİRİLİR ve bu bilinçlidir.
+     `kendi`/`departman` kapsamının PROJE tarafındaki doğru eşlemesi tek bir
+     alan değil bir YORDAMDIR (`app-proje.html`: pm ∪ teknikSorumlu ∪
+     musteriSorumlu ∪ ekip). Onu burada ikinci kez, daha DAR biçimde yazmak
+     aynı soruya iki cevap üretirdi — L-40'ın tarifi. Panelin satır kapsamı
+     eksiği bu turda KAPATILMADI (kapsam donduruldu, V2-106), ama sessiz de
+     geçmiyor: eşlenmemiş kapsamın notu toplanıp özet şeridinin altında
+     BASILIYOR. Personel kimliğinin gördüğü sayı bu turda DEĞİŞMEDİ. */
+  var kapsamNotlari = [];
+  function kapsaSatir(rows, alanMap){
+    var r = GV.perm.kapsa(rows, alanMap);
+    if(r.not && kapsamNotlari.indexOf(r.not) === -1) kapsamNotlari.push(r.not);
+    return r.satir;
+  }
+  var onaylar  = icVeri
+    ? (DB.approvals || []).filter(function(x){ return x.durum === 'Bekliyor'; })
+    : [];
   /* Beklenen tahsilat: tahsil edilmemiş kayıtların toplamı. `tahsilEdildi`
      alanı veride yazılı — türetilebilen sayaç veriye YAZILMAZ (L-08), burada
      okunan gerçek alandır. */
-  var acikTahsilat = (DB.payments || []).filter(function(p){ return !p.tahsilEdildi; });
+  var acikTahsilat = kapsaSatir((DB.payments || []).filter(function(p){ return !p.tahsilEdildi; }),
+                                { musteri:'musteri' });
   var beklenen = acikTahsilat.reduce(function(s,p){ return s + (p.tutar || 0); }, 0);
   var canFinans = GV.perm.can('finans');
 
@@ -222,6 +257,14 @@ document.addEventListener('gv:ready', function(){
 
   /* ---- 3b. KART — Son bildirimler --------------------------------- */
   function bildirimHtml(){
+    /* `DB.notifications` müşteri ekseni TAŞIMAZ (`kisi` alanı bir EMP
+       kodudur) — indirgenemez, o yüzden portal kimliğine hiç basılmaz.
+       Duyurular ve Hızlı Notlar kartlarındaki kapının aynısı; fark yalnız
+       bu kartın kapısının YAZILMAMIŞ olmasıydı. */
+    if(!icVeri){
+      return kart('Son bildirimler', 'i-bell', 'kapsam dışı',
+        GV.empty({ icon:'i-lock', title:'Bildirim akışı bu oturumda yok', desc:icNeden }));
+    }
     var son = (DB.notifications || []).filter(function(n){ return !n.okundu; })
                 .sort(function(a,b){ return String(b.tarih).localeCompare(String(a.tarih)); })
                 .slice(0, 5);
@@ -244,9 +287,9 @@ document.addEventListener('gv:ready', function(){
   /* §4.1: "Rol bazlı iki özet; örneğin satış kullanıcısında fırsat,
      finans kullanıcısında nakit özeti." Rol → özet eşlemesi TEK yerde. */
   function firsatOzet(){
-    var acik = (DB.opportunities || []).filter(function(o){
+    var acik = kapsaSatir((DB.opportunities || []).filter(function(o){
       return ['Kazanıldı','Kaybedildi'].indexOf(o.asama) === -1;
-    });
+    }), { musteri:'musteri' });
     var toplam = acik.reduce(function(s,o){ return s + (o.butce || 0); }, 0);
     var sicak = acik.filter(function(o){ return o.sicaklik === 'Sıcak'; }).length;
     var body = '<div class="pn-stats">' +
@@ -283,6 +326,15 @@ document.addEventListener('gv:ready', function(){
   }
 
   function ekipOzet(){
+    /* `DB.leaves` ve `DB.employees` müşteri ekseni TAŞIMAZ — bir izin
+       talebinin müşterisi yoktur. Kart portal kimliğine bildirim kartıyla
+       AYNI biçimde kapanır: kart yerinde durur (tavan değişmez), gövdesi
+       kapının kendi gerekçesini basar. İki kapalı yüzey iki farklı biçimde
+       durmaz. */
+    if(!icVeri){
+      return kart('Ekip özeti', 'i-users', 'kapsam dışı',
+        GV.empty({ icon:'i-lock', title:'Ekip özeti bu oturumda yok', desc:icNeden }));
+    }
     var izin = (DB.leaves || []).filter(function(l){ return l.durum === 'Onay bekliyor'; });
     var aktifPersonel = GV.hr.atanabilirler();
     var body = '<div class="pn-stats">' +
@@ -300,9 +352,10 @@ document.addEventListener('gv:ready', function(){
   }
 
   function projeOzet(){
-    var acik = (GV.proje && GV.proje.acik)
+    var acik = kapsaSatir((GV.proje && GV.proje.acik)
       ? (DB.projects || []).filter(function(p){ return GV.proje.acik(p); })
-      : (DB.projects || []).filter(function(p){ return !p.arsiv; });
+      : (DB.projects || []).filter(function(p){ return !p.arsiv; }),
+      { musteri:'musteri' });
     var gec = (GV.proje && GV.proje.geciken)
       ? acik.filter(function(p){ return GV.proje.geciken(p); }) : [];
     var body = '<div class="pn-stats">' +
@@ -346,7 +399,13 @@ document.addEventListener('gv:ready', function(){
        kaldırılmalı" ilkesinin kart tarafındaki karşılığı). */
     secim = secim.map(function(k){ return (k === 'nakit' && !canFinans) ? 'proje' : k; });
     if(secim[0] === secim[1]) secim[1] = secim[0] === 'proje' ? 'ekip' : 'proje';
-    return secim.map(function(k){ return (OZET_FN[k] || projeOzet)(); }).join('');
+    var html = secim.map(function(k){ return (OZET_FN[k] || projeOzet)(); }).join('');
+    /* Eşlenmemiş kapsam SESSİZ GEÇMEZ (L-23): kullanıcı yetkisinin kısıtlı
+       olduğunu bilir, özetin kısıtlanMADIĞINI da bilmelidir. Cümle
+       `GV.perm.kapsa`dan gelir, burada yazılmaz. */
+    if(kapsamNotlari.length)
+      html += '<p class="pn-hint u-span-2">' + GV.esc(kapsamNotlari.join(' ')) + '</p>';
+    return html;
   }
 
   /* =================================================================

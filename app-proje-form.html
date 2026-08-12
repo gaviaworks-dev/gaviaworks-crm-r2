@@ -81,6 +81,15 @@ document.addEventListener('gv:ready', function(){
   var tumu  = DB.projects || [];
   var rec   = kod ? tumu.filter(function(x){ return x.kod === kod; })[0] : null;
 
+  /* KİMLİK KAPISI — ADR-R2-47 · V2-100. Proje AÇMAK/DÜZENLEMEK şirket içi
+     bir iştir; portal kimliği projesini GÖRÜR (`app-proje-detay.html`,
+     kayıt kapısıyla) ama YAZMAZ. Ölçüldü: bu ekran müşteri kimliğinde 15
+     personeli adıyla ve bütün hesapları seçenek olarak basıyordu. Kapı
+     `guardRecord`tan ÖNCE gelir: yeni kayıt kipinde kayıt kapısı hiç
+     çalışmaz ve sızıntı tam orada duruyordu. */
+  if(!GV.guardIcEkran({ mount:'#rec', eyebrow:'Proje ve Operasyon', title:'Proje',
+                        geriHref:'app-proje.html', geriLabel:'Proje listesine dön' })) return;
+
   /* ---- Küçük yardımcılar -------------------------------------------- */
   function bosNull(x){
     var s = (x == null) ? '' : String(x).trim();
