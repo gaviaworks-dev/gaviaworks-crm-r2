@@ -39,8 +39,8 @@
 | KARAR BEKLİYOR | **0** | %0,0 | 0 |
 | **Toplam** | **148** | %100 | 148 |
 | YENİ yazılacak | **8** — altısı (Y1–Y6) **yayında**, ikisi kaldı | — | 8 |
-| **Bugün R2'de yayında** | **107** | %72,3 | 97 |
-| **Kalan** | **41** | %27,7 | 51 |
+| **Bugün R2'de yayında** | **108** | %73,0 | 97 |
+| **Kalan** | **40** | %27,0 | 51 |
 
 > **12 Ağustos · Dilim 6 — iki satır karar DEĞİŞTİRDİ, dokuzu yazılıyor.**
 > `KARŞILIĞI VAR` 43 → 41: rota **123** ve **124** (`app-dokuman.html` ve
@@ -335,7 +335,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | 96 | `app-zimmet.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — `app-varlik.html` › Zimmet yüzeyi. Tutanak **drawer**'dır, ayrı ekran açılmadı. Kabul / kabul geri alma aynı yetki kümesinden geçiyor |
 | 97 | `app-zimmet-form.html` | **GÖMÜLÜYOR** ✅ | **KAPANDI** — zimmet çekmecesi (`app-varlik.html?t=zimmet`) |
 | 98 | `app-arac.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — `app-varlik.html` › Filo yüzeyi. 4 araç · sözlüğü olmayan 5 alan kayıtlardan türetildi ve kaynağı ekranda yazılı (V2-43) |
-| 99 | `app-arac-detay.html` | **KARŞILIĞI VAR** | Altı alt kaydın sekmesini R1'de zaten taşıyor — bu revizyonun istediği yapının **çalışan emsali** |
+| 99 | `app-arac-detay.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI** (1565 satır). YEDİ SEKME (`ozet · bakim · yakit · ceza · muayene · kaza · gider`) — altı olay defteri + özet; `DB.policies` ayrı sekme DEĞİL, `ozet` içinde "Sigorta ve poliçe" bloğu (poliçe bir mülkiyet niteliğidir). Şeritte ikon yok (V2-04). Yedi listenin hepsi tek `liste()` sarmalayıcısından `urlSync:false` + `archive:false` + `countTarget` alıyor. Alt defterler SALT OKUNUR — ekleyen yordam olmadığı için hiçbir düğme basılmadı, yokluk beyanla kapatıldı. Yakıt tüketimi §22.13'ün DÜZELTİLEN satırına göre: `ARC-001` 7,08 L/100km dayanak + tam-depo varsayımıyla, tek dolumlu üç araçta `—` + sebep. Gerçek Chromium'da altı genişlikte ölçüldü: 922 düğüm, taşma YOK, `#yakit`/`#kaza` derin bağlantısı çalışıyor. **Çalışıyor.** |
 | 100 | `app-arac-form.html` | **KARŞILIĞI VAR** ✅ | Araç `GV.flow` varlığı DEĞİL: `durum` düz alan, `required` + ön seçim yok (doğum durumunu söyleyen kaynak yok). Mülkiyet ekseni `showIf` ile ayrılıyor ve düşen alanlar `read()` katmanında kayboluyor. Dört ret iki yönde ölçüldü. **Çalışıyor.** |
 
 ### 6.4 Araç alt ekranları — R1'de zaten gömülü
