@@ -39,8 +39,8 @@
 | KARAR BEKLİYOR | **0** | %0,0 | 0 |
 | **Toplam** | **148** | %100 | 148 |
 | YENİ yazılacak | **8** — altısı (Y1–Y6) **yayında**, ikisi kaldı | — | 8 |
-| **Bugün R2'de yayında** | **105** | %70,9 | 97 |
-| **Kalan** | **43** | %29,1 | 51 |
+| **Bugün R2'de yayında** | **106** | %71,6 | 97 |
+| **Kalan** | **42** | %28,4 | 51 |
 
 > **12 Ağustos · Dilim 6 — iki satır karar DEĞİŞTİRDİ, dokuzu yazılıyor.**
 > `KARŞILIĞI VAR` 43 → 41: rota **123** ve **124** (`app-dokuman.html` ve
@@ -330,7 +330,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
 | 93 | `app-demirbas.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI** — `app-varlik.html` › Demirbaş yüzeyi (844 satır, üç yüzey TEK `GV.list` mount'unda). 15 demirbaş · `passive:['Hurda']` · K-30 düşen iddia satırı çekmecede basılıyor |
-| 94 | `app-demirbas-detay.html` | **KARŞILIĞI VAR** | — |
+| 94 | `app-demirbas-detay.html` | **KARŞILIĞI VAR** ✅ | SEKMESİZ (tek alt defter var, yedi sekmelik şerit §20.5 ilkesinin sekme hâlini delerdi). Düşen zimmet iddiası üç kayıtta da zaman çizelgesine karıştırılıyor — K-30 böyle korunuyor. Kabul/geri alma iki yönde ölçüldü, gerekçesiz geri alma REDDEDİLİYOR. **Çalışıyor.** |
 | 95 | `app-demirbas-form.html` | **KARŞILIĞI VAR** ✅ | `durum` TÜRETİLMİŞ: formda yalnız `Depoda` ve `Aktif` seçilebilir (sonda ile ölçüldü, `Zimmetli`/`Zimmet bekliyor` ezilir), düzenlemede alan basılmaz. `zimmetli/zimmetTarihi/iadeTarihi` `null` şekliyle doğar — K-30'un ölçüm kapısı böyle korunur. **Çalışıyor.** |
 | 96 | `app-zimmet.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — `app-varlik.html` › Zimmet yüzeyi. Tutanak **drawer**'dır, ayrı ekran açılmadı. Kabul / kabul geri alma aynı yetki kümesinden geçiyor |
 | 97 | `app-zimmet-form.html` | **GÖMÜLÜYOR** ✅ | **KAPANDI** — zimmet çekmecesi (`app-varlik.html?t=zimmet`) |
