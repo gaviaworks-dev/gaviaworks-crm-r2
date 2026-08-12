@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Yeni Personel — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="ekip" data-screen="personel">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/hr.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   PERSONEL FORMU — rota 82 · brief §5 (CreateEditPage deseni) · §20.1 ·
+   §20.2 · §22.0 · §22.2 · §22.3 · §22.8 · §22.15 · §22.16 · §22.17
+
+   DESEN: `GV.pageHead` + `GV.form` + `GV.afterSave`. `CreateEditPage`
+   ADINDA bir bileşen yoktur (brief §5).
+
+   BU EKRANIN İKİ ÇEKİRDEK KURALI
+   ─────────────────────────────────────────────────────────────────────
+   1) KİŞİSEL VERİ KAPISI (brief §20.1 · §22.8). Personel kaydı üç ayrı
+      hassasiyette alan taşır: genel · özlük/sağlık · maaş. Kapının
+      arkasındaki alan bu forma HİÇ BASILMAZ — maskelenmiş bir `<input>`
+      kaydedildiğinde gerçek değeri `••••••` ile ezerdi (§22.17.6).
+      Kapı kapalıysa bölüm ÇİZİLMEZ, sebebi ortak katmandan
+      (`GV.hr.maasKapi(rec).neden`) basılır ve kaydetmede o alanlar
+      OKUNMAZ; kayıttaki değer korunur.
+      ⚠️ KÜME ile KAYIT sorusu ayrıdır (§22.1 · §22.17.7): tek kayıt için
+      `GV.hr.maasGorebilir(rec)`, bir sayaç/toplam için argümansız
+      `GV.hr.maasGorebilir()`. Bu ekranda defter ölçümleri (kaç kayıt
+      hangi eksende) YALNIZ küme kapısı açıkken hesaplanır — bir doluluk
+      sayacı, öz-erişimle açılmaz.
+
+   2) XOR SÖZLEŞMESİ (brief §22.8): `maas > 0` XOR `saatlikUcret > 0`.
+      Eksen bir RADIO ile seçilir (`ucretEkseni`: aylik | saatlik) ve
+      `showIf` görünmeyen alanı hem doğrulamadan hem `read()`ten düşürür
+      (§5.2) — iki alan aynı kayıtta asla birlikte dolmaz. Kaydetmede
+      son kontrol: ikisi birden > 0 ise kayıt REDDEDİLİR ("uyar ama
+      geçir" yasak — §14.12). Düzenleme kipinde eksen mevcut kayıttan
+      türetilir, ama ancak MAAŞ KAPISI AÇIKSA: kapalı kapıda eksen
+      kararı için bile alan okunmaz.
+
+   DURUM BU FORMDAN İŞLETİLMEZ
+     · Doğum durumu nesne LİTERALİNDE verilir (`DB.employeeStatuses[0]`),
+       kayda sonradan durum yazan satır YOKTUR (§14.5 · §22.17.2).
+     · `GV.hr.olustur` / `.guncelle` YOKTUR (§22.16.4): kayıt nesne
+       literaliyle doğar — teklif/fatura/proje formlarındaki desen.
+     · Geçişlerin düğmeleri personel DETAYINDA (yaşam döngüsü sekmesi);
+       `e.durum = …` yasak, tek yol `GV.flow.gec('employee', …)`.
+     · `e.aktif` OKUNMAZ · YAZILMAZ · SÜZÜLMEZ (§22.17.4 · K-33). Kayıt
+       doğarken de yazılmaz: tuzaklı alandır.
+
+   KOD ÜRETİMİ: `EMP-###`, YIL DAMGASI YOK (§22.2 `kodUretYilsiz`) ve
+   sıra GLOBAL taranır. Bugünkü veriyle üretilen kod: `EMP-017`.
+
+   YÜKLENEN VERİ (brief §22.0 tablosu, sıra §1.1): org · crm · work ·
+   misc · ops · hr · lifecycle. `hr.js` zorunlu — `DB.onboarding`
+   (personelEvrak kapısı), `DB.assignments` (personelZimmet kapısı) ve
+   `DB.salaryHistory` orada. `org.js` personel defterini ve yetki
+   matrisini taşır. `crm/work/misc/ops/lifecycle` `domain.js`in yüklenme
+   anındaki türetmeleri içindir (fatura durumları · onay sayaçları);
+   yüklenmezlerse o türetmeler boş koleksiyon üstünde koşar ve sessizce
+   yanlış sonuç verir (§1.1). `firsat.js` · `odeme.js` · `notes.js` ·
+   `reports.js` yüklenmez.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var esc   = GV.esc;
+  var F     = GV.fmt;
+  var MASKE = '••••••';
+
+  var q    = new URLSearchParams(location.search);
+  var kod  = q.get('id');
+  var tumu = DB.employees || [];
+  var rec  = kod ? tumu.filter(function(x){ return x.kod === kod; })[0] : null;
+
+  /* ---- Küçük yardımcılar -------------------------------------------- */
+  function bosNull(x){
+    var s = (x == null) ? '' : String(x).trim();
+    return s === '' ? null : s;
+  }
+  function sayiYaNull(x){
+    var s = String(x == null ? '' : x).trim();
+    if(s === '') return null;
+    var n = parseFloat(s.replace(',', '.'));
+    return isFinite(n) ? n : null;
+  }
+  function faint(s){ return '<span class="u-faint">' + esc(s) + '</span>'; }
+  function faintNot(html){ return '<p class="u-faint u-sm">' + html + '</p>'; }
+  function kodEt(s){ return '<span class="cell-code">' + esc(s) + '</span>'; }
+  function benzersiz(list){
+    return (list || []).filter(function(v, i, s){
+      return v != null && v !== '' && s.indexOf(v) === i; });
+  }
+  function trSirala(a, b){ return String(a).localeCompare(String(b), 'tr'); }
+  function kisiAd(k){ return k ? (DB.empName(k) || k) : null; }
+  function depKaydi(k){ return (DB.departments || []).filter(function(d){ return d.kod === k; })[0] || null; }
+  function depAdi(k){ var d = depKaydi(k); return d ? d.ad : null; }
+  function kart(ikon, baslik, meta, govde){
+    return '<section class="gv-card u-mt-4"><div class="gc-head">' +
+      '<h3 class="gc-title">' + GV.ico(ikon) + esc(baslik) + '</h3>' +
+      (meta ? '<span class="gc-meta">' + meta + '</span>' : '') +
+      '</div><div class="gc-body">' + govde + '</div></section>';
+  }
+  /* Baş harf türetimi — ölçülür, uydurulmaz: aşağıda defterin kaç
+     kaydında bu yordamın çıktısı kayıttaki `ini` ile birebir aynı
+     olduğu sayılır ve o sayı alanın ipucunda yazılır. */
+  function iniTuret(ad){
+    var p = String(ad || '').trim().split(/\s+/).filter(function(x){ return x; });
+    if(!p.length) return '';
+    var ilk = p[0].slice(0, 1);
+    var son = p.length > 1 ? p[p.length - 1].slice(0, 1) : '';
+    return (ilk + son).toLocaleUpperCase('tr');
+  }
+
+  /* =================================================================
+     0. ÜÇ KAPI — kayıt yok · müşteri oturumu · yetki yok
+     ================================================================= */
+  if(kod && !rec){
+    GV.pageHead({
+      eyebrow:'Ekip ve Kaynaklar', title:'Kayıt bulunamadı', sub:kod,
+      actions:[{ label:'Personel listesine dön', icon:'i-arrow-left', href:'app-personel.html' }]
+    });
+    mount.innerHTML = GV.errorState({
+      title:kod + ' bulunamadı',
+      desc:'Bu kod personel defterindeki ' + tumu.length + ' kayıttan hiçbiriyle eşleşmedi. ' +
+           'Adres çubuğundaki kodu kontrol edin ya da personel listesinden kaydı seçin.',
+      action:'<a class="btn btn-acc" href="app-personel-form.html">Yeni personel kaydı aç</a>' });
+    return;
+  }
+
+  /* Müşteri oturumuna karşı kayıt kapısı (brief §6 adım 2 · §21.11).
+     Personel kaydı bir müşteriye ait DEĞİLDİR: `musteri` alanı yoktur ve
+     bu yüzden kapıya `musteri:null` verilir — yordam müşteri oturumunu
+     her hâlükârda reddeder, personel oturumunu geçirir. Kural ortak
+     katmanda kalır; ekran ikinci bir "müşteri mi" testi yazmaz. */
+  if(!GV.guardRecord({ mount:'#rec', musteri:null, kod:rec ? rec.kod : null,
+      eyebrow:'Ekip ve Kaynaklar', title:rec ? (rec.ad || rec.kod) : 'Yeni Personel',
+      geriHref:'app-personel.html', geriLabel:'Personel listesine dön' })) return;
+
+  /* Oturumun bir PERSONEL kimliği olması bu formun önkoşuludur: kişisel
+     veri kapılarının ikisi de "kendi kaydı" dalını `GV.session.emp`ten
+     okur (brief §20.1). `emp` null olan bir oturumda o dal hiç
+     uygulanamaz; sessizce küme kapısına düşmek yerine söylenir. */
+  if(!GV.session || !GV.session.emp){
+    GV.pageHead({
+      eyebrow:'Ekip ve Kaynaklar', title:'Personel kimliği gerekli',
+      sub:'oturumda personel kaydı yok',
+      actions:[{ label:'Personel listesine dön', icon:'i-arrow-left', href:'app-personel.html' }]
+    });
+    mount.innerHTML = GV.empty({ icon:'i-lock',
+      title:'Bu form bir personel kimliği gerektirir',
+      desc:'Oturumunuz personel defterinde bir kayda bağlı değil. Özlük ve ücret kapıları ' +
+           '"kendi kaydı" dalını oturumun personel kodundan okur; o kod olmadan kapılar ' +
+           'ölçülemez ve form açılmaz.',
+      action:'<a class="btn btn-line" href="app-personel.html">Personel listesine dön</a>' });
+    return;
+  }
+
+  var izinli = rec ? GV.perm.can('duzenle') : GV.perm.can('ekle');
+  if(!izinli){
+    GV.pageHead({
+      eyebrow:'Ekip ve Kaynaklar',
+      title:rec ? (rec.ad || rec.kod) : 'Yeni Personel',
+      sub:'Bu ekran için yetkiniz yok',
+      actions:[{ label:'Personel listesine dön', icon:'i-arrow-left', href:'app-personel.html' }]
+    });
+    mount.innerHTML = GV.empty({ icon:'i-lock',
+      title:rec ? 'Personel kaydını düzenleme yetkiniz yok' : 'Yeni personel kaydı açma yetkiniz yok',
+      desc:'Rolünüz (' + GV.perm.role() + ') bu işlem için yetkili değil. Personel listesini ' +
+           'görüntülemeye devam edebilirsiniz.',
+      action:'<a class="btn btn-line" href="app-personel.html">Personel listesine dön</a>' });
+    return;
+  }
+
+  /* =================================================================
+     1. KİŞİSEL VERİ KAPILARI — alanlar kurulmadan ÖNCE ölçülür
+     -----------------------------------------------------------------
+     Kapı iki soruyu ayrı sorar (brief §22.1):
+       · KAYIT sorusu  → `GV.hr.maasGorebilir(rec)` · öz-erişim AÇIK
+       · KÜME  sorusu  → `GV.hr.maasGorebilir()`    · öz-erişimden etkilenmez
+     Yeni kayıtta ortada bir KAYIT yoktur; o yüzden maaş kapısı küme
+     sorusuna düşer (brief §22.8) ve özlük kapısı "ekleyebiliyor mu"
+     sorusuna bağlanır.
+     ================================================================= */
+  var kumeAcik  = GV.hr.maasGorebilir();                 /* başkalarının ücreti */
+  var maasKapi  = GV.hr.maasKapi(rec || null);
+  var maasAcik  = rec ? GV.hr.maasGorebilir(rec) : kumeAcik;
+  var ozlukAcik = rec ? GV.hr.ozlukGorebilir(rec) : GV.perm.can('ekle');
+
+  /* Kapının İKİ YÖNÜ de ekranda ölçülür (kapı sessiz çalışmaz). Bu
+     sayılar alan DEĞERİ değil KAPI DURUMU sayar: hangi kayıtta hangi
+     yön geçerli. Özlük ya da ücret değeri sızmaz. */
+  var OZLUK_ACIK_N = tumu.filter(function(e){ return GV.hr.ozlukGorebilir(e); }).length;
+  var MAAS_ACIK_N  = tumu.filter(function(e){ return GV.hr.maasGorebilir(e); }).length;
+
+  /* =================================================================
+     2. SÖZLÜKLER, GEÇİŞ TABLOSU VE DEFTER ÖLÇÜMLERİ
+     ================================================================= */
+  var DURUMLAR  = DB.employeeStatuses || [];             /* 7 durum */
+  var ET        = (DB.transitions && DB.transitions.employee) || {};
+  var ILK       = DURUMLAR[0] || null;                   /* doğum durumu — sabit yazılmaz */
+  var ILK_KURAL = (ILK && ET[ILK]) || {};
+  var ILK_ZOR   = ILK_KURAL.zorunlu || [];               /* girisTarihi · dep · pozisyon */
+  var WORKTYPES = DB.workTypes || [];                    /* 5 istihdam ilişkisi */
+
+  /* Roller: 27 kayıtlık ortak sözlük. `musteri` rolü BASILMAZ — o bir
+     müşteri portalı kimliğidir ve oturumu `DB.contacts` kaydına bağlanır
+     (brief §2.2: müşteri oturumunda `emp:null`), personel kaydına
+     verilemez. Filtrenin sebebi ekranda yazılıdır. */
+  var ROLLER  = (DB.roles || []).filter(function(r){ return r.key !== 'musteri'; });
+  var ROL_SEC = ROLLER.map(function(r){ return { value:r.key, label:r.ad }; });
+
+  /* Departmanlar: 21 kayıt. `aktif` bu koleksiyonda KANONDUR (brief
+     §20.2 — `durum` ekseni olmayan üç koleksiyondan biri) ve soru
+     `GV.arsivli`den geçer; alan doğrudan okunmaz. */
+  var DEPLER   = DB.departments || [];
+  var DEP_PASIF= DEPLER.filter(function(d){ return GV.arsivli(d); }).length;
+  var DEP_SEC  = DEPLER.map(function(d){
+    return { value:d.kod, label:d.ad + (GV.arsivli(d) ? ' · pasif departman' : '') };
+  });
+
+  /* Atama listesi ortak yordamdan (brief §22.1b.2): KAYIT dizisi döner,
+     `{value,label}` değil; `ad`a göre Türkçe sıralı gelir ve çağıran
+     yeniden sıralamaz. Bugün 15 kayıt döner (yalnız `Aktif` durum). */
+  var ATANABILIR = GV.hr.atanabilirler() || [];
+  var YONETICI_SEC = ATANABILIR
+    .filter(function(e){ return !rec || e.kod !== rec.kod; })
+    .map(function(e){ return { value:e.kod, label:e.ad + ' · ' + (e.pozisyon || e.depAd || e.kod) }; });
+
+  /* SÖZLÜĞÜ OLMAYAN ALANLAR (brief §22.4 · §22.8): seçenekler defterden
+     türetilir ve kaynağı ekranda yazılır. */
+  var CALISMA_TURU = benzersiz(tumu.map(function(e){ return e.calismaTuru; })).sort(trSirala);
+  var SOZLESMELER  = benzersiz(tumu.map(function(e){ return e.sozlesme; })).sort(trSirala);
+  var LOKASYONLAR  = benzersiz(tumu.map(function(e){ return e.lokasyon; })).sort(trSirala);
+  var UZMANLIKLAR  = benzersiz(tumu.map(function(e){ return e.uzmanlik; })).sort(trSirala);
+
+  /* KORUNAN SEÇENEK (brief §22.1b.5): düzenlenen kaydın kendi değeri
+     türetimin dışında kalabilir (silinmiş bir değer, elle girilmiş bir
+     lokasyon). O değer listeye EKLENİR — yoksa `select` onu sessizce
+     başka bir değere çevirir ve kaydetmek VERİ KAYBI olur. Yeni kayıtta
+     eklenmez; çelişki yayılmaz. */
+  function korunan(secenekler, alan, gerekce){
+    if(!rec) return secenekler;
+    var v = rec[alan];
+    if(v == null || v === '') return secenekler;
+    var varMi = secenekler.some(function(o){
+      return (o && typeof o === 'object' ? o.value : o) === v; });
+    if(varMi) return secenekler;
+    return secenekler.concat([{ value:v, label:v + ' · ' + gerekce }]);
+  }
+
+  /* ---- Ölçümler: hepsi defterden sayılır ---------------------------- */
+  var DURUM_DAGILIM = DURUMLAR.map(function(d){
+    return { durum:d, n:tumu.filter(function(e){ return GV.hr.durum(e) === d; }).length };
+  }).filter(function(x){ return x.n > 0; });
+  var ISTIHDAMDA_N = tumu.filter(function(e){ return GV.hr.istihdamda(e); }).length;
+  var ATANABILIR_N = tumu.filter(function(e){ return GV.hr.atanabilir(e); }).length;
+  var ROL_GECEN    = benzersiz(tumu.map(function(e){ return e.rol; })).length;
+  var YONETICISIZ  = tumu.filter(function(e){ return !e.yonetici; }).length;
+  var UZMANLIKLI   = tumu.filter(function(e){ return !!e.uzmanlik; }).length;
+  var INI_UYAN     = tumu.filter(function(e){ return e.ini === iniTuret(e.ad); }).length;
+  var INI_IKI      = tumu.filter(function(e){ return String(e.ini || '').length === 2; }).length;
+  var ROLLER_KAPSAR= tumu.filter(function(e){ return (e.roller || []).indexOf(e.rol) !== -1; }).length;
+  var DEPAD_UYAN   = tumu.filter(function(e){ return e.depAd === depAdi(e.dep); }).length;
+  var IZINLER      = tumu.map(function(e){ return e.izinBakiye; })
+                         .filter(function(x){ return typeof x === 'number'; });
+  var DOLULUKLAR   = tumu.map(function(e){ return e.doluluk; })
+                         .filter(function(x){ return typeof x === 'number'; });
+  var IZIN_MIN     = IZINLER.length ? Math.min.apply(null, IZINLER) : null;
+  var IZIN_MAX     = IZINLER.length ? Math.max.apply(null, IZINLER) : null;
+  var DOL_MIN      = DOLULUKLAR.length ? Math.min.apply(null, DOLULUKLAR) : null;
+  var DOL_MAX      = DOLULUKLAR.length ? Math.max.apply(null, DOLULUKLAR) : null;
+  var ONB_GIRIS    = (DB.onboarding || []).filter(function(o){ return o.tur === 'Giriş'; }).length;
+  /* Çıkış neden kodları: ayrı bir sözlük YOK, ortak neden sözlüğünün `tur`
+     EKSENİ ayırıcıdır ve o alan bir DİZİDİR — `c.tur === 'cikis'` yazmak
+     hiçbir kod bulamaz (ölçüldü). Bu ekran o kodları BASMAZ; yalnız kaç
+     tane olduğunu söyler, çünkü çıkış alanları bu formun işi değil. */
+  var CIKIS_KOD = (DB.reasonCodes || []).filter(function(c){
+    return (c.tur || []).indexOf('cikis') !== -1; }).length;
+
+  /* ⚠️ ÜCRET EKSENİ ÖLÇÜMÜ KÜME SORUSUDUR (brief §22.1). "Kaç kayıt maaş
+     ekseninde" bir DOLULUK SAYACIDIR ve maskelenen değer böyle bir
+     sayaçtan dolaylı geri hesaplanır (UID-11). Bu yüzden ölçüm yalnız
+     ARGÜMANSIZ kapı açıkken hesaplanır; kapalıysa hiç okunmaz ve ekran
+     "ölçüm kapının arkasında" der — 0 yazmaz. */
+  var EKSEN = null;
+  if(kumeAcik){
+    EKSEN = {
+      aylik:tumu.filter(function(e){ return Number(e.maas) > 0 && !(Number(e.saatlikUcret) > 0); }).length,
+      saatlik:tumu.filter(function(e){ return Number(e.saatlikUcret) > 0 && !(Number(e.maas) > 0); }).length,
+      ikisi:tumu.filter(function(e){ return Number(e.maas) > 0 && Number(e.saatlikUcret) > 0; }).length,
+      hicbiri:tumu.filter(function(e){ return !(Number(e.maas) > 0) && !(Number(e.saatlikUcret) > 0); }).length
+    };
+  }
+  /* `DB.salaryHistory` maaş sınıfındadır (brief §20.1) — küme kapısı
+     kapalıyken sayılmaz bile. Ölçüldü (§22.4): bu defter bir GEÇMİŞ
+     değildir; 15 kaydın 15'inde `baslangic` bugündür ve `bitis` boştur.
+     Form bu deftere SATIR YAZMAZ (§22.17.11). */
+  var MAAS_DEFTER = null;
+  if(kumeAcik){
+    var sh = DB.salaryHistory || [];
+    MAAS_DEFTER = {
+      adet:sh.length,
+      bitisli:sh.filter(function(s){ return !!s.bitis; }).length,
+      bugun:sh.filter(function(s){ return s.baslangic === DB.today; }).length,
+      kayit:rec ? sh.filter(function(s){ return s.personel === rec.kod; }).length : null
+    };
+  }
+
+  /* ---- Üretilecek kod: brief §22.2 `kodUretYilsiz` ------------------ */
+  function kodUretYilsiz(){
+    var max = 0;
+    (DB.employees || []).forEach(function(x){
+      var m = /^EMP-(\d+)$/.exec(x.kod || '');
+      if(m) max = Math.max(max, +m[1]);      /* sıra GLOBAL — yıl damgası YOK */
+    });
+    return 'EMP-' + String(max + 1).padStart(3, '0');
+  }
+
+  /* =================================================================
+     3. FORMA BASILAN ALAN LİSTELERİ VE ÖN DOLGU
+     -----------------------------------------------------------------
+     Listeler TEK yerde durur; kaydetme de bunları okur (L-40). Kapı
+     arkasındaki iki küme AYRI listelerdedir ki kapalı kapıda ne
+     basılsınlar ne okunsunlar.
+     ================================================================= */
+  var GENEL_METIN = ['ad','ini','rol','dep','pozisyon','yonetici','girisTarihi',
+                     'lokasyon','uzmanlik','calismaTipi'];
+  var GENEL_SAYI  = ['izinBakiye','doluluk'];
+  var OZLUK_METIN = ['tel','eposta','dogum','kanGrubu','acilKisi','egitim',
+                     'sozlesme','calismaTuru'];
+
+  var ETIKET = {
+    ad:'Ad soyad', ini:'Baş harf', rol:'Rol', dep:'Departman', pozisyon:'Pozisyon',
+    yonetici:'Yönetici', girisTarihi:'İşe giriş tarihi', lokasyon:'Lokasyon',
+    uzmanlik:'Uzmanlık', calismaTipi:'İstihdam ilişkisi', izinBakiye:'İzin bakiyesi (gün)',
+    doluluk:'Doluluk (%)', tel:'Telefon', eposta:'E-posta', dogum:'Doğum tarihi',
+    kanGrubu:'Kan grubu', acilKisi:'Acil durumda ulaşılacak kişi', egitim:'Eğitim',
+    sozlesme:'Sözleşme türü', calismaTuru:'Çalışma türü (mesai)',
+    ucretEkseni:'Ücret ekseni', maas:'Aylık brüt maaş', saatlikUcret:'Saatlik ücret'
+  };
+  function zorLabel(a){ return ETIKET[a] || a; }
+
+  var formKayit = {};
+  if(rec){
+    GENEL_METIN.concat(GENEL_SAYI).forEach(function(k){
+      formKayit[k] = rec[k] == null ? '' : rec[k];
+    });
+    /* Görüntü alanlarının adı `*Bilgi` — kayda yazan koddan ayırt
+       edilebilsin diye (proje/görev formlarıyla aynı sözleşme). */
+    formKayit.durumBilgi     = rec.durum || '';
+    formKayit.rollerBilgi    = (rec.roller || []).join(' · ') || '—';
+    formKayit.yetkinlikBilgi = (rec.yetkinlik || []).join(' · ') || '—';
+    formKayit.teknolojiBilgi = (rec.teknoloji || []).join(' · ') || '—';
+
+    /* ÖZLÜK ÖN DOLGUSU KAPIDAN GEÇER. Değer doğrudan `rec[alan]`dan
+       değil `GV.hr.ozluk(rec, alan)`dan okunur: kapı tek yerde kalsın ve
+       maskelenmiş bir değer kazara forma girmesin. Maske görürsek bölüm
+       hiç çizilmez (ikinci sigorta). */
+    if(ozlukAcik){
+      var ozlukSizinti = false;
+      OZLUK_METIN.forEach(function(k){
+        var v = GV.hr.ozluk(rec, k);
+        if(v === MASKE){ ozlukSizinti = true; return; }
+        formKayit[k] = v == null ? '' : v;
+      });
+      formKayit.sertifikaBilgi = (rec.sertifika || []).join(' · ') || '—';
+      if(ozlukSizinti){
+        ozlukAcik = false;
+        OZLUK_METIN.forEach(function(k){ delete formKayit[k]; });
+        delete formKayit.sertifikaBilgi;
+      }
+    }
+
+    /* ÜCRET ÖN DOLGUSU DA KAPIDAN GEÇER ve eksen ancak burada türetilir:
+       kapı kapalıyken `rec.maas` / `rec.saatlikUcret` HİÇ OKUNMAZ —
+       eksen kararı için okumak da maskelenen değeri bir dala sızdırmak
+       olurdu. */
+    if(maasAcik){
+      var mv = GV.hr.maas(rec, 'maas');
+      var sv = GV.hr.maas(rec, 'saatlikUcret');
+      if(mv === MASKE || sv === MASKE){
+        maasAcik = false;                        /* ikinci sigorta */
+      }else{
+        formKayit.ucretEkseni   = (Number(sv) > 0) ? 'saatlik' : 'aylik';
+        formKayit.maas          = mv == null ? '' : mv;
+        formKayit.saatlikUcret  = sv == null ? '' : sv;
+      }
+    }
+  }
+
+  /* =================================================================
+     4. SAYFA BAŞLIĞI — form bileşeninden ÖNCE (brief §2.4)
+     -----------------------------------------------------------------
+     "Vazgeç" her iki kipte de LİSTEYE döner: personel detayı bu turda
+     henüz yazılmadı ve sayfa başlığı kabuğun `markWip` gözlemcisinin
+     taradığı alanın dışında olabilir — yayında olmayan bir hedefi orada
+     vaat etmemek en dürüst davranış. Kaydettikten sonra hedef seçimini
+     `GV.afterSave` KENDİSİ ölçer (brief §5.4).
+     ================================================================= */
+  GV.pageHead({
+    eyebrow:'Ekip ve Kaynaklar',
+    title:rec ? (rec.ad || rec.kod) : 'Yeni Personel',
+    sub:rec
+      ? rec.kod + ' · ' + GV.hr.durum(rec) + ' · durum bu formdan değişmez'
+      : 'Yeni personel · kayıt "' + (ILK || '—') + '" durumunda doğar · kod ' + kodUretYilsiz(),
+    actions:[
+      { label:'Vazgeç', icon:'i-arrow-left', href:'app-personel.html' },
+      { label:'Kaydet', icon:'i-check', cls:'btn-acc', run:function(){ kaydet(); } }
+    ]
+  });
+
+  mount.innerHTML = '<div id="empForm"></div><div id="empKapi"></div>' +
+                    '<div id="empBasilmayan"></div><div id="empBackend"></div>';
+
+  /* =================================================================
+     5. ALANLAR
+     ================================================================= */
+  function yoneticiKontrol(val, veri){
+    if(!val) return '';
+    if(rec && val === rec.kod) return 'Bir personel kendi yöneticisi olamaz.';
+    /* Döngü kontrolü: seçilen yöneticinin zinciri bu kayda dönüyorsa
+       organizasyon ağacı kapanır. Defterde ölçüldü: bugün döngü yok. */
+    if(rec){
+      var gez = val, adim = 0;
+      while(gez && adim < tumu.length + 1){
+        if(gez === rec.kod) return 'Bu seçim yönetici zincirinde bir döngü kurar (' +
+                                   (kisiAd(val) || val) + ' → … → ' + (rec.ad || rec.kod) + ').';
+        var u = tumu.filter(function(x){ return x.kod === gez; })[0];
+        gez = u ? u.yonetici : null;
+        adim++;
+      }
+    }
+    return '';
+  }
+  function iniKontrol(val){
+    if(!val) return '';                       /* boşsa addan türetilir */
+    var s = String(val).trim();
+    if(s.length > 2) return 'Baş harf en çok 2 karakterdir (defterde ' + INI_IKI + '/' +
+                            tumu.length + ' kayıt 2 karakterli).';
+    if(/\s/.test(s)) return 'Baş harf boşluk içermez.';
+    return '';
+  }
+
+  var kimlikAlanlar = [
+    { key:'ad', label:ETIKET.ad, type:'text', cols:8, required:true,
+      placeholder:'Örn. Ayşe Demir',
+      hint:'Listede, atama seçeneklerinde ve aktivite defterinde kaydın adı budur. Kod ' +
+           'defterden üretilir, elle yazılmaz.' },
+    { key:'ini', label:ETIKET.ini, type:'text', cols:4, validate:iniKontrol,
+      placeholder:'AD',
+      hint:'Boş bırakırsanız ad soyaddan türetilir (ölçüldü: ' + INI_UYAN + '/' + tumu.length +
+           ' kayıtta baş harfler adın ilk ve son kelimesinden geliyor). Kullanıcı düzeltebilir; ' +
+           'yazdığınız değer korunur.' },
+    { key:'rol', label:ETIKET.rol, type:'select', cols:6, required:true,
+      options:korunan(ROL_SEC, 'rol', 'kayıtta yazılı; rol sözlüğünde yok'),
+      hint:'Ortak rol sözlüğünden okunur: ' + (DB.roles || []).length + ' rolün ' + ROLLER.length +
+           ' tanesi listelenir. Defterde ' + ROL_GECEN + ' farklı rol kullanılmış. "Müşteri ' +
+           'Kullanıcısı" rolü listelenmez: o bir müşteri portalı kimliğidir ve oturumu ' +
+           'personel defterine değil kontak kaydına bağlanır.' },
+    { key:'dep', label:ETIKET.dep, type:'select', cols:6, required:true,
+      options:korunan(DEP_SEC, 'dep', 'kayıtta yazılı; departman defterinde yok'),
+      hint:'Zorunlu: "' + (ILK || '—') + '" durumundan çıkmanın şartlarından biri. ' +
+           DEPLER.length + ' departmanın ' + DEP_PASIF + ' tanesi pasif (arşiv sorusu ' +
+           'GV.arsivli yordamındadır) ve etiketinde yazılıdır. Departman ADI bu seçimden ' +
+           'türetilir, ayrıca sorulmaz.' },
+    { key:'pozisyon', label:ETIKET.pozisyon, type:'text', cols:6, required:true,
+      placeholder:'Örn. Kıdemli Back-end Geliştirici',
+      hint:'Zorunlu: "' + (ILK || '—') + '" durumundan çıkmanın şartlarından biri. Serbest ' +
+           'metindir; pozisyon sözlüğü YOKTUR ve uydurulmaz.' },
+    { key:'yonetici', label:ETIKET.yonetici, type:'select', cols:6, validate:yoneticiKontrol,
+      options:korunan(YONETICI_SEC, 'yonetici', 'kayıtta yazılı; kadroda atanabilir değil'),
+      hint:'Zorunlu değil: defterde ' + YONETICISIZ + '/' + tumu.length + ' kayıtta yönetici ' +
+           'yok. Liste ortak yordamdan gelir (' + ATANABILIR.length + ' atanabilir personel, ' +
+           'yalnız "Aktif" durum)' + (rec ? '; kaydın kendisi listeden düşürüldü' : '') + '.' }
+  ];
+
+  var gorevAlanlar = [
+    { key:'girisTarihi', label:ETIKET.girisTarihi, type:'date', cols:6, required:true,
+      hint:'Zorunlu: "' + (ILK || '—') + '" durumundan çıkmanın şartlarından biri. Bugün ' +
+           F.date(DB.today) + '. Gelecek bir tarih girilebilir — planlı işe giriş kaydı ' +
+           '"' + (ILK || '—') + '" durumunda bekler.' },
+    { key:'calismaTipi', label:ETIKET.calismaTipi, type:'select', cols:6,
+      options:korunan(WORKTYPES, 'calismaTipi', 'kayıtta yazılı; sözlükte yok'),
+      hint:'Ortak sözlükten okunur (' + WORKTYPES.length + ' değer). Bu eksen İSTİHDAM ' +
+           'İLİŞKİSİDİR (kadrolu · dış kaynak) ve mesai ekseni olan "çalışma türü" ile ' +
+           'karıştırılmaz; ikisi ayrı alandır. Dış kaynak sorusu GV.hr.disKaynak ' +
+           'yordamından geçer, ekran ikinci bir kural yazmaz.' },
+    { key:'lokasyon', label:ETIKET.lokasyon, type:'select', cols:6,
+      options:korunan(LOKASYONLAR, 'lokasyon', 'kayıtta yazılı'),
+      hint:'Lokasyon sözlüğü YOK: ' + LOKASYONLAR.length + ' seçenek mevcut ' + tumu.length +
+           ' personel kaydından türetildi (' + LOKASYONLAR.join(' · ') + '). Yeni bir değer ' +
+           'bu listeye ancak bir kayıtla girer.' },
+    { key:'uzmanlik', label:ETIKET.uzmanlik, type:'select', cols:6,
+      options:korunan(UZMANLIKLAR, 'uzmanlik', 'kayıtta yazılı'),
+      hint:'Uzmanlık sözlüğü YOK: ' + UZMANLIKLAR.length + ' seçenek defterden türetildi. ' +
+           'Ölçüldü: ' + UZMANLIKLI + '/' + tumu.length + ' kayıtta dolu — boş kalması ' +
+           'normaldir ve detayda "—" basılır.' },
+    { key:'izinBakiye', label:ETIKET.izinBakiye, type:'number', cols:6, min:0,
+      hint:IZINLER.length
+        ? 'Defterdeki değerler ' + IZIN_MIN + '–' + IZIN_MAX + ' gün arasında. Bu alan bir ' +
+          'BAKİYEDİR; izin talepleri onu izin defteri üzerinden tüketir ve izin bakiye ' +
+          'kapısı (izinBakiye) o defterden okur.'
+        : 'Defterde karşılaştırılacak değer yok.' },
+    { key:'doluluk', label:ETIKET.doluluk, type:'number', cols:6, min:0, max:100,
+      hint:DOLULUKLAR.length
+        ? 'Defterdeki değerler %' + DOL_MIN + '–%' + DOL_MAX + ' arasında. Kayıttaki ' +
+          'doluluk alanıdır; bu form yeni bir kapasite ölçümü TÜRETMEZ — kapasite defteri ' +
+          'ayrıdır ve "İş ve Kapasite" raporunun işidir.'
+        : 'Defterde karşılaştırılacak değer yok.' }
+  ];
+
+  /* ---- ÖZLÜK / SAĞLIK — kapı arkası (brief §20.1) ------------------- */
+  /* ⚠️ E-POSTA İÇİN `validate` YAZILMADI ve bu bilinçlidir: mükerrer
+     kontrolü bu ekranda bir KAPI DEĞİLDİR. Personel defteri için mükerrer
+     yordamı yok (`GV.sales.hesapMukerrer` HESAP defteri içindir) ve olmayan
+     bir kuralı reddetmek uydurmak olurdu; her zaman boş dönen bir doğrulama
+     ise sahte bir kapı görüntüsü olurdu. Biçim doğrulaması ortak bileşenin
+     `email` dalındadır, gözlem sağ panelde yazılır. */
+  var ozlukAlanlar = [
+    { key:'tel', label:ETIKET.tel, type:'tel', cols:6,
+      placeholder:'+90 5xx xxx xx xx',
+      hint:'Özlük sınıfı alan: kişisel veri kapısının arkasındadır. En az 10 hane ' +
+           'doğrulaması ortak bileşendedir.' },
+    { key:'eposta', label:ETIKET.eposta, type:'email', cols:6,
+      hint:'Kurumsal e-posta. Mükerrer kontrolü bir KAPI DEĞİLDİR: personel defteri için ' +
+           'mükerrer yordamı yazılmamış; sağ panel bir gözlem olarak söyler, kayıt ' +
+           'reddedilmez.' },
+    { key:'dogum', label:ETIKET.dogum, type:'date', cols:6,
+      hint:'Özlük sınıfı alan (doğum tarihi). Yaş TÜRETİLMEZ ve basılmaz: türetilmiş yaş ' +
+           'kolonu doğum tarihini maskeden geri hesaplatır.' },
+    { key:'kanGrubu', label:ETIKET.kanGrubu, type:'text', cols:6,
+      placeholder:'Örn. A Rh+',
+      hint:'Sağlık verisi. Kan grubu sözlüğü YOKTUR; serbest metindir ve defterde bir ' +
+           'kayıtta "—" yazılıdır — biçim dayatmak var olan veriyi geçersiz ilan ederdi.' },
+    { key:'acilKisi', label:ETIKET.acilKisi, type:'text', cols:12,
+      placeholder:'Ad Soyad · +90 5xx xxx xx xx',
+      hint:'Tek serbest metin alanıdır (ad ve telefon ayrı alan değildir); defterin biçimi ' +
+           'korunur.' },
+    { key:'egitim', label:ETIKET.egitim, type:'text', cols:12,
+      placeholder:'Örn. Bilgisayar Mühendisliği — Hacettepe',
+      hint:'Serbest metin; okul/derece sözlüğü yok.' },
+    { key:'sozlesme', label:ETIKET.sozlesme, type:'select', cols:6,
+      options:korunan(SOZLESMELER, 'sozlesme', 'kayıtta yazılı'),
+      hint:'Sözleşme türü sözlüğü YOK (contractTypes yoktur): ' + SOZLESMELER.length +
+           ' seçenek mevcut ' + tumu.length + ' kayıttan türetildi (' +
+           SOZLESMELER.join(' · ') + ').' },
+    { key:'calismaTuru', label:ETIKET.calismaTuru, type:'select', cols:6,
+      options:korunan(CALISMA_TURU, 'calismaTuru', 'kayıtta yazılı'),
+      hint:'MESAİ eksenidir (tam zamanlı · yarı zamanlı · proje bazlı) ve istihdam ' +
+           'ilişkisiyle karıştırılmaz. Sözlüğü YOK: ' + CALISMA_TURU.length +
+           ' seçenek defterden türetildi.' }
+  ];
+  if(rec) ozlukAlanlar.push(
+    { key:'sertifikaBilgi', label:'Sertifikalar', type:'text', cols:12, readonly:true,
+      hint:'Kayıtta ' + (rec.sertifika || []).length + ' değerlik DİZİ. Bu turda ' +
+           'düzenlenemiyor: ortak form bileşeninde çoklu seçim yuvası yok (borç V2-32) ve ' +
+           'tek seçimlik bir alan listeyi sessizce silerdi. Alan olduğu gibi korunur.' });
+
+  /* ---- ÜCRET — kapı arkası · XOR sözleşmesi (brief §22.8) ----------- */
+  var ucretAlanlar = [
+    { key:'ucretEkseni', label:ETIKET.ucretEkseni, type:'radio', cols:12, required:true,
+      options:[{ value:'aylik', label:'Aylık brüt maaş' },
+               { value:'saatlik', label:'Saatlik ücret' }],
+      hint:'Bu iki alan birlikte dolamaz (XOR): ekseni değiştirmek diğer alanı forma ' +
+           'basılmamış hâle getirir; görünmeyen alan doğrulanmaz ve okunmaz, yani sessizce ' +
+           'boşalır. Kaydetmede ikisi birden dolu gelirse kayıt REDDEDİLİR.' },
+    { key:'maas', label:ETIKET.maas, type:'money', cols:6, currency:'₺', min:0,
+      showIf:function(v){ return v.ucretEkseni !== 'saatlik'; },
+      validate:function(deger, v){
+        if(v.ucretEkseni === 'aylik' && !(Number(deger) > 0))
+          return 'Aylık maaş ekseninde bir tutar zorunludur.';
+        return '';
+      },
+      hint:'Aylık BRÜT tutar. Şirkete iç maliyet bu alandan değil ortak yordamdan ' +
+           '(GV.hr.icMaliyet) türetilir; bu form ikinci bir maliyet formülü kurmaz.' },
+    { key:'saatlikUcret', label:ETIKET.saatlikUcret, type:'money', cols:6, currency:'₺', min:0,
+      showIf:function(v){ return v.ucretEkseni === 'saatlik'; },
+      validate:function(deger, v){
+        if(v.ucretEkseni === 'saatlik' && !(Number(deger) > 0))
+          return 'Saatlik ücret ekseninde bir tutar zorunludur.';
+        return '';
+      },
+      hint:'Dışarıya fatura edilen saat ücreti. İç maliyetle aynı şey değildir; iç maliyet ' +
+           'ortak yordamda türetilir.' }
+  ];
+
+  /* ---- DİZİ ALANLAR VE DURUM — düzenlemede SALT OKUNUR -------------- */
+  var listeAlanlar = rec ? [
+    { key:'durumBilgi', label:'Durum', type:'select', cols:6, readonly:true, options:DURUMLAR,
+      hint:'Durum bu formdan DEĞİŞMEZ. Yaşam döngüsünün tek mutasyon noktası geçiş ' +
+           'yordamıdır; yapılabilir geçişlerin düğmeleri personel detayının yaşam döngüsü ' +
+           'sekmesindedir. Sözlükte ' + DURUMLAR.length + ' durum var.' },
+    { key:'rollerBilgi', label:'Rol dizisi', type:'text', cols:6, readonly:true,
+      hint:'Kayıtta ' + (rec.roller || []).length + ' değerlik DİZİ ve etkin rolden ayrı bir ' +
+           'alandır. Çoklu seçim yuvası olmadığı için (V2-32) salt okunur; kaydetmek bu ' +
+           'alana dokunmaz.' },
+    { key:'yetkinlikBilgi', label:'Yetkinlik', type:'text', cols:6, readonly:true,
+      hint:'Kayıtta ' + (rec.yetkinlik || []).length + ' değerlik DİZİ. Aynı sebeple salt okunur.' },
+    { key:'teknolojiBilgi', label:'Teknoloji', type:'text', cols:6, readonly:true,
+      hint:'Kayıtta ' + (rec.teknoloji || []).length + ' değerlik DİZİ. Aynı sebeple salt okunur.' }
+  ] : [];
+
+  /* =================================================================
+     6. FORM
+     ================================================================= */
+  var sekmeler = [{ key:'temel', label:'Kimlik ve görev', icon:'i-user' }];
+  if(ozlukAcik) sekmeler.push({ key:'ozluk', label:'İletişim ve özlük', icon:'i-phone' });
+  if(maasAcik)  sekmeler.push({ key:'ucret', label:'Ücret', icon:'i-wallet' });
+  if(rec)       sekmeler.push({ key:'diziler', label:'Durum ve diziler', icon:'i-list' });
+
+  var bolumler = [
+    { title:'Kimlik ve görev', icon:'i-user', tab:'temel',
+      desc:'Kod kaydederken defterden üretilir. Durum bu formda seçilmez: kayıt sözlüğün ilk ' +
+           'durumunda ("' + (ILK || '—') + '") doğar, sonrası geçiş yordamının işidir.',
+      fields:kimlikAlanlar },
+    { title:'Takvim, kapasite ve istihdam', icon:'i-calendar', tab:'temel',
+      desc:'"' + (ILK || '—') + '" durumundan çıkmanın zorunlu alanları: ' +
+           (ILK_ZOR.map(zorLabel).join(' · ') || '—') + '. Form bu alanları kayıt doğduğu ' +
+           'anda ilerletilebilir olsun diye zorunlu tutar.',
+      fields:gorevAlanlar }
+  ];
+  if(ozlukAcik) bolumler.push({
+    title:'İletişim, özlük ve sağlık', icon:'i-phone', tab:'ozluk',
+    desc:'Bu bölüm kişisel veri kapısının arkasındadır ve kapı bu oturumda AÇIK. Alanlar ' +
+         'ortak yordamdan (GV.hr.ozluk) okunup basıldı; ekran kapıyı kendi lehine gevşetmez.',
+    fields:ozlukAlanlar });
+  if(maasAcik) bolumler.push({
+    title:'Ücret — maaş XOR saatlik ücret', icon:'i-wallet', tab:'ucret',
+    desc:'Ücret kapısı bu oturumda AÇIK (kaynak: ' +
+         (maasKapi.kaynak === 'ozErisim' ? 'öz-erişim, kendi kaydınız' : 'permMatrix.maas') +
+         '). İki alan birlikte dolamaz; eksen seçimi diğerini formdan düşürür.',
+    fields:ucretAlanlar });
+  if(rec) bolumler.push({
+    title:'Durum ve dizi alanlar — salt okunur', icon:'i-list', tab:'diziler',
+    desc:'Durum geçiş motorunun, dört dizi alan ise çoklu seçim borcunun (V2-32) ' +
+         'konusudur. Kaydetmek bu alanların hiçbirine dokunmaz.',
+    fields:listeAlanlar });
+
+  var form = GV.form({
+    mount:'#empForm',
+    id:'personelForm',
+    record:formKayit,
+    tabs:sekmeler,
+    aside:function(veri){ return yanPanel(veri); },
+    sections:bolumler
+  });
+
+  if(!form){
+    mount.innerHTML = GV.errorState({ title:'Form çizilemedi',
+      desc:'Form bileşeni bağlanamadı. Sayfayı yeniden açmayı deneyin.' });
+    return;
+  }
+
+  /* =================================================================
+     7. SAĞ PANEL — kapıların ve XOR'un CANLI hâli
+     ================================================================= */
+  function yanPanel(v){
+    var out = '';
+    var depSecim = bosNull(v.dep);
+    var iniSon   = bosNull(v.ini) || iniTuret(v.ad);
+
+    /* ---- Kayıt özeti ------------------------------------------------ */
+    out += '<div class="gv-card">' +
+      '<div class="gc-head"><h3 class="gc-title">' + GV.ico('i-user') + 'Kayıt özeti</h3></div>' +
+      '<div class="gc-body">' +
+        GV.dl([
+          ['Kayıt no', rec
+            ? kodEt(rec.kod)
+            : kodEt(kodUretYilsiz()) + ' ' + faint('kaydederken defterden üretilir')],
+          ['Durum', rec ? GV.badge(GV.hr.durum(rec))
+                        : (ILK ? GV.badge(ILK) : faint('durum sözlüğü okunamadı'))],
+          ['Ad soyad', bosNull(v.ad) ? esc(v.ad) : faint('girilmedi')],
+          ['Baş harf', iniSon
+            ? esc(iniSon) + (bosNull(v.ini) ? '' : GV.cell.sub('ad soyaddan türetildi'))
+            : faint('—')],
+          ['Rol', bosNull(v.rol) ? esc(DB.roleName(v.rol)) + GV.cell.sub(kodEt(v.rol))
+                                 : faint('seçilmedi')],
+          ['Departman', depSecim
+            ? esc(depAdi(depSecim) || depSecim) +
+              GV.cell.sub('departman adı bu seçimden türetilir — ' + esc(depSecim))
+            : faint('seçilmedi')],
+          ['Pozisyon', bosNull(v.pozisyon) ? esc(v.pozisyon) : faint('girilmedi')],
+          ['Yönetici', bosNull(v.yonetici)
+            ? esc(kisiAd(v.yonetici) || v.yonetici) : faint('seçilmedi')],
+          ['İşe giriş', bosNull(v.girisTarihi) ? F.date(v.girisTarihi) : faint('girilmedi')]
+        ]) +
+      '</div></div>';
+
+    /* ---- Doğum durumu / geçiş motoru -------------------------------- */
+    var eksikZor = ILK_ZOR.filter(function(a){ return !bosNull(v[a]); });
+    if(!rec){
+      if(!ILK){
+        out += GV.notice({ tone:'danger', icon:'i-alert',
+          title:'Doğum durumu ölçülemedi',
+          text:'Personel durum sözlüğü okunamadı. Kayıt bu ekrandan doğurulamaz; sabit bir ' +
+               'durum dizesi yazmak sözlüğü ikinci kez tanımlamak olurdu.' });
+      }else{
+        out += GV.notice({ tone:eksikZor.length ? 'warn' : 'ok',
+          icon:eksikZor.length ? 'i-alert' : 'i-flag',
+          title:'Kayıt "' + ILK + '" durumunda doğacak',
+          text:'Durum nesne literalinde verilir; kayda sonradan durum yazan satır yoktur. ' +
+               'İlk çıkış kenarının etiketi "' + (ILK_KURAL.etiket || '—') + '", yetkisi ' +
+               ((ILK_KURAL.yetki || []).join(' · ') || '—') + ' ve zorunlu alanları ' +
+               (ILK_ZOR.map(zorLabel).join(' · ') || '—') + '. ' +
+               (eksikZor.length
+                 ? 'Şu an eksik: ' + eksikZor.map(zorLabel).join(', ') + ' — form bu üçünü ' +
+                   'zorunlu tuttuğu için kayıt doğar doğmaz ilerletilebilir olacak.'
+                 : 'Üçü de dolu: kayıt doğduğu anda ilerletilebilir.') });
+      }
+    }else{
+      out += GV.notice({ tone:'info', icon:'i-refresh',
+        title:'Durum bu formdan değişmez',
+        text:'Kayıt "' + GV.hr.durum(rec) + '" durumunda. İstihdam ilişkisi ' +
+             (GV.hr.istihdamda(rec) ? 'sürüyor' : 'sürmüyor') + ', yeni iş ' +
+             (GV.hr.atanabilir(rec) ? 'atanabilir' : 'atanamaz') + ' — iki soru iki ayrı ' +
+             'yordamdan geliyor. Geçiş düğmeleri personel detayının yaşam döngüsü ' +
+             'sekmesindedir.' });
+
+      /* Motorun cevabı — ekran ikinci bir geçiş listesi kurmaz (§7.1). */
+      var adimlar = GV.flow.adimlar('employee', rec.kod) || [];
+      out += kart('i-stamp', 'Motorun bugün verdiği cevap', adimlar.length + ' kenar',
+        (adimlar.length
+          ? GV.dl(adimlar.map(function(a){
+              var d = [];
+              if(!a.izin) d.push('yetki yok');
+              if(a.eksik && a.eksik.length) d.push('eksik: ' + a.eksik.map(zorLabel).join(', '));
+              if(a.kapi) d.push('kapı: ' + a.kapi);
+              if(a.gerekce) d.push('gerekçe zorunlu');
+              return [esc(a.etiket || a.hedef),
+                      esc(a.hedef) + (d.length ? ' · ' + esc(d.join(' · ')) : ' · engel yok')];
+            }))
+          : faint('bu durumdan çıkan kenar yok (terminal durum)')) +
+        faintNot('Liste geçiş motorundan gelir; eksik alanlar HEDEF BAŞINA okunur, tek liste ' +
+          'bütün hedeflere basılmaz. Bu ekran düğme basmaz — geçiş personel detayının işi.'));
+
+      /* Kapılar ÇAĞRILIR, aynası kurulmaz (brief §22.1b.1). */
+      var kapiSatir = [];
+      var gEvrak  = (GV.gates && GV.gates.personelEvrak)  ? GV.gates.personelEvrak(rec)  : null;
+      var gZimmet = (GV.gates && GV.gates.personelZimmet) ? GV.gates.personelZimmet(rec) : null;
+      kapiSatir.push(['personelEvrak', gEvrak
+        ? (gEvrak.ok ? '<span class="u-ok">geçiyor</span>'
+                     : '<span class="u-warn">' + esc(gEvrak.why) + '</span>')
+        : '<span class="u-warn">ölçülemedi — yordam bu ekranda yüklü değil</span>']);
+      kapiSatir.push(['personelZimmet', gZimmet
+        ? (gZimmet.ok ? '<span class="u-ok">geçiyor</span>'
+                      : '<span class="u-warn">' + esc(gZimmet.why) + '</span>')
+        : '<span class="u-warn">ölçülemedi — yordam bu ekranda yüklü değil</span>']);
+      out += kart('i-shield-check', 'Yaşam döngüsü kapıları', null,
+        GV.dl(kapiSatir) +
+        faintNot('İki kapı da ortak katmanda ÇAĞRILDI, koşulları burada yeniden okunmadı: ' +
+          'bir ayna kurmak kural değişince sessizce ayrışırdı. <b>personelEvrak</b> ' +
+          'Onboarding → Aktif kenarında, <b>personelZimmet</b> ise Ayrıldı hedefinde durur; ' +
+          'ikisi de bu FORMU reddetmez — kapılar geçiş kenarlarındadır, kayıt doğuşunda ' +
+          'değil. Giriş süreci defterinde ' + ONB_GIRIS + ' "Giriş" kaydı var.'));
+
+      /* Çıkış alanları: forma basılmaz, ama kayıtta varsa söylenir. */
+      if(rec.cikisTarihi || rec.cikisNedenKodu){
+        out += GV.notice({ tone:'warn', icon:'i-clock',
+          title:'Kayıtta çıkış bilgisi yazılı',
+          text:'Çıkış tarihi ' + (rec.cikisTarihi ? F.date(rec.cikisTarihi) : '—') +
+               ', neden kodu ' + (rec.cikisNedenKodu || '—') + '. Bu iki alan "Ayrıldı" ' +
+               'hedefinin giriş zorunlularıdır ve bu forma BASILMADI: onları yazmak ' +
+               'ayrılışı formdan tamamlamak olurdu. İkisi de yaşam döngüsü sekmesinin işi.' });
+      }
+    }
+
+    /* ---- KİŞİSEL VERİ KAPISI — iki yön birlikte -------------------- */
+    var ozlukKaynak = rec
+      ? (rec.kod === GV.session.emp ? 'kendi kaydınız'
+                                    : 'permMatrix.personel = ' + GV.perm.scope('personel'))
+      : 'permMatrix.ekle = ' + GV.perm.scope('ekle');
+    out += kart('i-shield', 'Kişisel veri kapısı', esc(GV.perm.role()),
+      GV.dl([
+        ['Özlük / sağlık', (ozlukAcik
+          ? '<span class="u-ok">açık</span>' : '<span class="u-muted">kapalı</span>') +
+          GV.cell.sub('kapı <b>GV.hr.ozlukGorebilir(e)</b> · bu karar: ' + esc(ozlukKaynak))],
+        ['Ücret (maaş · saatlik)', (maasAcik
+          ? '<span class="u-ok">açık</span>' : '<span class="u-muted">kapalı</span>') +
+          GV.cell.sub('kapı <b>GV.hr.maasKapi(e)</b> · kaynak ' + esc(maasKapi.kaynak || '—') +
+            (maasKapi.kaynak === 'ozErisim' ? ' (kendi kaydınız — K-39)' : ''))],
+        ['Ücret — KÜME sorusu', (kumeAcik
+          ? '<span class="u-ok">açık</span>' : '<span class="u-muted">kapalı</span>') +
+          GV.cell.sub('<b>GV.hr.maasGorebilir()</b> argümansız: "başkalarının ücreti". ' +
+            'Kendi kaydınızın açılması bu dalı AÇMAZ; defter ölçümleri bu kapıya bağlıdır')],
+        ['Kapının iki yönü — özlük',
+          OZLUK_ACIK_N + '/' + tumu.length + ' kayıtta açık · ' +
+          (tumu.length - OZLUK_ACIK_N) + ' kayıtta kapalı' +
+          GV.cell.sub('sayılan şey KAPI DURUMUDUR, özlük değeri değil')],
+        ['Kapının iki yönü — ücret',
+          MAAS_ACIK_N + '/' + tumu.length + ' kayıtta açık · ' +
+          (tumu.length - MAAS_ACIK_N) + ' kayıtta kapalı' +
+          GV.cell.sub('öz-erişim yalnız kendi kaydını açar; başkasında kapı permMatrix.maas')]
+      ]) +
+      faintNot('Kapalı bölüm <b>hiç çizilmedi</b>. Maskelenmiş bir <b>&lt;input&gt;</b> ' +
+        'kaydedildiğinde gerçek değerin üstüne ' + MASKE + ' yazardı; bu yüzden kapalı ' +
+        'alanlar ne basılır ne okunur ve kayıttaki değer korunur. ' + MASKE + ' "veri yok" ' +
+        'demek değildir — veri var ve bu oturum göremiyor; ikisi ayrı şeydir (UID-11).'));
+
+    if(!ozlukAcik){
+      out += GV.notice({ tone:'warn', icon:'i-eye-off',
+        title:'Özlük bölümü çizilmedi',
+        text:'Özlük ve sağlık alanları (doğum · kan grubu · acil kişi · telefon · e-posta · ' +
+             'eğitim · sözleşme · çalışma türü · sertifika) bu oturumda basılmadı. Kapı ' +
+             'GV.hr.ozlukGorebilir(e) yordamındadır; personel veri kapsamınız "' +
+             GV.perm.scope('personel') + '". Kaydetmede bu alanlar OKUNMAZ, kayıttaki ' +
+             'değerler korunur.' });
+    }
+    if(!maasAcik){
+      out += GV.notice({ tone:'warn', icon:'i-lock',
+        title:'Ücret bölümü çizilmedi',
+        text:(maasKapi.neden || 'Ücret kapısı bu oturumda kapalı.') +
+             ' Ücret alanları (aylık maaş · saatlik ücret) ne basıldı ne okunacak; ' +
+             (rec ? 'kayıttaki değer korunuyor.'
+                  : 'yeni kayıt ücret alanı OLMADAN doğar ve yetkili bir oturum sonradan girer.') +
+             ' Maaş defteri (salaryHistory) de aynı kapının arkasındadır.' });
+    }
+
+    /* ---- ÜCRET EKSENİ — XOR canlı ---------------------------------- */
+    if(maasAcik){
+      var eksen = bosNull(v.ucretEkseni);
+      var mNum  = sayiYaNull(v.maas);
+      var sNum  = sayiYaNull(v.saatlikUcret);
+      var xorSatir = [
+        ['Seçili eksen', eksen
+          ? (eksen === 'saatlik' ? 'Saatlik ücret' : 'Aylık brüt maaş') +
+            GV.cell.sub('diğer alan forma basılmadı; görünmeyen alan doğrulanmaz ve okunmaz')
+          : '<span class="u-warn">seçilmedi — eksen zorunludur</span>'],
+        ['Aylık brüt maaş', (eksen === 'saatlik')
+          ? faint('bu eksende sorulmuyor — kayıtta 0 yazılır')
+          : (mNum != null ? GV.cell.mny(mNum, { cur:'₺' }) : faint('girilmedi'))],
+        ['Saatlik ücret', (eksen === 'saatlik')
+          ? (sNum != null ? GV.cell.mny(sNum, { cur:'₺' }) : faint('girilmedi'))
+          : faint('bu eksende sorulmuyor — kayıtta 0 yazılır ya da alan hiç açılmaz')]
+      ];
+      if(mNum > 0 && sNum > 0){
+        xorSatir.push(['XOR kontrolü', '<span class="u-danger">iki alan birden dolu — ' +
+          'kaydetme REDDEDİLİR</span>']);
+      }
+      xorSatir.push(['Defter ölçümü', EKSEN
+        ? EKSEN.aylik + ' kayıt aylık maaş · ' + EKSEN.saatlik + ' kayıt saatlik ücret · ' +
+          EKSEN.ikisi + ' kayıt ikisi birden · ' + EKSEN.hicbiri + ' kayıt hiçbiri' +
+          GV.cell.sub('ölçüm ' + tumu.length + ' kayıt üzerinde; XOR sözleşmesi defterde ' +
+            (EKSEN.ikisi === 0 ? 'bozulmamış' : 'BOZULMUŞ'))
+        : '<span class="u-muted">ölçüm küme kapısının arkasında — sayılmadı</span>' +
+          GV.cell.sub('bir doluluk sayacı öz-erişimle açılmaz (UID-11)')]);
+      if(MAAS_DEFTER){
+        xorSatir.push(['Maaş defteri', MAAS_DEFTER.adet + ' satır · bitişi dolu ' +
+          MAAS_DEFTER.bitisli + ' · başlangıcı bugün ' + MAAS_DEFTER.bugun +
+          (MAAS_DEFTER.kayit != null ? ' · bu kayıt için ' + MAAS_DEFTER.kayit + ' satır' : '') +
+          GV.cell.sub('bu bir GEÇMİŞ değil, bugünkü gözlemdir — form bu deftere satır YAZMAZ')]);
+      }
+      out += kart('i-wallet', 'Ücret ekseni (XOR)',
+        esc(eksen ? (eksen === 'saatlik' ? 'saatlik' : 'aylık') : '—'),
+        GV.dl(xorSatir) +
+        faintNot('Kural: <b>maas &gt; 0</b> XOR <b>saatlikUcret &gt; 0</b>. Eksen seçimi ' +
+          'diğer alanı formdan düşürür; kaydetmede ikisi birden dolu gelirse kayıt ' +
+          '<b>reddedilir</b> — uyarıp geçmek yasak. İç maliyet bu iki alandan ortak ' +
+          'yordamda türetilir; ekran ikinci bir formül kurmaz.'));
+    }
+
+    /* ---- GÖZLEMLER — kural değil, ölçüm ---------------------------- */
+    var gozlem = '';
+    if(bosNull(v.girisTarihi) && String(v.girisTarihi) > String(DB.today)){
+      gozlem += GV.notice({ tone:'info', icon:'i-calendar',
+        title:'İşe giriş tarihi bugünden sonra',
+        text:'Seçilen tarih ' + F.date(v.girisTarihi) + '; bugün ' + F.date(DB.today) +
+             '. Bu bir hata değil: planlı bir işe giriş kaydı "' + (ILK || '—') +
+             '" durumunda bekler ve göreve başlama geçişi ayrıca işlenir.' });
+    }
+    /* E-posta mükerrer GÖZLEMİ: karşılaştırma yalnız ÖZLÜK KAPISI AÇIK
+       olan kayıtlar üzerinde koşar — kapalı kayıtların e-postasını
+       okumak, kapıyı bir mükerrer kontrolü üzerinden delmek olurdu. */
+    if(ozlukAcik && bosNull(v.eposta)){
+      var kapsam = tumu.filter(function(e){ return GV.hr.ozlukGorebilir(e); });
+      var ayni = kapsam.filter(function(e){
+        return (!rec || e.kod !== rec.kod) &&
+               String(e.eposta || '').toLowerCase() === String(v.eposta).trim().toLowerCase();
+      });
+      if(ayni.length){
+        gozlem += GV.notice({ tone:'warn', icon:'i-mail',
+          title:'Bu e-posta zaten bir kayıtta yazılı',
+          text:ayni.map(function(e){ return e.kod + ' · ' + e.ad; }).join(' · ') +
+               '. Bu bir KAPI DEĞİLDİR: personel defteri için mükerrer kontrolü yordamı ' +
+               'yazılmamış, olmayan bir kuralı reddetmek uydurmak olurdu. Karşılaştırma ' +
+               'yalnız özlük kapısının açık olduğu ' + kapsam.length + ' kayıt üzerinde ' +
+               'koştu — kapalı kayıtların e-postası okunmadı.' });
+      }
+    }
+    if(rec && GV.hr.disKaynak(rec.kod)){
+      gozlem += GV.notice({ tone:'info', icon:'i-user-check',
+        title:'Bu kayıt dış kaynak istihdam ilişkisinde',
+        text:'Soru GV.hr.disKaynak yordamından geçti (istihdam ilişkisi ekseni); ekran ' +
+             'kendi kuralını yazmıyor. Mesai ekseni olan "çalışma türü" bundan ayrıdır ve ' +
+             'aynı kayıtta tam zamanlı da olabilir.' });
+    }
+    out += gozlem;
+
+    /* ---- Düzenleme kipinde yazılacak/yazılmayacak alanlar ----------- */
+    if(rec){
+      out += kart('i-edit', 'Kaydetme neye dokunur', null,
+        GV.dl([
+          ['Yazılacak', esc(GENEL_METIN.concat(GENEL_SAYI).map(zorLabel).join(', ')) +
+            GV.cell.sub('departman adı bu listede yok: <b>dep</b> seçiminden türetilir')],
+          ['Özlük alanları', ozlukAcik
+            ? esc(OZLUK_METIN.map(zorLabel).join(', '))
+            : '<span class="u-muted">okunmayacak — kapı kapalı, kayıttaki değer korunur</span>'],
+          ['Ücret alanları', maasAcik
+            ? 'seçili eksene göre biri yazılır, diğeri 0'
+            : '<span class="u-muted">okunmayacak — kapı kapalı, kayıttaki değer korunur</span>'],
+          ['Dokunulmayacak', 'durum · aktif · roller · yetkinlik · teknoloji · sertifika · ' +
+            'depAd (türetilir) · cikisTarihi · cikisNedenKodu · salaryHistory']
+        ]));
+    }
+
+    return out;
+  }
+
+  /* =================================================================
+     8. KAYDETME
+     ================================================================= */
+  function kaydet(){
+    var v = form.submit();
+    if(!v) return false;                  /* doğrulama düştü — bileşen söyledi */
+    return rec ? guncelle(v) : yeniKayit(v);
+  }
+
+  /* Ücret okuma TEK yerde: kapı kapalıysa bu yordam HİÇ çağrılmaz.
+     Dönüş `{ ok, maas, saatlikUcret, eksen }` ya da `{ ok:false }`. */
+  function ucretOku(v){
+    var eksen = bosNull(v.ucretEkseni);
+    var m = sayiYaNull(v.maas);
+    var s = sayiYaNull(v.saatlikUcret);
+
+    /* SON KONTROL — brief §22.8: ikisi birden > 0 ise kayıt REDDEDİLİR.
+       Normal akışta `showIf` görünmeyen alanı `read()`ten düşürdüğü için
+       buraya düşülmez; bu satır formun DOM'u kurcalandığında ya da ön
+       dolgu çeliştiğinde kapıyı kapatır. "Uyar ama geçir" yasak. */
+    if(Number(m) > 0 && Number(s) > 0){
+      GV.toast('Aylık maaş ve saatlik ücret aynı kayıtta birlikte dolu olamaz (XOR). ' +
+               'Bir eksen seçin; kayıt kaydedilmedi.', 'danger', 6000);
+      return { ok:false };
+    }
+    if(eksen === 'saatlik'){
+      if(!(Number(s) > 0)){
+        GV.toast('Saatlik ücret ekseninde bir tutar zorunludur; kayıt kaydedilmedi.', 'danger');
+        return { ok:false };
+      }
+      return { ok:true, eksen:'saatlik', maas:0, saatlikUcret:s };
+    }
+    if(!(Number(m) > 0)){
+      GV.toast('Aylık maaş ekseninde bir tutar zorunludur; kayıt kaydedilmedi.', 'danger');
+      return { ok:false };
+    }
+    return { ok:true, eksen:'aylik', maas:m, saatlikUcret:null };
+  }
+
+  function yeniKayit(v){
+    if(!ILK){
+      GV.toast('Personel durum sözlüğü okunamadı; kayıt doğum durumu olmadan açılamaz.', 'danger');
+      return false;
+    }
+    var depKod = bosNull(v.dep);
+    var d      = depKod ? depKaydi(depKod) : null;
+    if(depKod && !d){
+      GV.toast(depKod + ' departman defterinde bulunamadı; departman bağı kurulamadı.', 'danger');
+      return false;
+    }
+
+    var ucret = null;
+    if(maasAcik){
+      ucret = ucretOku(v);
+      if(!ucret.ok) return false;
+    }
+
+    var hedefKod = kodUretYilsiz();
+    var ini      = bosNull(v.ini) || iniTuret(v.ad);
+
+    /* ---- DOĞUM — nesne literali (brief §22.16.4: `GV.hr.olustur` YOK).
+       Durum LİTERALDE verilir; kayda sonradan durum yazan satır YOKTUR
+       (§14.5 · §22.17.2).
+       Yazılmayan alanlar ve sebepleri:
+         · `aktif`         → TUZAKLI alan (K-33). Okunmaz, yazılmaz; pasiflik
+                             sorusu `GV.arsivli`den geçer ve personelde kanon
+                             `durum`dur.
+         · `depAd`         → departman kaydından TÜRETİLİR (ölçüldü: defterde
+                             `depAd`, departman `ad` alanına eşit).
+         · `roller`        → birincil `rol`den türetilir. Ölçüldü: kayıtların
+                             tamamında `roller` dizisi birincil rolü İÇERİYOR.
+                             Ek roller çoklu seçim borcu (V2-32) yüzünden bu
+                             formdan verilemiyor; kayıt tek rolle doğar.
+         · yetkinlik/teknoloji/sertifika → boş DİZİ (V2-32).
+         · `cikisTarihi` / `cikisNedenKodu` → "Ayrıldı" hedefinin giriş
+                             zorunluları; doğum anında yazmak yaşam döngüsünü
+                             formdan işletmek olurdu.
+         · özlük alanları  → kapı kapalıysa hiç okunmadı: `null` doğar.
+         · `maas` / `saatlikUcret` → kapı kapalıysa `null` doğar ve bu ekranda
+                             BEYAN EDİLİR; 0 yazmak "ücreti sıfır" demek olurdu.
+         · `DB.salaryHistory` → satır YAZILMAZ (§22.17.11). */
+    var yeni = {
+      kod:hedefKod,
+      ad:bosNull(v.ad),
+      ini:ini,
+      rol:bosNull(v.rol),
+      roller:bosNull(v.rol) ? [bosNull(v.rol)] : [],
+      dep:depKod,
+      depAd:d ? d.ad : null,
+      pozisyon:bosNull(v.pozisyon),
+      yonetici:bosNull(v.yonetici),
+      girisTarihi:bosNull(v.girisTarihi),
+      calismaTipi:bosNull(v.calismaTipi),
+      lokasyon:bosNull(v.lokasyon),
+      uzmanlik:bosNull(v.uzmanlik),
+      izinBakiye:sayiYaNull(v.izinBakiye),
+      doluluk:sayiYaNull(v.doluluk),
+      tel:ozlukAcik ? bosNull(v.tel) : null,
+      eposta:ozlukAcik ? bosNull(v.eposta) : null,
+      dogum:ozlukAcik ? bosNull(v.dogum) : null,
+      kanGrubu:ozlukAcik ? bosNull(v.kanGrubu) : null,
+      acilKisi:ozlukAcik ? bosNull(v.acilKisi) : null,
+      egitim:ozlukAcik ? bosNull(v.egitim) : null,
+      sozlesme:ozlukAcik ? bosNull(v.sozlesme) : null,
+      calismaTuru:ozlukAcik ? bosNull(v.calismaTuru) : null,
+      yetkinlik:[],
+      teknoloji:[],
+      sertifika:[],
+      durum:ILK
+    };
+    /* Ücret: XOR sözleşmesi kaydın ŞEKLİNE de yansır — defterde saatlik
+       eksenli kayıt `maas:0` + `saatlikUcret:N` taşır, aylık eksenli
+       kayıtlarda `saatlikUcret` alanı HİÇ YOKTUR. Aynı biçim korunur;
+       biçim değiştirmek defteri ikiye bölerdi. */
+    if(ucret && ucret.ok){
+      yeni.maas = ucret.maas;
+      if(ucret.eksen === 'saatlik') yeni.saatlikUcret = ucret.saatlikUcret;
+    }else{
+      yeni.maas = null;           /* kapı kapalı — 0 yazmak "ücreti sıfır" demek olurdu */
+    }
+
+    (DB.employees || (DB.employees = [])).unshift(yeni);
+
+    GV.audit.yaz({
+      kayit:hedefKod, modul:'Personel',
+      islem:'Personel kaydı oluşturuldu · ' + (yeni.ad || '—') + ' · ' +
+            (yeni.pozisyon || 'pozisyon yok') + ' · ' + (yeni.depAd || 'departman yok') +
+            ' · ücret ekseni ' + (ucret && ucret.ok ? ucret.eksen : 'yazılmadı (kapı kapalı)'),
+      yeni:ILK, tone:'ok', icon:'i-user-plus' });
+
+    if(!maasAcik)
+      GV.toast('Ücret alanları yetkiniz olmadığı için ne basıldı ne yazıldı; kayıt ücret ' +
+               'bilgisi olmadan doğdu.', 'info', 6000);
+    if(!ozlukAcik)
+      GV.toast('Özlük alanları yetkiniz olmadığı için ne basıldı ne yazıldı.', 'info', 6000);
+
+    GV.afterSave({
+      kod:hedefKod, liste:'app-personel.html', detay:'app-personel-detay.html', yeni:true,
+      mesaj:hedefKod + ' oluşturuldu; personel "' + ILK + '" durumunda doğdu' +
+            (ILK_KURAL.etiket ? ' — sıradaki adım "' + ILK_KURAL.etiket + '" ve düğmesi ' +
+                                'personel detayındadır.' : '.') +
+            (ucret && ucret.ok
+              ? ' Ücret ekseni: ' + (ucret.eksen === 'saatlik' ? 'saatlik ücret' : 'aylık maaş') + '.'
+              : ' Ücret alanı yazılmadı (kişisel veri kapısı kapalı).')
+    });
+    return true;
+  }
+
+  function guncelle(v){
+    var depKod = bosNull(v.dep);
+    var d      = depKod ? depKaydi(depKod) : null;
+    if(depKod && !d){
+      GV.toast(depKod + ' departman defterinde bulunamadı; departman bağı değiştirilmedi.', 'danger');
+      return false;
+    }
+
+    var ucret = null;
+    if(maasAcik){
+      ucret = ucretOku(v);
+      if(!ucret.ok) return false;
+    }
+
+    /* Yazılan alanlar: YALNIZ forma basılanlar. `durum` · `aktif` · dört
+       dizi alan · `cikisTarihi` · `cikisNedenKodu` bu döngülerde YOK —
+       basılmadıkları için okunmuyorlar da. Kapı arkasındaki iki küme
+       ayrı listede: kapalı kapıda listeye hiç girmiyorlar (§22.17.6). */
+    var degisen = [];
+    GENEL_METIN.forEach(function(k){
+      if(k === 'ini') return;                 /* türetme dalı aşağıda */
+      var yeniD = bosNull(v[k]);
+      var eskiD = (rec[k] == null || rec[k] === '') ? null : rec[k];
+      if(String(yeniD) !== String(eskiD)){ degisen.push(k); rec[k] = yeniD; }
+    });
+    var yeniIni = bosNull(v.ini) || iniTuret(v.ad);
+    if(String(yeniIni) !== String(rec.ini == null ? null : rec.ini)){
+      degisen.push('ini'); rec.ini = yeniIni;
+    }
+    GENEL_SAYI.forEach(function(k){
+      var yeniD = sayiYaNull(v[k]);
+      var eskiD = rec[k] == null ? null : rec[k];
+      if(yeniD !== eskiD){ degisen.push(k); rec[k] = yeniD; }
+    });
+
+    /* `depAd` kullanıcıdan gelmez, departman kaydından türetilir. */
+    var yeniDepAd = d ? d.ad : null;
+    if((rec.depAd || null) !== yeniDepAd){ degisen.push('depAd'); rec.depAd = yeniDepAd; }
+
+    /* `roller` dizisi bu formdan DÜZENLENMEZ (V2-32) — ama birincil rol
+       değiştiyse dizinin onu içermemesi kaydı kendisiyle çelişik yapardı.
+       Bu yüzden yalnız EKSİKSE eklenir; var olan roller silinmez. */
+    if(rec.rol && Array.isArray(rec.roller) && rec.roller.indexOf(rec.rol) === -1){
+      rec.roller = rec.roller.concat([rec.rol]);
+      degisen.push('roller (birincil rol eklendi)');
+    }
+
+    if(ozlukAcik){
+      OZLUK_METIN.forEach(function(k){
+        var yeniD = bosNull(v[k]);
+        var eskiD = (rec[k] == null || rec[k] === '') ? null : rec[k];
+        if(String(yeniD) !== String(eskiD)){ degisen.push(k); rec[k] = yeniD; }
+      });
+    }
+
+    if(ucret && ucret.ok){
+      if(Number(rec.maas) !== Number(ucret.maas)){ degisen.push('maas'); rec.maas = ucret.maas; }
+      if(ucret.eksen === 'saatlik'){
+        if(Number(rec.saatlikUcret) !== Number(ucret.saatlikUcret)){
+          degisen.push('saatlikUcret'); rec.saatlikUcret = ucret.saatlikUcret;
+        }
+      }else if(Number(rec.saatlikUcret) > 0){
+        /* Eksen aylığa çevrildi: XOR gereği diğer alan sıfırlanır ve bu
+           söylenir — sessizce bırakmak iki alanı birden dolu tutardı. */
+        degisen.push('saatlikUcret (0 yazıldı — eksen aylığa çevrildi)');
+        rec.saatlikUcret = 0;
+      }
+    }
+
+    GV.audit.yaz({
+      kayit:rec.kod, modul:'Personel',
+      islem:degisen.length
+        ? 'Personel kaydı güncellendi — değişen alan: ' +
+          degisen.map(function(k){ return ETIKET[k] || k; }).join(', ')
+        : 'Personel kaydı kaydedildi — basılan alanlarda değişiklik yok',
+      tone:'info', icon:'i-edit' });
+
+    if(!maasAcik)
+      GV.toast('Ücret alanları yetkiniz olmadığı için ne basıldı ne okundu; kayıttaki ücret ' +
+               'değerleri korundu.', 'info', 6000);
+    if(!ozlukAcik)
+      GV.toast('Özlük alanları yetkiniz olmadığı için ne basıldı ne okundu; kayıttaki ' +
+               'değerler korundu.', 'info', 6000);
+
+    GV.afterSave({
+      kod:rec.kod, liste:'app-personel.html', detay:'app-personel-detay.html', yeni:false,
+      mesaj:'Personel kaydı güncellendi; durum "' + GV.hr.durum(rec) + '" olarak kaldı — ' +
+            'durum yalnız geçiş yordamıyla değişir. Rol · yetkinlik · teknoloji · sertifika ' +
+            'dizileri olduğu gibi korundu (V2-32).' +
+            (maasAcik ? '' : ' Ücret alanları okunmadı, kayıttaki değer korundu.') +
+            (ozlukAcik ? '' : ' Özlük alanları okunmadı, kayıttaki değer korundu.')
+    });
+    return true;
+  }
+
+  /* =================================================================
+     9. KAPI BEYANI — kapalı bölümlerin yerine geçen cümle
+     ================================================================= */
+  (function kapiBeyani(){
+    var el = document.getElementById('empKapi');
+    if(!el) return;
+    if(ozlukAcik && maasAcik){
+      el.innerHTML = kart('i-shield-check', 'Kişisel veri kapısı', 'iki kapı da açık',
+        '<p class="u-sm">Bu oturumda özlük ve ücret bölümleri çizildi. Kapıların kaynağı: ' +
+          'özlük <b>GV.hr.ozlukGorebilir(e)</b>, ücret <b>GV.hr.maasKapi(e)</b> (' +
+          esc(maasKapi.kaynak || '—') + '). Ölçüm: özlük ' + OZLUK_ACIK_N + '/' + tumu.length +
+          ' kayıtta açık, ücret ' + MAAS_ACIK_N + '/' + tumu.length + ' kayıtta açık.</p>' +
+        faintNot('Bu kapı yalnız ARAYÜZDEDİR. Gerçek sistemde özlük ve ücret alanları ' +
+          '<b>sunucuda</b> yetkiye göre süzülmeli; maskelenmiş alan istemciye hiç ' +
+          'gitmemelidir (BE-K1 · BE-K3 — aşağıda beyan edildi).'));
+      return;
+    }
+    var satir = [];
+    if(!ozlukAcik) satir.push(['Özlük / sağlık bölümü',
+      '<span class="u-muted">çizilmedi</span>' +
+      GV.cell.sub('kapı <b>GV.hr.ozlukGorebilir(e)</b> · personel veri kapsamı <b>' +
+        esc(GV.perm.scope('personel')) + '</b>')]);
+    if(!maasAcik) satir.push(['Ücret bölümü',
+      '<span class="u-muted">çizilmedi</span>' +
+      GV.cell.sub(esc(maasKapi.neden || 'permMatrix.maas bu rolde kapalı.'))]);
+    el.innerHTML = kart('i-eye-off', 'Çizilmeyen bölümler', esc(GV.perm.role()),
+      GV.dl(satir) +
+      '<p class="u-sm">Bu alanlar bu oturumda <b>düzenlenemiyor</b>. Maskelenmiş bir giriş ' +
+        'alanı basmak, kaydetmede gerçek değerin üstüne ' + MASKE + ' yazmak olurdu; bu ' +
+        'yüzden alanlar hiç basılmadı ve kaydetme onları <b>okumuyor</b>' +
+        (rec ? ' — kayıttaki değerler korunuyor.' : '.') + '</p>' +
+      faintNot('Boş bırakmak da yasaktı: boş "veri yok" demektir, oysa veri var ve bu rol ' +
+        'göremiyor (UID-11). Doğru cümle budur, boş bir kutu değil.'));
+  })();
+
+  /* =================================================================
+     10. BASILMAYAN ALANLAR — sebepleri ekranda YAZILI (brief §22.8)
+     ================================================================= */
+  (function basilmayan(){
+    var el = document.getElementById('empBasilmayan');
+    if(!el) return;
+    var satir = [
+      ['durum', 'Geçiş motorunun alanı. Yaşam döngüsü yalnız GV.flow.gec("employee", …) ile ' +
+                'değişir; düğmeleri personel detayının yaşam döngüsü sekmesindedir. ' +
+                'Sözlükte ' + DURUMLAR.length + ' durum, tabloda ' + Object.keys(ET).length +
+                ' kaynak durum tanımlı.'],
+      ['aktif',  'TUZAKLI alan (K-18 → K-33): okuyan undefined alır ve bayat eksen sayacı ' +
+                'artar. Bu ekran onu okumaz, yazmaz, süzmez — kayıt doğarken de yazılmaz. ' +
+                'Pasiflik sorusu GV.arsivli yordamındadır ve personelde kanon "durum"dur.'],
+      ['roller · yetkinlik · teknoloji · sertifika',
+                'DİZİ alanlar. Ortak form bileşeninde çoklu seçim yuvası yok (borç V2-32) ve ' +
+                'tek seçimlik bir alan mevcut listeyi sessizce silerdi. Düzenlemede salt ' +
+                'okunur basılır (sertifika özlük kapısının arkasındadır), yeni kayıtta boş ' +
+                'dizi ile doğar. Tek istisna: birincil rol dizide eksikse eklenir, hiçbir ' +
+                'değer silinmez.'],
+      ['depAd',  'Departman seçiminden TÜRETİLİR (ölçüldü: ' + DEPAD_UYAN + '/' + tumu.length +
+                ' kayıtta depAd, departman kaydının ad alanına eşit). Kullanıcı yazmaz.'],
+      ['cikisTarihi · cikisNedenKodu',
+                '"Ayrıldı" hedefinin giriş zorunlulukları ve o geçiş bir zimmet kapısıyla ' +
+                'birlikte çalışır. Formun değil, yaşam döngüsü sekmesinin işi. Çıkış neden ' +
+                'kodları ayrı bir sözlükte değil, ortak neden sözlüğünün tur ekseninde ' +
+                'durur (ölçüldü: "cikis" türünü taşıyan ' + CIKIS_KOD + ' kod; tur alanı ' +
+                'bir DİZİDİR).'],
+      ['maas · saatlikUcret',
+                maasAcik
+                  ? 'Bu oturumda BASILDI (kapı açık). Kapı kapalı olduğunda bu satır ' +
+                    '"basılmadı ve okunmadı" der.'
+                  : 'Kişisel veri kapısı kapalı: basılmadı ve kaydetmede okunmuyor.'],
+      ['salaryHistory',
+                'Form maaş defterine SATIR YAZMAZ. Ölçüldü: bu defter bir geçmiş değildir — ' +
+                'kayıtların tamamı bugünkü gözlemdir, bitiş tarihi hiçbirinde yok. Bir ' +
+                '"maaş geçmişi" tablosu basmak olmayan bir zaman serisi uydurmak olurdu.'],
+      ['izinBakiye tüketimi · zimmet · onboarding adımları',
+                'Bu üç defter forma bağlı değildir: izin talebi izin formunun, zimmet ' +
+                'tutanağı varlık ekranının, giriş süreci adımları yaşam döngüsünün işidir. ' +
+                'Bu ekranda yazan bir yordamı olmayan hiçbir düğme basılmadı.']
+    ];
+    el.innerHTML = kart('i-list', 'Bu formun basmadığı alanlar ve sebepleri',
+      satir.length + ' madde', GV.dl(satir));
+  })();
+
+  /* =================================================================
+     11. BACKEND PAYI — brief §10.2 (b) biçimi · §20.6 · §22.15
+     ================================================================= */
+  document.getElementById('empBackend').innerHTML =
+    '<section class="gv-card u-mt-8"><div class="gc-head">' +
+      '<h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+      '<span class="u-faint u-sm">4 madde</span></div>' +
+      '<div class="gc-body">' +
+        '<ul class="odl-gap">' +
+          '<li><span class="odl-gap-kod">BE-K1</span>' +
+            '<span>Kişisel veri kapısı yalnız arayüzdedir; gerçek sistemde özlük ve maaş ' +
+              'alanları <b>sunucuda</b> yetkiye göre filtrelenmeli — maskelenmiş alan ' +
+              'istemciye hiç gitmemelidir</span>' +
+            '<span class="odl-gap-bolum">§20.1</span></li>' +
+          '<li><span class="odl-gap-kod">BE-K3</span>' +
+            '<span>Maaş öz-erişimi istemcide açıldı; gerçek sistemde kendi ücret kaydı da ' +
+              'sunucuda kimliğe göre filtrelenmelidir</span>' +
+            '<span class="odl-gap-bolum">§22.15</span></li>' +
+          '<li><span class="odl-gap-kod">BE-P1</span>' +
+            '<span>Durum geçişi sunucuda yeniden doğrulanmaz; yetki, zorunlu alan ve kapı ' +
+              'kontrolü istemcide koşar</span>' +
+            '<span class="odl-gap-bolum">§20.6</span></li>' +
+          '<li><span class="odl-gap-kod">BE-S5</span>' +
+            '<span>Denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır</span>' +
+            '<span class="odl-gap-bolum">§9 audit_event</span></li>' +
+        '</ul>' +
+        '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+          '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+        '<p class="u-faint u-sm">BE-K1 bu ekranda doğrudan görünür: kapalı bölüm çizilmiyor ' +
+          'ama <b>kayıt nesnesinin tamamı istemcinin belleğinde</b>. Kapı arayüzdeki bir ' +
+          'çizim kararıdır; veri sunucuda süzülmedikçe koruma değildir.</p>' +
+        '<p class="u-faint u-sm">BE-K3 bu formun ücret bölümünde görünür: kendi kaydını ' +
+          'düzenleyen bir kullanıcı için ücret kapısı <b>öz-erişimle</b> açılır ve bu karar ' +
+          'istemcide verilir. Sunucu aynı ayrımı yapmadıkça, doğrudan API çağrısıyla ' +
+          'başkasının ücreti de okunabilir.</p>' +
+        '<p class="u-faint u-sm">Belge yükleme maddesi (BE-S4) burada <b>beyan edilmedi</b>: ' +
+          'bu form dosya sormuyor, personel kaydında ek/belge alanı yok. İlgisiz madde beyan ' +
+          'etmek beyanı gürültüye çevirir.</p>' +
+        '<p class="u-faint u-sm">Prototip sınırı: <b>düzenleme yetkisinin KAPSAMI bu formda ' +
+          'uygulanmıyor.</b> Yetki matrisi bu rolde ' +
+          '<b>duzenle = ' + esc(GV.perm.scope('duzenle')) + '</b> diyor, ama kayıt bazlı ' +
+          'düzenleme kapsamını ölçen bir ortak yordam yok (kayıt kapısı yalnız müşteri ' +
+          'oturumuna karşı çalışıyor). Ekran kendi kapsam kuralını UYDURMADI; eksik ' +
+          'beyan edildi.</p>' +
+      '</div>' +
+    '</section>';
+});
+</script>
+</body>
+</html>
