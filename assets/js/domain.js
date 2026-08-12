@@ -2648,9 +2648,63 @@
       return false;
     },
 
-    /* Maaş kapısı — matris anahtarı üzerinden, ekran kendi kopyasını kurmaz. */
-    maasGorebilir:function(){
-      return !!(GV.perm && GV.perm.can && GV.perm.can('maas'));
+    /* ===================================================================
+       MAAŞ KAPISI — ÖZ-ERİŞİM AÇIK (K-39 · ADR-R2-39)
+
+       Ölçülen durum (V2-64): kapı yalnız `permMatrix.maas` idi ve 4 role
+       açıktı (`sahip · genelmudur · ik · muhasebe`). Sonuç: `frontend`
+       KENDİ profilinde kendi maaşını `••••••` görüyordu. Özlük tarafında
+       aynı soru zaten "kendi kaydı → her zaman true" diye cevaplanmıştı
+       (`ozlukGorebilir`); maaş tarafı o cevabı taşımıyordu — yani aynı ilke
+       iki kardeş alanda AYRI uygulanıyordu.
+
+       KARAR: öz-erişim açılır. Kişinin kendi ücretini görmesi bir yetki
+       sorusu değildir; bordroyu her ay o kişi alır. Yeni matris anahtarı
+       AÇILMADI (uydurma yetki adı yok), var olan kapıya kendi-kaydı dalı
+       eklendi — `ozlukGorebilir` ile birebir aynı desen.
+
+       ⚠️ KAPI İKİ YÖNDE DE ÖLÇÜLÜR ve ikinci yön BURADA dar kalır:
+       öz-erişim YALNIZ kendi kaydını açar. Başkasının kaydında kapı hâlâ
+       `permMatrix.maas`tır. Argümansız çağrı (`maasGorebilir()`) KÜME
+       sorusudur — "bu oturum başkalarının maaşını görebilir mi" — ve
+       öz-erişimden etkilenmez: bir liste KPI'ı ya da toplam, kendi
+       kaydının açılmasıyla açılmaz. Bu ayrım bilinçlidir; argümanı
+       unutmak kapıyı GENİŞLETMEZ, daraltır. */
+    maasGorebilir:function(e){
+      var kume = !!(GV.perm && GV.perm.can && GV.perm.can('maas'));
+      if(kume) return true;
+      if(!e) return false;                                    /* küme sorusu */
+      var k = Hr.kayit(e);
+      var me = (GV.session && GV.session.emp) || null;
+      return !!(k && me && k.kod === me);                      /* kendi kaydı */
+    },
+
+    /* Maaş kapısının SEBEBİ — ekran maskenin altına bunu yazar, kendi
+       cümlesini kurmaz (L-40). `acik:false` iken `neden` doldurulur. */
+    maasKapi:function(e){
+      var kume = !!(GV.perm && GV.perm.can && GV.perm.can('maas'));
+      if(kume) return { acik:true, kaynak:'permMatrix.maas', neden:null };
+      var k = Hr.kayit(e);
+      var me = (GV.session && GV.session.emp) || null;
+      if(k && me && k.kod === me)
+        return { acik:true, kaynak:'ozErisim', neden:null };
+      return { acik:false, kaynak:'permMatrix.maas',
+               neden:k && me
+                 ? 'Bu kayıt sizin değil ve `permMatrix.maas` bu rolde kapalı — ' +
+                   'başkasının ücreti öz-erişimle açılmaz.'
+                 : 'Bu oturumda `permMatrix.maas` kapalı ve eşleşen bir personel ' +
+                   'kaydı yok — öz-erişim dalı uygulanamıyor.' };
+    },
+
+    /* Maaş alanının EKRANDA basılacak hâli — `ozluk`un maaş kardeşi (V2-63).
+       Kural iki ekranda kopyalanıyordu; tek yer burasıdır. Yetkisizde `0`
+       ya da boş DEĞİL, maskelenmiş değer döner (UID-11): boş bırakmak
+       "ücret yok" demektir, oysa ücret var ve görülemiyor.
+       Alan verilmezse `maas` okunur; `saatlikUcret` de aynı kapıdadır. */
+    maas:function(e, alan){
+      var k = Hr.kayit(e);
+      if(!k) return null;
+      return Hr.maasGorebilir(k) ? k[alan || 'maas'] : '••••••';
     },
 
     /* Özlük alanının EKRANDA basılacak hâli. Yetkisizde `0` ya da boş

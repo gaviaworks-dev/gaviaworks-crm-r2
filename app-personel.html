@@ -44,7 +44,11 @@
      · özlük  (dogum · kanGrubu · acilKisi · tel · eposta · egitim ·
                sertifika · sozlesme · calismaTuru)
                → `GV.hr.ozlukGorebilir(e)` · SATIR BAZLI kapı
-     · maaş   (maas · saatlikUcret) → `GV.hr.maasGorebilir()` / `perm:'maas'`
+     · maaş   (maas · saatlikUcret) → `GV.hr.maasGorebilir(e)` · SATIR BAZLI kapı
+              (K-39 · ADR-R2-39 — kendi kaydı öz-erişimle açık, başkasının kaydı
+               `permMatrix.maas`). KÜME soruları (KPI toplamı · para süzgeci ·
+               doluluk sayıları) argümansız `maasGorebilir()` ile kapalı kalır:
+               kendi kaydını görmek başkalarının toplamını açmaz.
    Yetkisizde `0` ya da BOŞ basılmaz: boş "veri yok" demektir, oysa veri var
    ve görülemiyor — ikisi ayrı şeydir (UID-11). Bileşen `••••••` basar ve o
    hücre ÇIKTIYA DA girmez. Özlük kapısı satırdan satıra değiştiği için
@@ -87,7 +91,14 @@ document.addEventListener('gv:ready', function(){
   var tumu     = DB.employees || [];
 
   /* Kapılar TEK YERDE ölçülür; ekran ikinci bir yetki cümlesi kurmaz. */
+  /* ⚠️ İKİ AYRI SORU, İKİ AYRI KAPI (K-39):
+       `canMaas`      — KÜME sorusu. "Bu oturum BAŞKALARININ ücretini görebilir mi."
+                        KPI toplamı, para süzgeci ve doluluk sayıları buna bakar.
+       `maasAcik(e)`  — SATIR sorusu. Kendi kaydı öz-erişimle açıktır.
+     Satır kapısını küme sorularına bağlamak, tek kişinin kendi ücretinden
+     15 kişilik toplamı açmak olurdu. */
   var canMaas     = GV.hr.maasGorebilir();
+  function maasAcik(e){ return GV.hr.maasGorebilir(e); }
   var ozlukKapsam = GV.perm.scope('personel');     /* tum | departman | proje | yok */
   var canRapor    = GV.perm.can('personelRapor');
   var canEkle     = GV.perm.can('ekle');
@@ -287,8 +298,11 @@ document.addEventListener('gv:ready', function(){
       g + ' satırın ' + ozlukAcikN + ' tanesinde özlük alanları (doğum · kan grubu · acil ' +
       'kişi · telefon · e-posta · eğitim · sertifika · sözleşme · mesai türü) AÇIK; ' +
       'kalanında ••••••  basıldı ve o hücreler çıktıya da girmiyor. Maaş ekseni AYRI ' +
-      'bir kapıdır ve şu an ' + (canMaas ? 'AÇIK' : 'KAPALI') + '. Boş bırakmak ' +
-      '"veri yok" demek olurdu; oysa veri var ve görülemiyor.');
+      'bir kapıdır: küme yetkisi (başkalarının ücreti) şu an ' +
+      (canMaas ? 'AÇIK' : 'KAPALI') + ' ve görünen ' + g + ' satırın ' +
+      gorunen.filter(maasAcik).length + ' tanesinde ücret hücresi açık' +
+      (canMaas ? '' : ' — kapıyı açan öz-erişimdir, yalnız kendi kaydınız (K-39)') +
+      '. Boş bırakmak "veri yok" demek olurdu; oysa veri var ve görülemiyor.');
 
     /* Alan doluluğu — brief §20.4 uyarıları ekranda da ölçülür. */
     var uzmanlikli = gorunen.filter(function(e){ return !!e.uzmanlik; }).length;
@@ -537,7 +551,10 @@ document.addEventListener('gv:ready', function(){
          ⚠️ `maas:0` bir DEĞER DEĞİL, "bu kayıt aylık maaş ekseninde değil"
          demektir (ölçüldü: EMP-015 saatlik ücret sözleşmesi). `deger`
          kapısı 0'ı `null`a çevirir ki hücre "₺0" değil "—" bassın. */
-      GV.cols.money('maas', 'Aylık brüt maaş', { perm:'maas', width:'12%',
+      GV.cols.money('maas', 'Aylık brüt maaş', {
+        /* `perm` DEĞİL `mask`: kapı role değil SATIRA bakar (K-39). `perm`
+           kolonun tamamını kapatırdı ve kişi kendi ücretini de göremezdi. */
+        mask:function(e){ return !maasAcik(e); }, width:'12%',
         deger:function(e){ return e.maas > 0 ? e.maas : null; },
         exportValue:function(e){
           return e.maas > 0 ? e.maas
@@ -570,7 +587,8 @@ document.addEventListener('gv:ready', function(){
       /* SAATLİK ÜCRET — 16 kaydın 1'inde dolu. Boşta "0 ₺" değil "—" ve
          sebebi basılır; sıfır ücret iddiası ile ölçülmemiş ücret ayrı
          şeylerdir. Maaş kapısının arkasında. */
-      GV.cols.money('saatlikUcret', 'Saatlik ücret', { perm:'maas', visible:false,
+      GV.cols.money('saatlikUcret', 'Saatlik ücret', {
+        mask:function(e){ return !maasAcik(e); }, visible:false,
         deger:function(e){ return e.saatlikUcret > 0 ? e.saatlikUcret : null; },
         exportValue:function(e){
           return e.saatlikUcret > 0 ? e.saatlikUcret
@@ -767,7 +785,7 @@ document.addEventListener('gv:ready', function(){
        tarafından uygulanır. Maske dizesi ortak katmandan alınır
        (`GV.perm.mask`), ekran kendi işaretini uydurmaz. */
     mobile:function(e){
-      var maasHtml = canMaas
+      var maasHtml = maasAcik(e)
         ? (e.maas > 0 ? GV.esc(F.money(e.maas)) : GV.esc('aylık maaş yok'))
         : '<span class="cell-mask">' + GV.esc(GV.perm.mask('', 'maas')) + '</span>';
       return GV.cell.mrow(

@@ -49,11 +49,14 @@
 
    KİŞİSEL VERİ KAPISI (§20.1, gevşetilmez):
      · özlük → `GV.hr.ozlukGorebilir(e)`   (kendi kaydı → her zaman true)
-     · maaş  → `GV.hr.maasGorebilir()`     (permMatrix.maas — 4 rol)
-   ⚠️ Kendi profilinde bile maaş kapısı `maasGorebilir()`tir. Ölçüldü:
-   `frontend` rolü kendi kaydını açtığında `maas` alanını GÖRMEZ. Bu bir
-   kusur değil, kanonun bilinen sonucudur; ekran kapıyı kendi lehine
-   GEVŞETMEZ, maskenin ALTINA sebebini yazar (V2-47 ana oturumun kararı).
+     · maaş  → `GV.hr.maasGorebilir(e)`    (permMatrix.maas VEYA kendi kaydı)
+   ✅ ÖZ-ERİŞİM AÇILDI (K-39 · ADR-R2-39). Bu ekran V2-64'ü ölçen yerdi:
+   `frontend` kendi profilinde kendi ücretini `••••••` görüyordu. Kapı artık
+   `ozlukGorebilir` ile AYNI deseni taşır — kendi kaydı her zaman açık,
+   BAŞKASININ kaydı `permMatrix.maas`. Bu ekran tek bir kayıt basar (kendi
+   kaydı), o yüzden kapı argümanla çağrılır: `maasGorebilir(e)`.
+   ⚠️ Argümansız `maasGorebilir()` KÜME sorusudur ("başkalarının maaşı") ve
+   öz-erişimden etkilenmez; oturum kartı bilerek o dalı basar.
    Yetkisizde `••••••` basılır — BOŞ ya da `0` DEĞİL (UID-11).
 
    BİLDİRİM SEKMESİ DÜRÜST BOŞLUKTUR (§21.3): `DB.employees` kaydında
@@ -280,7 +283,8 @@ document.addEventListener('gv:ready', function(){
     /* — Ücret: KAPILI (§20.1 · §21.3) —
        ⚠️ Kapı kapalıysa alan HİÇ OKUNMAZ: XOR kararı için bile okumak,
        maskelenen değeri bir dala sızdırmak olurdu. */
-    var maasAcik = GV.hr.maasGorebilir();
+    var maasKapi = GV.hr.maasKapi(e);
+    var maasAcik = maasKapi.acik;
     var ucretSatir;
     if(!maasAcik){
       ucretSatir = [['Ücret bilgisi', maskeli() +
@@ -300,13 +304,18 @@ document.addEventListener('gv:ready', function(){
       maasAcik ? '<span class="u-ok">kapı açık</span>' : '<span class="u-muted">maskelendi</span>',
       GV.dl(ucretSatir) +
       (maasAcik
-        ? faintNot('Kapı <b>GV.hr.maasGorebilir()</b>tir ve <b>permMatrix.maas</b> ' +
-            'anahtarını okur — dört rolde açıktır. İç maliyet katsayısı bu ekranda ' +
-            'değil şirket ayarlarındadır; bu blok ikinci bir maliyet formülü kurmaz.')
-        : not('Maaş alanı <b>permMatrix.maas</b> kapısındadır ve <b>kendi kaydınız bu ' +
-            'kapıyı açmaz</b>. Bu bir kusur değil, kanonun bilinen sonucudur: kapı ' +
-            'rolün maaş yetkisine bakar, kaydın sahibine değil. Kapıyı değiştirmek ' +
-            'ekranın değil ortak katmanın kararıdır (V2-47).')));
+        ? faintNot('Kapı <b>GV.hr.maasGorebilir(e)</b>dir. Bu kayıtta kapıyı açan: <b>' +
+            (maasKapi.kaynak === 'ozErisim'
+              ? 'öz-erişim</b> — kendi kaydınız (K-39 · ADR-R2-39). Rolünüzün ' +
+                '<b>permMatrix.maas</b> yetkisi olmasa da kendi ücretinizi görürsünüz; ' +
+                'BAŞKASININ kaydında aynı kapı REDDEDER.'
+              : 'permMatrix.maas</b> — dört rolde açık olan küme yetkisi. Kendi kaydınız ' +
+                'zaten öz-erişimle de açıktı; burada geniş olan kapı kazandı.') +
+            ' İç maliyet katsayısı bu ekranda değil şirket ayarlarındadır; bu blok ' +
+            'ikinci bir maliyet formülü kurmaz.')
+        : not('Ücret maskelendi. Sebep: ' + GV.esc(maasKapi.neden || '—') +
+            ' Kapı <b>GV.hr.maasKapi(e)</b> yordamındadır ve sebebi ekran değil ' +
+            'ortak katman yazar (L-40).')));
 
     out += oturumKarti();
     out += gecmisKarti(e.kod, 'EMP-');
@@ -376,9 +385,15 @@ document.addEventListener('gv:ready', function(){
     if(BICIM === 'personel'){
       satir.push(['Personel kapsamı', kod(GV.perm.scope('personel')) +
         GV.cell.sub('özlük kapısının girdisi')]);
-      satir.push(['Maaş kapısı', (GV.hr.maasGorebilir()
+      /* ⚠️ Argümansız çağrı BİLİNÇLİ: bu satır oturumun KÜME yetkisini
+         söylüyor ("başkalarının ücretini görebilir mi"), tek bir kaydı
+         değil. Öz-erişim (K-39) bu dalı açmaz; açsaydı satır kendi
+         kaydını başkalarının kaydı gibi rapor ederdi. */
+      satir.push(['Maaş kapısı — küme', (GV.hr.maasGorebilir()
         ? '<span class="u-ok">açık</span>' : '<span class="u-muted">kapalı</span>') +
-        GV.cell.sub('<b>permMatrix.maas</b> — <b>GV.hr.maasGorebilir()</b>')]);
+        GV.cell.sub('<b>permMatrix.maas</b> — <b>GV.hr.maasGorebilir()</b> (argümansız). ' +
+          'Kendi kaydınız bundan bağımsız olarak <b>öz-erişimle</b> açıktır ' +
+          '(K-39 · ADR-R2-39); bu satır başkalarının ücretini ölçer.')]);
     }
     satir.push(['Görünür menü girdisi',
       '<span class="u-num">' + F.num(girdiler.length) + '</span>' +

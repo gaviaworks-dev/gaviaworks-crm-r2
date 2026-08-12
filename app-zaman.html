@@ -638,7 +638,10 @@ document.addEventListener('gv:ready', function(){
     var p = projeKaydi(l.proje), g = gorevKaydi(l.gorev), m = modulKaydi(l.modul);
     var ts = defterOf(l);
     var oran = GV.hr.kayitOrani(l);
-    var maasVar = GV.hr.maasGorebilir();
+    /* Oran KAYDIN personeline ait bir ücret türevidir — kapı SATIRA bakar
+       (K-39 · ADR-R2-39): kendi zaman kaydının maliyet oranını kişi görür,
+       başkasının kaydında `permMatrix.maas` geçerlidir. */
+    var maasVar = GV.hr.maasGorebilir(l.personel);
 
     var satirlar = [
       ['Personel', GV.user(l.personel, { sm:true })],
