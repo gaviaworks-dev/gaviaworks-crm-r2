@@ -79,6 +79,22 @@ for (const f of fs.readdirSync(path.join(ROOT, 'assets/data'))) {
   for (const m of src.matchAll(/^DB\.([A-Za-z_$][\w$]*)\s*=/gm)) tanim[m[1]] = 'assets/data/' + f;
   for (const m of src.matchAll(/^\s*DB\.([A-Za-z_$][\w$]*)\s*=/gm)) if(!tanim[m[1]]) tanim[m[1]] = 'assets/data/' + f;
 }
+/* ⚠️ HER `DB.x` VERİ DOSYASINDA DOĞMAZ. Ortak katman yüklenirken de defter
+   kurar — ölçüm nöbetçileri tam olarak böyle doğar: `DB.bayatAktif`
+   (`domain.js`, K-33 tuzağının sayacı) ve `DB.ikBayat` (`hr.js` ama bir
+   IIFE içinde). Eksen yalnız `assets/data/` altına bakıyordu ve bu adları
+   "hiçbir veri dosyasında tanımlı değil" diye UYARI basıyordu; oysa adlar
+   gerçek ve okunmaları DOĞRUDUR — ölçüm aracının kapsamı, ölçtüğü şeyin
+   kapsamından dar olamaz (L-26). `assets/js/*.js` içinde doğan adlar ayrı
+   bir kaynak sınıfıdır: her sayfa üç omurga dosyasını da yüklediği için
+   bağımlılık kapısı onlara UYGULANMAZ, ama ad ARTIK BİLİNİR. */
+const omurgaTanim = {};
+for (const f of ['shell.js', 'ui.js', 'domain.js']) {
+  const src = fs.readFileSync(path.join(ROOT, 'assets/js', f), 'utf8');
+  for (const m of src.matchAll(/\bDB\.([A-Za-z_$][\w$]*)\s*=[^=]/g))
+    if (!tanim[m[1]] && !omurgaTanim[m[1]]) omurgaTanim[m[1]] = 'assets/js/' + f;
+}
+let omurgaOkuma = 0;
 for (const h of htmls) {
   const src = fs.readFileSync(path.join(ROOT, h), 'utf8');
   const yuklu = new Set([...src.matchAll(/src="(assets\/[^"]+)"/g)].map(m => m[1]));  /* ham HTML'den */
@@ -96,11 +112,15 @@ for (const h of htmls) {
   const okunan = new Set([...kodu.matchAll(/\bDB\.([A-Za-z_$][\w$]*)/g)].map(m => m[1]));
   for (const k of okunan) {
     const kaynak = tanim[k];
-    if (!kaynak) { uy(`${h} → DB.${k} hiçbir veri dosyasında tanımlı değil (yordam olabilir)`); continue; }
+    if (!kaynak) {
+      if (omurgaTanim[k]) { omurgaOkuma++; continue; }   /* omurgada doğar, her sayfada yüklü */
+      uy(`${h} → DB.${k} hiçbir veri dosyasında tanımlı değil (yordam olabilir)`); continue;
+    }
     if (!yuklu.has(kaynak)) de(`${h} → DB.${k} okuyor ama ${kaynak} YÜKLENMEMİŞ`);
   }
 }
-ok('veri bağımlılığı denetlendi');
+ok(`veri bağımlılığı denetlendi · ${Object.keys(tanim).length} ad veri dosyasında, `
+   + `${Object.keys(omurgaTanim).length} ad omurgada doğuyor (${omurgaOkuma} okuma)`);
 
 /* ---- 4. VERİ + DOMAIN NODE'DA YÜKLENİYOR MU ---------------------- */
 console.log('\n[4] Veri ve domain katmanı yükleniyor mu');

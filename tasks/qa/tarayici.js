@@ -104,7 +104,37 @@ const EKRANLAR = [
      bakiyesi YETMEYEN talep: onay kapısı kapalı, ret/iptal açık. Kapının
      iki yönü ancak o kayıtta çizilir. */
   { dosya: 'app-izin-detay.html?id=IZN-2026-038', ad: 'İzin Detayı',      oturum: true },
-  { dosya: 'app-izin-detay.html?id=IZN-2026-039', ad: 'İzin · Bakiyesiz', oturum: true }
+  { dosya: 'app-izin-detay.html?id=IZN-2026-039', ad: 'İzin · Bakiyesiz', oturum: true },
+  /* ---- Dilim 5: Ayarlar ---------------------------------------------
+     HER SEKME AYRI ÖLÇÜLÜR. Ayar kabuğu tembel çizer: bir sekmenin gövdesi
+     ancak `gv:tab` ile doğar, yani yalnız varsayılanı ölçmek kalan 13
+     sekmenin yerleşimini HİÇ çizmemek olurdu.
+
+     İKİ ROL VARYANTI da ölçülür (`rol` alanı): sekmeler yetkiden üretilir
+     (§3.3) ve yerleşim role göre DEĞİŞİR —
+       · `frontend` profilde ücret satırını MASKELİ görür (`••••••`),
+       · `musteri` oturumunda personel kaydı yoktur, özlük ve ücret blokları
+         hiç basılmaz (4 kart, 7 değil),
+       · `devops` entegrasyonda `odeme` sekmesini görmez (4 → 3 sekme).
+     Bu üç yerleşim `sahip` rolüyle ölçülemez. */
+  { dosya: 'app-ayar-profil.html',                ad: 'Profil · Hesabım',    oturum: true },
+  { dosya: 'app-ayar-profil.html#bildirim',       ad: 'Profil · Bildirim',   oturum: true },
+  { dosya: 'app-ayar-profil.html',                ad: 'Profil · Maskeli',    oturum: true, rol: 'frontend' },
+  { dosya: 'app-ayar-profil.html',                ad: 'Profil · Müşteri',    oturum: true, rol: 'musteri' },
+  { dosya: 'app-ayar-sirket.html',                ad: 'Şirket',              oturum: true },
+  { dosya: 'app-ayar-sirket.html#departman',      ad: 'Şirket · Departman',  oturum: true },
+  { dosya: 'app-ayar-sirket.html#kullanici',      ad: 'Şirket · Kullanıcı',  oturum: true },
+  { dosya: 'app-ayar-sirket.html#rol',            ad: 'Şirket · Rol',        oturum: true },
+  { dosya: 'app-ayar-sirket.html#yetki',          ad: 'Şirket · Yetki',      oturum: true },
+  { dosya: 'app-ayar-sirket.html#onay',           ad: 'Şirket · Onay',       oturum: true },
+  { dosya: 'app-ayar-entegrasyon.html',           ad: 'Entegrasyon',         oturum: true },
+  { dosya: 'app-ayar-entegrasyon.html#odeme',     ad: 'Entegrasyon · Ödeme', oturum: true },
+  { dosya: 'app-ayar-entegrasyon.html#otomasyon', ad: 'Entegrasyon · Otom.', oturum: true },
+  { dosya: 'app-ayar-entegrasyon.html#hata',      ad: 'Entegrasyon · Hata',  oturum: true },
+  { dosya: 'app-ayar-entegrasyon.html',           ad: 'Entegrasyon · DevOps',oturum: true, rol: 'devops' },
+  { dosya: 'app-ayar-log.html',                   ad: 'Sistem Kayıtları',    oturum: true },
+  { dosya: 'app-ayar-log.html#arsiv',             ad: 'Kayıtlar · Arşiv',    oturum: true },
+  { dosya: 'app-ayar-log.html#kalite',            ad: 'Kayıtlar · Kalite',   oturum: true }
 ];
 
 const MIME = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8',
@@ -319,8 +349,14 @@ const OLC_ODAK_HAZIRLIK = new Function(`
       });
 
       const [yol, parca] = ek.dosya.split('#');
+      /* `ek.rol` — VARSAYILAN `sahip`. Bir ekranın yerleşimi role göre
+         DEĞİŞİYORSA (maskelenen alan, düşen sekme) yalnız `sahip` ölçmek o
+         yerleşimi hiç çizmemek olurdu: ayar sekmeleri yetkiden üretilir
+         (§3.3) ve `devops` rolünde bir sekme DÜŞER. Rol alanı bu yüzden
+         var; ölçüm kapsamı ekranın kendi değişkenliğinden dar olamaz. */
+      const rol = ek.rol || 'sahip';
       const url = base + '/' + yol +
-        (ek.oturum ? (yol.indexOf('?') === -1 ? '?role=sahip' : '&role=sahip') : '') +
+        (ek.oturum ? (yol.indexOf('?') === -1 ? '?role=' + rol : '&role=' + rol) : '') +
         (parca ? '#' + parca : '');
       await page.goto(url, { waitUntil: 'networkidle' });
       /* Kabuk sprite'ı fetch ile enjekte ediyor ve gv:ready ondan sonra
@@ -382,6 +418,18 @@ const OLC_ODAK_HAZIRLIK = new Function(`
       if (sprite.eksik.length) bulgular.push('SPRITE — belgede olmayan ikon: ' + sprite.eksik.join(', '));
       if (sprite.cizilmeyen) bulgular.push(`SPRITE — görünür olduğu hâlde 0×0 çizilen ikon: ${sprite.cizilmeyen}`);
       if (!odakIlerledi) bulgular.push(`ODAK — Tab sırası ilerlemedi (${odakZinciri.length}/${odakH.odaklanabilir})`);
+      /* ⚠️ "İLERLEDİ" YETMEZ, "BAŞTAN BAŞLADI" da ölçülür (K-37).
+         Eski hâli yalnız zincirin UZUNLUĞUNA bakıyordu. Ölçüldü ki
+         `GV.tabs` sıralı odak başlangıç noktasını sekme şeridine taşıyınca
+         ilk `Tab` belgenin başına değil sayfanın ORTASINA düşüyordu: skip
+         link, rail, bölüm menüsü ve üst çubuk klavyeyle erişilemez oluyordu.
+         Sekme şeridinden sonra bol düğüm olan ekranlarda zincir yine 5'i
+         geçiyor ve eksen YEŞİL yanıyordu — yani kusur ölçülüyor değil,
+         eşiğin altında saklanıyordu. İlk odak hedefi artık belgenin İLK
+         odaklanabilir düğümü olmak zorunda. */
+      if (ek.oturum && odakZinciri.length && odakZinciri[0].sinif !== 'gv-skip')
+        bulgular.push(`ODAK — ilk Tab belgenin başına düşmedi: "${odakZinciri[0].et}.${odakZinciri[0].sinif}" ` +
+                      `(beklenen "a.gv-skip") — skip link ve kabuk gezinmesi klavyeyle atlanıyor`);
       if (odakGorunmez) bulgular.push(`ODAK — ${odakGorunmez} odak hedefi görünmez`);
       if (odakH.sifirBoyut.length) bulgular.push('ODAK — 0×0 odaklanabilir düğüm: ' + odakH.sifirBoyut.join(', '));
 
