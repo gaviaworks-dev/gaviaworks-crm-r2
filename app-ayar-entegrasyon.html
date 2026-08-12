@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Entegrasyonlar — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="ayarlar" data-screen="entegrasyon">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/data/odeme.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   ENTEGRASYONLAR — ekran brief §21.5 (rota 142 · 143)
+
+   AYAR KABUĞU (§21.1). Sekme listesi BU EKRANDA YAZILMAZ:
+   `GV.shell.ayarSekmeleri('entegrasyon')` yetkiden süzülmüş kümeyi döndürür
+   ve ekran ne gelirse onu basar — `GV.flow.adimlar` düğme üretiminin (§7.1)
+   aynı ilkesidir. Ölçüldü: `sahip` · `genelmudur` · `sistem` rollerinde DÖRT
+   sekme (`saglayici` · `odeme` · `otomasyon` · `hata`), `devops` rolünde ÜÇ —
+   `odeme` sekmesi `perm:'finans'` kapısındadır ve `devops` matrisinde
+   `finans:false`. Ekran bu düşüşü KENDİ KONTROL ETMEZ; kapı tek yerdedir.
+   Menü kapısı da ekranda değildir: `shell.js` `SECTIONS.ayarlar` yetkisiz
+   rolü içeri hiç almaz (§21.0 · §14.11).
+
+   ── BU EKRANIN İKİ SERT KURALI ──
+
+   1) GERÇEK ANAHTAR ALANI AÇILMAZ (§8.7 · §21.9.4).
+      Bu dosyada tek bir girdi kutusu yoktur. Şartname §8.7: "Canlı anahtarlar
+      kodda veya istemci paketinde bulunmamalıdır." Bir kutu basmak, sırrın
+      istemcide toplanabileceğini ima ederdi — kutunun boş olması bu iddiayı
+      hafifletmez. Sağlayıcı sırrı sunucuda doğar, sunucuda yaşar; ekranın
+      gösterebileceği tek dürüst şey BU CÜMLEDİR. Kayıtta zaten böyle bir
+      alan da yoktur: `DB.integrations` beş alan taşır
+      (`kod · ad · kategori · durum · aciklama`) ve hiçbiri bir sır değildir.
+
+   2) SAHTE BAĞLANTI DURUMU BASILMAZ (K-34 · ADR-R2-34 · §21.9.5).
+      `DB.integrations` on kayıt taşıyor ve DÖRDÜ `durum:'Bağlı'` diyor
+      (ENT-001 GitHub · ENT-003 Google Calendar · ENT-007 Paraşüt ·
+      ENT-009 OpenAI API). Aynı veri dosyası bunun altında şunu yazıyor:
+      "Bu prototipte GERÇEK BİR ENTEGRASYON KOŞUMU YOK — DB.integrations
+      yalnız bağlantı tanımlarını taşıyor, hiçbiri çalışmıyor."
+      İkisi aynı anda doğru olamaz. Karar: kayıt SİLİNMEZ, iddia ile ölçüm
+      AYRIŞTIRILIR. Bu ekranda ayrışma İKİ AYRI KOLONDUR:
+        · "Ölçülen durum"    → `GV.entegrasyon.olculenDurum()` · 10/10
+                               `Bağlanmadı` · rozet basılır çünkü bu bir ÖLÇÜM
+                               ve kanıtı yanındaki kartta satır satır yazılı.
+        · "Katalog iddiası"  → `GV.entegrasyon.katalogIddiasi(e)` · ROZET YOK,
+                               düz metin + soluk açıklama. Çelişen dört kayıtta
+                               alt satıra "ölçümle çelişiyor" yazılır.
+      `e.durum` alanı bu dosyada HİÇBİR YERDE `GV.badge`'e verilmez; yeşil bir
+      "Bağlı" rozeti basmak, hiç kurulmamış bir bağlantıyı kurulmuş göstermek
+      olurdu (K-30'da tutanaksız zimmet iddiası aynı gerekçeyle düşürülmüştü).
+
+   ── DÜĞME YOK, ANAHTAR YOK ──
+   Ne sağlayıcı bağlama/koparma düğmesi, ne otomasyon aç/kapa anahtarı
+   vardır. Yapılamayan iş düğme olarak vaat edilmez (§14.6 · §21.9.7):
+   `run` yazamıyorsan aksiyonu hiç ekleme. Bu ekranın TEK gerçek eylemi
+   satır çekmecesidir ve o da yalnız OKUR.
+
+   ── VERİ DOSYALARI (§21.0 tablosu) ──
+   `org` · `crm` · `work` · `misc` · `ops` · `lifecycle` · `odeme`.
+   `odeme.js` ZORUNLUDUR: `DB.paymentLinkDefaults` ve `DB.paymentBackendGaps`
+   `odeme` sekmesinin kaynağıdır. `hr.js` ve `firsat.js` YÜKLENMEZ — bu ekran
+   ne zaman defterini ne fırsat geçiş tablosunu okur.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+  var F = GV.fmt;
+  var E = GV.entegrasyon;
+
+  /* Ortak katman eksikse ekran KENDİ yorumunu yazmaz, durumu bildirir. */
+  if(!E){
+    mount.innerHTML = GV.errorState({
+      title:'Entegrasyon yordamı yüklenmedi',
+      desc:'Bağlantı durumu ortak katmanda türetilir (GV.entegrasyon). Bu ekran ' +
+           'katalog alanını kendi başına yorumlamaz; yordam olmadan hiçbir durum basılmaz.' });
+    return;
+  }
+
+  /* ---- yardımcılar ---------------------------------------------------- */
+  function say(list, fn){ return (list || []).filter(fn).length; }
+  function benzersiz(list, alan){
+    return (list || []).reduce(function(acc, r){
+      var v = typeof alan === 'function' ? alan(r) : r[alan];
+      (Array.isArray(v) ? v : [v]).forEach(function(x){
+        if(x != null && x !== '' && acc.indexOf(x) === -1) acc.push(x);
+      });
+      return acc;
+    }, []);
+  }
+  /* Ölçülemeyenin dili TEK yerde: sayı yoksa `0` DEĞİL `—` + sebep (§10.1). */
+  function olculemedi(sebep){ return GV.cell.faint('—') + GV.cell.sub(GV.esc(sebep)); }
+  function kod(t){ return '<span class="cell-code">' + GV.esc(t) + '</span>'; }
+
+  /* ---- kaynaklar — hepsi okuma, hiçbiri yazma ------------------------- */
+  var SAGLAYICI = E.liste() || [];                 /* 10 — ölçüldü */
+  var KANIT     = E.kanit() || {};                 /* üç kanıt ekseni + ödeme */
+  var OLCULEN   = E.olculenDurum();                /* 'Bağlanmadı' */
+  var CELISEN   = E.celisenler() || [];            /* 4 — ölçüldü */
+  var KATEGORI  = E.kategoriler() || [];           /* 6 — kayıtlardan türetildi */
+  var ADAPTOR   = E.odemeAdaptoru() || {};         /* §8.7 mock adaptör künyesi */
+  var OTOMASYON = DB.automations || [];            /* 22 — ölçüldü */
+  var HATA      = DB.integrationErrors || [];      /* 0 — BİLEREK boş */
+  var KANALSOZ  = DB.notificationChannels || [];   /* 7 kanal adı — sözlük */
+
+  /* ⚠️ SIRA — `GV.pageHead` liste bileşeninden ÖNCE (§2.4): satır sayacını
+     `GV.list` `[data-listcount]` düğümüne yazar, o düğümü `pageHead` doğurur. */
+  GV.pageHead({
+    eyebrow:'Sistem',
+    title:'Entegrasyonlar',
+    sub:SAGLAYICI.length + ' sağlayıcı tanımı · ' + OTOMASYON.length + ' otomasyon kuralı · ' +
+        HATA.length + ' hata kuyruğu satırı — koşum defteri yok, hiçbiri çalışmıyor',
+    actions:[]
+  });
+
+  /* ================================================================
+     AYAR KABUĞU — sekmeler yetkiden üretilir (§21.1, birebir desen)
+     ================================================================ */
+  var SEKME = GV.shell.ayarSekmeleri('entegrasyon');
+  if(!SEKME.length){
+    mount.innerHTML = GV.empty({ icon:'i-lock',
+      title:'Görebileceğiniz ayar sekmesi yok',
+      desc:'Bu ekrana girebiliyorsunuz ama rolünüz hiçbir sekmeyi açmıyor. Ödeme ' +
+           'sağlayıcısı sekmesi permMatrix.finans kapısındadır; kapıyı ekran gevşetmez.' });
+    return;                                        /* ölü sekme şeridi basma */
+  }
+
+  mount.innerHTML =
+    '<div class="gv-tabs" role="tablist" id="ayarSekme">' +
+      SEKME.map(function(t){
+        return '<button type="button" class="gv-tab" role="tab" data-tab="' + t.key + '"' +
+               ' aria-selected="false">' + GV.ico(t.ic,'ic-sm') + GV.esc(t.lbl) + '</button>';
+      }).join('') +
+    '</div>' +
+    SEKME.map(function(t){
+      return '<div role="tabpanel" data-panel="' + t.key + '" id="panel-' + t.key + '" hidden></div>';
+    }).join('') +
+    '<div id="ayarBackend" class="u-mt-8"></div>';
+
+  /* ⚠️ SIRA: dinleyici `GV.tabs`ten ÖNCE bağlanır — `GV.tabs` kurulurken ilk
+     sekmeyi hemen etkinleştirir ve `gv:tab` atar. Sonra bağlanırsa AÇILIŞTAKİ
+     sekme hiç çizilmez. Dinleyici `document`a bağlıdır (kalıcı düğüm) →
+     `GV.on` ile tekil anahtar üzerinden, `GV.refresh()` sonrası birikmesin. */
+  var cizildi = {};
+  GV.on(document, 'gv:tab', function(e){ ciz(e.detail.key); }, 'ayarEntegrasyon-tab');
+  GV.tabs('#ayarSekme');
+
+  function ciz(key){
+    if(cizildi[key]) return;                       /* tembel çizim — bir kez */
+    cizildi[key] = true;
+    var p = document.getElementById('panel-' + key);
+    if(!p) return;
+    if(key === 'saglayici') return saglayiciSekmesi(p);
+    if(key === 'odeme')     return odemeSekmesi(p);
+    if(key === 'otomasyon') return otomasyonSekmesi(p);
+    if(key === 'hata')      return hataSekmesi(p);
+  }
+
+  /* Tek çekmece açık tutulur — bileşen markup'ı `document.body`ye basar,
+     ekran kendi overlay'ini kurmaz (L-18). */
+  var acikCekmece = null;
+  function cekmeceAc(baslik, html){
+    if(acikCekmece && acikCekmece.close) acikCekmece.close();
+    acikCekmece = GV.drawer({ title:baslik, body:'',
+      onMount:function(govde){ govde.innerHTML = html; } });
+  }
+
+  /* ================================================================
+     1) SAĞLAYICILAR (rota 142)
+
+     İDDİA İLE ÖLÇÜM İKİ AYRI KOLONDUR (K-34). Kolonların ikisi de aynı
+     kayıttan gelir ama farklı GÜVENİLİRLİKTEDİR ve ekran ikisini aynı
+     biçimde basamaz (`GV.test.sayac` ile aynı disiplin).
+     ================================================================ */
+  function saglayiciSekmesi(p){
+    var iddialar = benzersiz(SAGLAYICI, function(e){ return E.katalogIddiasi(e); });
+
+    /* Kanıt kartı — ölçülen durumun DAYANAĞI. Rozet bir iddia değil, bu üç
+       satırın sonucudur; kanıt boşalırsa (gerçek bir koşum defteri gelirse)
+       yordam farklı döner ve rozet de değişir. */
+    var kanitSatir = [
+      ['Koşum defteri',
+        KANIT.kosumDefteri == null
+          ? olculemedi('koleksiyon HİÇ YOK — kontrol yapılamadı, "koşum başarısız" DEĞİL')
+          : '<span class="u-num">' + GV.esc(F.num(KANIT.kosumDefteri)) + '</span>' +
+            GV.cell.sub('koşum satırı')],
+      ['Hata kuyruğu',
+        '<span class="u-num">' + GV.esc(F.num(KANIT.hataKuyrugu)) + '</span>' +
+        GV.cell.sub('koleksiyon VAR ve boş — ölçülmüş sıfır; hata olmadığını değil, ' +
+                    'kuyruğa hiç satır düşmediğini söyler')],
+      ['Webhook olayı',
+        '<span class="u-num">' + GV.esc(F.num(KANIT.webhookOlayi)) + '</span>' +
+        GV.cell.sub('koleksiyon VAR ve boş — sağlayıcıdan tek bir bildirim gelmedi')],
+      ['Ödeme sağlayıcısı',
+        KANIT.odemeSaglayici
+          ? kod(KANIT.odemeSaglayici) + GV.cell.sub('ödeme de bir entegrasyondur ve o da seçilmedi')
+          : olculemedi('DB.paymentLinkDefaults okunamadı')],
+      ['Sonuç — ölçülen durum',
+        OLCULEN
+          ? GV.badge(OLCULEN) + GV.cell.sub('üç kanıt ekseninin üçü de boş → tek dürüst durum budur')
+          : olculemedi('koşum kanıtı var; ölçülen durum yordamdan okunmalı')]
+    ];
+
+    p.innerHTML =
+      GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Hiçbir sağlayıcı bağlı değil — koşum defteri yoktur',
+        text:'Bu prototipte gerçek bir entegrasyon koşumu yoktur; ' + SAGLAYICI.length + '/' +
+             SAGLAYICI.length + ' kayıtta ölçülen durum "' + (OLCULEN || '—') +
+             '". Aşağıdaki "Katalog iddiası" kolonu BİR ÖLÇÜM DEĞİLDİR: katalogun hangi ' +
+             'sağlayıcıyla entegre olunmasının planlandığını söyler. ' + CELISEN.length +
+             ' kayıtta bu iddia ölçümle çelişir ve çeliştiği satırda yazılıdır.' }) +
+
+      '<section class="gv-card u-mt-4"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-shield') + 'Bağlantının kanıtı</h3>' +
+        '<span class="gc-meta">GV.entegrasyon.kanit()</span></div>' +
+        '<div class="gc-body">' + GV.dl(kanitSatir) +
+        '<p class="u-sm u-muted u-mt-4">Ölçülen durum bir sabit değildir; bu üç eksenden ' +
+        'türetilir. Koşum defteri koleksiyonu hiç bulunmadığı için ' +
+        (E.olculemedi() ? 'kontrol YAPILAMAMIŞTIR' : 'kontrol koşmuştur') +
+        ' — bu "hata yok" demek değildir (§10.1: boş ≠ sıfır ≠ ölçülemedi).</p>' +
+        '</div></section>' +
+
+      '<p class="u-sm u-muted u-mt-4">Görünen: <span id="entSaglayiciSayac">—</span> · ' +
+      'kategori seçenekleri ' + SAGLAYICI.length + ' kayıttan türetildi (kategori sözlüğü yoktur) · ' +
+      'bağlantı kurma ya da koparma düğmesi bilerek yoktur: bu prototipte çalıştırılabilecek ' +
+      'bir adaptör bulunmuyor.</p>' +
+      '<p class="u-xs u-faint">Sayıların kaynağı: <code>GV.entegrasyon.liste()</code> · ' +
+      '<code>olculenDurum()</code> · <code>celisenler()</code> · <code>kategoriler()</code> — ' +
+      'hiçbiri bu ekranda hesaplanmadı.</p>' +
+      '<div id="entSaglayiciListe" class="u-mt-4"></div>';
+
+    GV.list({
+      mount:'#entSaglayiciListe', id:'ayarEntSaglayici', key:'kod',
+      source:function(){ return E.liste(); },
+      countTarget:'#entSaglayiciSayac',
+      exportName:'entegrasyon-saglayicilari',
+      exportTitle:'Entegrasyon sağlayıcıları (katalog iddiası ve ölçülen durum)',
+      pageSize:10, urlSync:false,
+      /* Sağlayıcı kaydının ARŞİV EKSENİ YOKTUR: `durum` alanı bir arşiv
+         kararı değil, katalog iddiasıdır. Çalışmayan bir anahtar basmak
+         kullanıcıya tutulmayacak söz vermek olurdu (§14.6). */
+      archive:false,
+      defaultSort:'kod', defaultDir:'asc',
+      /* SATIR KAPSAMI YOK ve bu bilerek böyledir: kayıtta ne sorumlu, ne
+         departman, ne müşteri alanı vardır — sağlayıcı katalogu şirket
+         genelindedir. `scopeField` uydurmak, olmayan bir eksene süzgeç
+         yazmak olurdu; kapsamı kısıtlı rolde (devops `gor:'proje'`)
+         bileşen kendi şeridinde bunu zaten SÖYLER (§4.7, L-23). */
+
+      search:{ placeholder:'Sağlayıcı adı, kod, kategori ya da açıklama ara',
+               fields:['kod','ad','kategori','aciklama'] },
+
+      kpis:[
+        { label:'Katalog tanımı', icon:'i-link',
+          meta:function(){ return 'bağlantı tanımı, koşum kaydı değil'; },
+          calc:function(base){ return base.length; } },
+        { label:'Ölçülen durum: ' + (OLCULEN || '—'), icon:'i-x-circle', tone:'warn',
+          meta:function(){ return 'üç kanıt ekseninin üçü de boş'; },
+          calc:function(base){ return say(base, function(){ return !!OLCULEN; }); } },
+        { label:'İddia ölçümle çelişiyor', icon:'i-alert', tone:'danger',
+          meta:function(){ return 'katalog bağlı diyor, kanıt yok'; },
+          metaTone:'danger',
+          calc:function(base){ return say(base, function(e){ return E.celisir(e); }); } },
+        { label:'Kategori', icon:'i-layers',
+          meta:function(){ return 'kayıtlardan türetildi'; },
+          calc:function(base){ return benzersiz(base, 'kategori').length; } }
+      ],
+
+      tabs:[
+        { key:'tumu', label:'Tüm sağlayıcılar', icon:'i-list', filter:null },
+        { key:'celisen', label:'İddia çelişiyor', icon:'i-alert',
+          filter:function(e){ return E.celisir(e); } },
+        { key:'uyumlu', label:'İddia ölçümle uyumlu', icon:'i-check-circle',
+          filter:function(e){ return !E.celisir(e); } }
+      ],
+
+      columns:[
+        GV.cols.kod('kod', 'Kayıt', { width:'11%', locked:true }),
+
+        { key:'ad', label:'Sağlayıcı', width:'22%', cellClass:'cell-wrap', locked:true,
+          exportValue:function(e){ return e.ad || ''; },
+          render:function(e){
+            return '<span class="cell-main">' + GV.esc(e.ad || '—') + '</span>' +
+                   GV.cell.sub(GV.esc(e.aciklama || 'açıklama kaynak veride yok')); } },
+
+        { key:'kategori', label:'Kategori', width:'13%', cellClass:'cell-wrap',
+          exportValue:function(e){ return e.kategori || ''; },
+          render:function(e){ return e.kategori
+            ? '<span class="cell-main">' + GV.ico(kategoriIkonu(e.kategori),'ic-sm') + ' ' +
+              GV.esc(e.kategori) + '</span>'
+            : olculemedi('kayıtta kategori yazılı değil'); } },
+
+        /* ÖLÇÜLEN DURUM — bu bir ÖLÇÜMDÜR, rozet hak eder. Değer yordamdan
+           gelir; kayıttaki `durum` alanı buraya HİÇ girmez. */
+        { key:'olculen', label:'Ölçülen durum', width:'15%', cellClass:'center',
+          sortValue:function(){ return OLCULEN || null; },
+          exportValue:function(){ return OLCULEN || ''; },
+          render:function(){
+            return OLCULEN
+              ? GV.badge(OLCULEN) + GV.cell.sub('koşum kanıtı yok')
+              : olculemedi('ölçülen durum yordamdan okunamadı'); } },
+
+        /* KATALOG İDDİASI — ROZET YOK. Düz metin + soluk açıklama; çelişen
+           kayıtta çeliştiği alt satıra yazılır (§21.5.3). */
+        { key:'iddia', label:'Katalog iddiası', width:'19%', cellClass:'cell-wrap',
+          sortValue:function(e){ return E.katalogIddiasi(e); },
+          exportValue:function(e){ return E.katalogIddiasi(e) || ''; },
+          render:function(e){
+            var i = E.katalogIddiasi(e);
+            if(!i) return olculemedi('katalogda iddia yazılı değil');
+            return '<span class="cell-main">' + GV.esc(i) + '</span>' +
+                   GV.cell.sub(E.celisir(e)
+                     ? '<span class="u-danger">ölçümle çelişiyor</span> — koşum kanıtı yok'
+                     : GV.cell.faint('katalogun niyeti · ölçüm değil')); } },
+
+        { key:'aciklama', label:'Katalog açıklaması', visible:false, cellClass:'cell-wrap',
+          exportValue:function(e){ return e.aciklama || ''; },
+          render:function(e){ return e.aciklama
+            ? '<span class="cell-main">' + GV.esc(e.aciklama) + '</span>'
+            : olculemedi('açıklama kaynak veride yok'); } }
+      ],
+
+      filters:[
+        { key:'kategori', label:'Kategori (kayıtlardan türetildi)', type:'multi',
+          options:KATEGORI.map(function(k){
+            return { value:k, label:k + ' (' + say(SAGLAYICI, function(e){ return e.kategori === k; }) + ')' }; }) },
+        { key:'iddia', label:'Katalog iddiası (ölçüm değil)', type:'multi',
+          options:iddialar.map(function(i){
+            return { value:i, label:i + ' (' + say(SAGLAYICI, function(e){ return E.katalogIddiasi(e) === i; }) + ')' }; }),
+          test:function(e, v){
+            var i = E.katalogIddiasi(e);
+            return Array.isArray(v) ? v.indexOf(String(i)) !== -1 : String(i) === String(v); } },
+        { key:'celisir', label:'İddia–ölçüm çelişkisi', type:'select',
+          options:[{ value:'var', label:'çelişiyor (' + CELISEN.length + ')' },
+                   { value:'yok', label:'çelişmiyor (' + (SAGLAYICI.length - CELISEN.length) + ')' }],
+          test:function(e, v){ return v === 'var' ? E.celisir(e) : !E.celisir(e); } }
+      ],
+
+      mobile:function(e){
+        return GV.cell.mrow(
+          '<span class="cell-main">' + GV.esc(e.ad || '—') + '</span>',
+          GV.esc(e.kod),
+          [ GV.ico(kategoriIkonu(e.kategori),'ic-sm') + GV.esc(e.kategori || '—'),
+            GV.ico('i-info','ic-sm') + 'katalog: ' + GV.esc(E.katalogIddiasi(e) || '—') +
+              (E.celisir(e) ? ' (çelişiyor)' : '') ],
+          OLCULEN ? GV.badge(OLCULEN) : ''
+        );
+      },
+
+      /* TEK aksiyon ve `run`ı gerçek: çekmece yalnız okur. "Bağlantı kur" /
+         "koparma" gibi bir eylem YOKTUR — arkasında yordam olmadığı için. */
+      rowActions:[
+        { key:'ac', icon:'i-eye', label:'Sağlayıcıyı aç', run:function(e){ saglayiciCekmecesi(e); } }
+      ],
+      bulk:[{ key:'disa', label:'Dışa aktar', icon:'i-download', export:true }],
+
+      emptyState:{ icon:'i-link', title:'Bu görünümde sağlayıcı yok',
+        desc:'Filtreleri değiştirebilirsiniz. Katalogda ' + SAGLAYICI.length +
+             ' sağlayıcı tanımı var; bu ekran kayıt üretmez, yalnız okur.' }
+    });
+  }
+
+  /* Kategori → ikon. Adlar §3'teki 113 sembolün içinden seçildi; sözlükte
+     olmayan kategori nötr `i-link` alır — uydurma sembol adı sessiz bir
+     boşluk üretirdi. */
+  function kategoriIkonu(k){
+    var m = { 'Kaynak kod':'i-git', 'Takvim':'i-calendar', 'İletişim':'i-chat',
+              'Muhasebe':'i-receipt', 'Doküman':'i-file', 'Yapay zekâ':'i-cpu' };
+    return m[k] || 'i-link';
+  }
+
+  function saglayiciCekmecesi(e){
+    if(!e) return;
+    var iddia = E.katalogIddiasi(e);
+    var celisir = E.celisir(e);
+    var kunye = [
+      ['Kayıt', kod(e.kod)],
+      ['Sağlayıcı', GV.esc(e.ad || '—')],
+      ['Kategori', e.kategori
+        ? GV.ico(kategoriIkonu(e.kategori),'ic-sm') + ' ' + GV.esc(e.kategori)
+        : olculemedi('kayıtta kategori yazılı değil')],
+      ['Katalog açıklaması', e.aciklama ? GV.esc(e.aciklama)
+        : olculemedi('açıklama kaynak veride yok')],
+      ['Ölçülen durum', OLCULEN
+        ? GV.badge(OLCULEN) + GV.cell.sub('GV.entegrasyon.olculenDurum() · koşum kanıtı yok')
+        : olculemedi('ölçülen durum yordamdan okunamadı')],
+      ['Katalog iddiası', iddia
+        ? '<span class="cell-main">' + GV.esc(iddia) + '</span>' +
+          GV.cell.sub(celisir ? '<span class="u-danger">ölçümle çelişiyor</span>'
+                              : GV.cell.faint('katalogun niyeti · ölçüm değil'))
+        : olculemedi('katalogda iddia yazılı değil')]
+    ];
+    cekmeceAc('Sağlayıcı künyesi',
+      '<div class="gv-drawer-sec"><h4>Kayıt</h4>' + GV.dl(kunye) + '</div>' +
+      (celisir ? GV.notice({ tone:'danger', icon:'i-alert-circle',
+        title:'Katalog "' + (iddia || '—') + '" diyor, ölçüm "' + (OLCULEN || '—') + '" diyor',
+        text:'Bu kaydın bağlı olduğuna dair tek bir kanıt yoktur: koşum defteri ' +
+             'koleksiyonu hiç bulunmuyor, hata kuyruğu ' + KANIT.hataKuyrugu +
+             ' satır, webhook olayı ' + KANIT.webhookOlayi + ' satır. Kayıt silinmedi; ' +
+             'iddia ile ölçüm ayrıştırıldı ve ikisi de göründüğü gibi yazıldı.' })
+        : GV.notice({ tone:'info', icon:'i-info',
+        title:'Katalog iddiası ölçümle çelişmiyor',
+        text:'Bu kayıt bağlı olduğunu iddia etmiyor; ölçülen durumla aynı yöne bakıyor. ' +
+             'Yine de bir koşum kanıtı yoktur — çelişmemek, çalışmak demek değildir.' })) +
+      GV.notice({ tone:'warn', icon:'i-key',
+        title:'Bu ekranda sağlayıcı sırrı toplanmaz',
+        text:'Şartname §8.7 gereği canlı anahtarlar kodda ya da istemci paketinde ' +
+             'bulunamaz. Bu yüzden burada bir sır girdisi, bir yapıştırma kutusu ya da ' +
+             'gömülü bir kimlik bilgisi yoktur ve eklenmeyecektir; sağlayıcı kimliği ' +
+             'sunucuda doğar ve sunucuda kalır (BE-A6).' }));
+  }
+
+  /* ================================================================
+     2) ÖDEME SAĞLAYICISI (perm:'finans' — kapı SEKMEDE, ekranda değil)
+
+     KART FORMU YOK · ANAHTAR KUTUSU YOK · "TEST KARTI" YOK.
+     Basılan her şey `GV.entegrasyon.odemeAdaptoru()`ten okunur. Beş yordam
+     adı ŞARTNAMEDEN alındı, uydurulmadı; hiçbiri uygulanmadı ve ekran bunu
+     madde madde yazar.
+     ================================================================ */
+  function odemeSekmesi(p){
+    /* Beş yordamın ne yaptığı §8.7'nin kendi tarifidir; ekran yordamı
+       ANLATIR, uygulandığını iddia etmez. */
+    var YORDAM_ISI = {
+      createCheckoutSession:'ödeme oturumu açar — tutar, para birimi ve fatura ilişkisi sunucudan okunur',
+      verifyWebhook:'sağlayıcı bildiriminin imzasını ve zaman damgasını doğrular',
+      getPaymentStatus:'kesin sonucu sağlayıcıdan sorar; tarayıcı dönüşü ödeme saymaz',
+      refundPayment:'iadeyi ters kayıt olarak üretir ve ikinci onaya bağlar',
+      cancelSession:'açık oturumu kapatır; sonradan dönen işlem mutabakat kuyruğuna düşer'
+    };
+    var yordamlar = ADAPTOR.yordamlar || [];
+    var acikMadde = ADAPTOR.acikMadde || [];
+    var toplamMadde = (DB.paymentBackendGaps || []).length;
+    var vars = DB.paymentLinkDefaults || {};
+
+    var kunye = [
+      ['Sağlayıcı', ADAPTOR.saglayici ? kod(ADAPTOR.saglayici) +
+          GV.cell.sub('DB.paymentLinkDefaults.saglayici — mock adaptör')
+        : olculemedi('sağlayıcı alanı okunamadı')],
+      ['Etiket', ADAPTOR.etiket ? GV.esc(ADAPTOR.etiket)
+        : olculemedi('etiket kaynak veride yok')],
+      ['Sağlayıcı seçildi mi', ADAPTOR.secildi
+        ? '<span class="cell-main">Evet</span>' : '<span class="cell-main">Hayır</span>' +
+          GV.cell.sub('gerçek bir sağlayıcı seçilmedi; TEST/mock adaptör koşuyor')],
+      ['Şirket varsayılanı — geçerlilik', vars.gecerlilikGun != null
+        ? '<span class="u-num">' + GV.esc(F.num(vars.gecerlilikGun)) + ' gün</span>' +
+          GV.cell.sub('şirket varsayılanı olarak OKUNUR; bu ekranda düzenlenmez')
+        : olculemedi('DB.paymentLinkDefaults.gecerlilikGun okunamadı')],
+      ['Şirket varsayılanı — para birimi', vars.paraBirimi
+        ? kod(vars.paraBirimi) + GV.cell.sub('şirket kaydından gelir; bu ekranda düzenlenmez')
+        : olculemedi('DB.paymentLinkDefaults.paraBirimi okunamadı')]
+    ];
+
+    p.innerHTML =
+      GV.notice({ tone:'warn', icon:'i-alert',
+        title:'TEST kipi — ' + (ADAPTOR.etiket || 'sağlayıcı seçilmedi'),
+        text:'Gerçek bir ödeme sağlayıcısı seçilmemiştir. Bu ekranda kart formu, ' +
+             '"test kartı" ya da sağlayıcı sırrı girilebilecek bir alan YOKTUR ve ' +
+             'eklenmeyecektir (şartname §8.7). Aşağıdaki beş yordam adı şartnameden ' +
+             'alınmıştır ve ' + yordamlar.length + '/' + yordamlar.length +
+             ' yordamın hiçbiri uygulanmamıştır.' }) +
+
+      '<section class="gv-card u-mt-4"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-wallet') + 'Adaptör künyesi</h3>' +
+        '<span class="gc-meta">GV.entegrasyon.odemeAdaptoru()</span></div>' +
+        '<div class="gc-body">' + GV.dl(kunye) + '</div></section>' +
+
+      '<section class="gv-card u-mt-4"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-code') + 'Sağlayıcıdan bağımsız adaptör yüzeyi</h3>' +
+        '<span class="u-faint u-sm">' + yordamlar.length + ' yordam · ' +
+          yordamlar.length + ' uygulanmadı</span></div>' +
+        '<div class="gc-body">' +
+          GV.dl(yordamlar.map(function(y){
+            return [kod(y), '<span class="cell-main">Uygulanmadı</span>' +
+              GV.cell.sub(GV.esc(YORDAM_ISI[y] || 'şartname §8.7 yüzeyinin bir parçası'))];
+          })) +
+          '<p class="u-sm u-muted u-mt-8">Bu beş ad şartname §8.7\'den alındı, ' +
+          'uydurulmadı. Hiçbirinin arkasında çalışan bir yordam yoktur; bu yüzden ' +
+          'ekranda onları tetikleyecek bir düğme de yoktur (§14.6).</p>' +
+        '</div></section>' +
+
+      '<section class="gv-card u-mt-4"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-shield') + 'Ödeme tarafında açık maddeler</h3>' +
+        '<span class="u-faint u-sm">' + acikMadde.length + ' / ' + toplamMadde + ' madde</span></div>' +
+        '<div class="gc-body">' +
+          (acikMadde.length
+            ? GV.dl(acikMadde.map(function(g){
+                return [kod(g.kod), GV.esc(g.madde) + GV.cell.sub(GV.cell.faint('şartname ' + (g.bolum || '—')))];
+              }))
+            : GV.empty({ icon:'i-inbox', title:'Açık madde kaydı okunamadı',
+                desc:'DB.paymentBackendGaps yüklenmemiş olabilir; bu bir "eksik yok" beyanı değildir.' })) +
+          '<p class="u-sm u-muted u-mt-8">Kaynak: <code>DB.paymentBackendGaps</code> — ' +
+          'toplam ' + toplamMadde + ' maddenin §8.5 · §8.6 · §8.7 bölümlerine düşen ' +
+          acikMadde.length + ' tanesi burada listelendi; kalanı ödeme akışı ekranlarının ' +
+          'payındadır. Bu maddeler prototipte <b>uygulanmadı</b> ve <b>taklit edilmedi</b>.</p>' +
+        '</div></section>';
+  }
+
+  /* ================================================================
+     3) OTOMASYONLAR (rota 143)
+
+     AÇ/KAPA ANAHTARI YOKTUR — otomasyon motoru yoktur. Kayıtlardaki
+     `durum:'Aktif'` bir KATALOG İDDİASIDIR, koşan bir kuralın ölçümü değil;
+     bu yüzden yeşil rozet olarak DEĞİL, düz metin + açıklama olarak basılır.
+     Sağlayıcı sekmesindeki ayrımın (K-34) aynısıdır: kayıt bir niyet
+     kaydıdır, ekran onu ölçüm gibi göstermez.
+     ================================================================ */
+  function otomasyonSekmesi(p){
+    var kanallar   = benzersiz(OTOMASYON, 'kanal').sort();
+    var kullanimlar = benzersiz(OTOMASYON, 'kullanici').sort();
+    var iddiaAktif = say(OTOMASYON, function(o){ return o.durum === 'Aktif'; });
+    function kanalSayisi(k){ return say(OTOMASYON, function(o){ return (o.kanal || []).indexOf(k) !== -1; }); }
+    var kuralsiz = KANALSOZ.filter(function(k){ return !kanalSayisi(k); });
+
+    p.innerHTML =
+      GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Otomasyon motoru yoktur — bu bir katalogdur',
+        text:OTOMASYON.length + ' kural kaydının ' + iddiaAktif + ' tanesi katalogda ' +
+             '"Aktif" diyor, ama hiçbir tetikleyici çalışmaz ve hiçbir bildirim gönderilmez. ' +
+             'Bu yüzden ekranda kuralı açıp kapatan bir anahtar YOKTUR: çalışmayan bir ' +
+             'anahtar kullanıcıya tutulmayacak bir söz verir. Katalog durumu rozet olarak ' +
+             'değil, düz metin olarak basılır.' }) +
+
+      '<section class="gv-card u-mt-4"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-megaphone') + 'Kural kanalları</h3>' +
+        '<span class="gc-meta">DB.notificationChannels · ' + KANALSOZ.length + ' kanal</span></div>' +
+        '<div class="gc-body">' +
+          GV.dl(KANALSOZ.map(function(k){
+            var n = kanalSayisi(k);
+            return [GV.esc(k), n
+              ? '<span class="u-num">' + GV.esc(F.num(n)) + '</span>' +
+                GV.cell.sub('kuralda kanal olarak yazılı — kural koşmadığı için gönderim ölçülemez')
+              : '<span class="u-num">0</span>' +
+                GV.cell.sub(GV.cell.faint('bu kanalı kullanan kural YOK — ölçülmüş sıfır'))];
+          })) +
+          '<p class="u-sm u-muted u-mt-8">Sözlükte ' + KANALSOZ.length + ' kanal adı var; ' +
+          OTOMASYON.length + ' kuralın kullandığı kanal kümesi yalnız ' +
+          GV.esc(kanallar.join(' ve ')) + '. Kalan ' + kuralsiz.length + ' kanalı (' +
+          GV.esc(kuralsiz.join(' · ')) + ') kullanan tek bir kural bile yoktur. ' +
+          'Sayılar kuralın KANAL ALANINDAN sayıldı; gönderilmiş bir bildirim ölçümü değildir.</p>' +
+        '</div></section>' +
+
+      '<p class="u-sm u-muted u-mt-4">Görünen: <span id="entOtomasyonSayac">—</span> · ' +
+      'kanal ve kullanıcı seçenekleri ' + OTOMASYON.length + ' kuraldan türetildi ' +
+      '(otomasyon sözlüğü yoktur).</p>' +
+      '<div id="entOtomasyonListe" class="u-mt-4"></div>';
+
+    GV.list({
+      mount:'#entOtomasyonListe', id:'ayarEntOtomasyon', key:'kod',
+      source:function(){ return DB.automations || []; },
+      countTarget:'#entOtomasyonSayac',
+      exportName:'otomasyon-kurallari', exportTitle:'Otomasyon kuralları (katalog)',
+      pageSize:10, urlSync:false,
+      /* Kural kaydının arşiv ekseni yoktur; `durum` bir katalog iddiasıdır. */
+      archive:false,
+      defaultSort:'kod', defaultDir:'asc',
+      /* Kayıtta sorumlu/departman/müşteri alanı yoktur — `kullanici` alanı bir
+         KİŞİ KODU değil, kuralın kimi hedeflediğini anlatan serbest metindir
+         ('Sorumlu, yönetici'). Ona kapsam süzgeci bağlamak, olmayan bir
+         ilişkiyi varmış gibi göstermek olurdu. */
+
+      search:{ placeholder:'Kural adı, kod, tetikleyici ya da işlem ara',
+               fields:['kod','ad','tetikleyici','islem','kullanici','fayda'] },
+
+      kpis:[
+        { label:'Kural kaydı', icon:'i-refresh',
+          meta:function(){ return 'katalog kaydı; koşum kaydı değil'; },
+          calc:function(base){ return base.length; } },
+        { label:'Katalogda "Aktif"', icon:'i-info', tone:'warn',
+          meta:function(){ return 'kaydın iddiası — motor olmadığı için koşum ölçülemez'; },
+          metaTone:'warn',
+          calc:function(base){ return say(base, function(o){ return o.durum === 'Aktif'; }); } },
+        { label:'Kullanılan kanal', icon:'i-megaphone',
+          meta:function(base){ return KANALSOZ.length + ' kanallık sözlüğün ' +
+            benzersiz(base, 'kanal').length + ' tanesi kurallarda geçiyor'; },
+          calc:function(base){ return benzersiz(base, 'kanal').length; } },
+        { label:'Koşum kaydı', icon:'i-x-circle', tone:'danger',
+          meta:function(){ return 'otomasyon motoru yok — koşum defteri hiç tutulmuyor'; },
+          metaTone:'danger',
+          format:function(){ return '—'; },
+          calc:function(){ return null; } }
+      ],
+
+      /* Sekme anahtarı kanal ADINDAN değil SIRASINDAN üretilir: kanal adları
+         boşluk taşır ('Sistem içi') ve anahtar bir öznitelik değeridir. */
+      tabs:[{ key:'tumu', label:'Tüm kurallar', icon:'i-list', filter:null }].concat(
+        kanallar.map(function(k, i){
+          return { key:'kanal' + i, label:k, icon:'i-megaphone',
+                   filter:function(o){ return (o.kanal || []).indexOf(k) !== -1; } };
+        })),
+
+      columns:[
+        GV.cols.kod('kod', 'Kural', { width:'10%', locked:true }),
+
+        { key:'ad', label:'Kural', width:'20%', cellClass:'cell-wrap', locked:true,
+          exportValue:function(o){ return o.ad || ''; },
+          render:function(o){
+            return '<span class="cell-main">' + GV.esc(o.ad || '—') + '</span>' +
+                   GV.cell.sub(GV.esc(o.fayda || 'fayda notu kaynak veride yok')); } },
+
+        { key:'tetikleyici', label:'Tetikleyici', width:'20%', cellClass:'cell-wrap',
+          exportValue:function(o){ return o.tetikleyici || ''; },
+          render:function(o){ return o.tetikleyici
+            ? '<span class="cell-main">' + GV.esc(o.tetikleyici) + '</span>' +
+              GV.cell.sub(GV.cell.faint('tanım — bu koşul hiçbir yerde dinlenmiyor'))
+            : olculemedi('kayıtta tetikleyici yazılı değil'); } },
+
+        { key:'islem', label:'İşlem', cellClass:'cell-wrap',
+          exportValue:function(o){ return o.islem || ''; },
+          render:function(o){ return o.islem
+            ? '<span class="cell-main">' + GV.esc(o.islem) + '</span>'
+            : olculemedi('kayıtta işlem yazılı değil'); } },
+
+        { key:'kullanici', label:'Hedef kullanıcı', width:'13%', cellClass:'cell-wrap',
+          exportValue:function(o){ return o.kullanici || ''; },
+          render:function(o){ return o.kullanici
+            ? '<span class="cell-main">' + GV.esc(o.kullanici) + '</span>' +
+              GV.cell.sub(GV.cell.faint('serbest metin — personel kaydına bağlı değil'))
+            : olculemedi('hedef kullanıcı yazılmamış'); } },
+
+        { key:'kanal', label:'Kanal', width:'14%', cellClass:'cell-wrap',
+          sortValue:function(o){ return (o.kanal || []).join(' · ') || null; },
+          exportValue:function(o){ return (o.kanal || []).join(' · '); },
+          render:function(o){
+            var k = o.kanal || [];
+            return k.length
+              ? '<span class="cell-main">' + GV.esc(k.join(' · ')) + '</span>'
+              : olculemedi('kuralda kanal yazılı değil'); } },
+
+        /* Katalog durumu — ROZET DEĞİL. Motor yokken yeşil "Aktif" basmak,
+           sağlayıcı katalogunda yeşil "Bağlı" basmakla aynı iddiadır. */
+        { key:'durum', label:'Katalog durumu', width:'13%', cellClass:'cell-wrap',
+          exportValue:function(o){ return o.durum || ''; },
+          render:function(o){ return o.durum
+            ? '<span class="cell-main">' + GV.esc(o.durum) + '</span>' +
+              GV.cell.sub(GV.cell.faint('kaydın iddiası · koşum ölçümü değil'))
+            : olculemedi('kayıtta durum yazılı değil'); } }
+      ],
+
+      filters:[
+        { key:'kanal', label:'Kanal (kurallardan türetildi)', type:'multi',
+          options:kanallar.map(function(k){
+            return { value:k, label:k + ' (' + kanalSayisi(k) + ')' }; }),
+          test:function(o, v){
+            var k = o.kanal || [];
+            return (Array.isArray(v) ? v : [v]).some(function(x){ return k.indexOf(x) !== -1; }); } },
+        { key:'kullanici', label:'Hedef kullanıcı (kurallardan türetildi)', type:'select',
+          options:kullanimlar.map(function(k){
+            return { value:k, label:k + ' (' + say(OTOMASYON, function(o){ return o.kullanici === k; }) + ')' }; }) },
+        { key:'kanalSayi', label:'Kanal sayısı', type:'select',
+          options:[{ value:'tek', label:'tek kanal' }, { value:'coklu', label:'birden çok kanal' }],
+          test:function(o, v){ var n = (o.kanal || []).length;
+            return v === 'tek' ? n === 1 : n > 1; } }
+      ],
+
+      mobile:function(o){
+        return GV.cell.mrow(
+          '<span class="cell-main">' + GV.esc(o.ad || '—') + '</span>',
+          GV.esc(o.kod),
+          [ GV.ico('i-flag','ic-sm') + GV.esc(o.tetikleyici || '—'),
+            GV.ico('i-megaphone','ic-sm') + GV.esc((o.kanal || []).join(' · ') || '—'),
+            GV.ico('i-info','ic-sm') + 'katalog: ' + GV.esc(o.durum || '—') ]
+        );
+      },
+
+      rowActions:[
+        { key:'ac', icon:'i-eye', label:'Kuralı aç', run:function(o){ otomasyonCekmecesi(o); } }
+      ],
+      bulk:[{ key:'disa', label:'Dışa aktar', icon:'i-download', export:true }],
+
+      emptyState:{ icon:'i-refresh', title:'Bu görünümde kural yok',
+        desc:'Filtreleri değiştirebilirsiniz. Katalogda ' + OTOMASYON.length +
+             ' kural tanımı var; hiçbiri çalışmıyor.' }
+    });
+  }
+
+  function otomasyonCekmecesi(o){
+    if(!o) return;
+    var kunye = [
+      ['Kural', kod(o.kod)],
+      ['Ad', GV.esc(o.ad || '—')],
+      ['Tetikleyici', o.tetikleyici
+        ? GV.esc(o.tetikleyici) + GV.cell.sub(GV.cell.faint('bu koşulu dinleyen bir motor yok'))
+        : olculemedi('kayıtta tetikleyici yazılı değil')],
+      ['İşlem', o.islem ? GV.esc(o.islem) : olculemedi('kayıtta işlem yazılı değil')],
+      ['Hedef kullanıcı', o.kullanici
+        ? GV.esc(o.kullanici) + GV.cell.sub(GV.cell.faint('serbest metin — personel kaydına bağlı değil'))
+        : olculemedi('hedef kullanıcı yazılmamış')],
+      ['Kanal', (o.kanal || []).length
+        ? GV.esc((o.kanal || []).join(' · '))
+        : olculemedi('kuralda kanal yazılı değil')],
+      ['Beklenen fayda', o.fayda ? GV.esc(o.fayda) : olculemedi('fayda notu kaynak veride yok')],
+      ['Katalog durumu', o.durum
+        ? '<span class="cell-main">' + GV.esc(o.durum) + '</span>' +
+          GV.cell.sub(GV.cell.faint('kaydın iddiası · koşum ölçümü değil'))
+        : olculemedi('kayıtta durum yazılı değil')],
+      ['Son koşum', olculemedi('koşum defteri yok — bu kural hiç çalıştırılmadı, ölçülemedi')]
+    ];
+    cekmeceAc('Otomasyon kuralı',
+      '<div class="gv-drawer-sec"><h4>Kural künyesi</h4>' + GV.dl(kunye) + '</div>' +
+      GV.notice({ tone:'warn', icon:'i-alert',
+        title:'BE-A7 — bu kural çalışmaz',
+        text:'Tetikleyici ve kanal alanları bir katalogdur; arkalarında koşan bir motor ' +
+             'yoktur. Bu çekmecede kuralı açan, kapatan ya da elle tetikleyen bir düğme ' +
+             'bilerek yoktur — yapılamayan iş düğme olarak vaat edilmez.' }));
+  }
+
+  /* ================================================================
+     4) HATA KUYRUĞU
+
+     ⚠️ EKRAN "HATA YOK" DEMEZ. `DB.integrationErrors` boştur (0) ama bu
+     boşluk bir başarı ölçümü değildir: koşum defteri koleksiyonu HİÇ YOK,
+     dolayısıyla kontrol YAPILAMADI. §10.1'in üç ayrı cümlesi burada yan
+     yana durur — boş ≠ sıfır ≠ ölçülemedi.
+     ================================================================ */
+  function hataSekmesi(p){
+    /* Şema alanları §21.5'ten alındı; açıklamalar veri dosyasının kendi
+       tarifidir (kullanıcı hatayı, etkilenen kaydı, deneme sayısını, son
+       mesajı, güvenli özeti, önerilen çözümü ve tekrar koşum sonucunu
+       görebilmelidir). Bir örnek satır UYDURULMADI: çalışmayan bir
+       entegrasyonun hata verdiğini iddia etmek olurdu (L-13). */
+    var SEMA = [
+      ['kod', 'kuyruk kaydının kendi kodu'],
+      ['entegrasyon', 'hangi sağlayıcıda oluştu (ENT-*)'],
+      ['olayTipi', 'hangi olay denendi (gönderim · senkron · webhook)'],
+      ['kayit', 'etkilenen CRM kaydı — kullanıcı neyin etkilendiğini görmeli'],
+      ['deneme', 'kaçıncı denemede kaldı'],
+      ['sonMesaj', 'sağlayıcının döndürdüğü son hata metni'],
+      ['payloadOzet', 'GÜVENLİ özet — ham gövde ve sır alanları taşınmaz'],
+      ['onerilenCozum', 'kullanıcının atabileceği somut adım'],
+      ['durum', 'kuyruk kaydının kendi durumu (açık · çözüldü · yok sayıldı)'],
+      ['ilkGorulme', 'ilk oluşma zamanı'],
+      ['sonGorulme', 'son tekrar zamanı'],
+      ['replaySonuc', 'tekrar çalıştırma sonucu']
+    ];
+
+    p.innerHTML =
+      GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Koşum kaydı yok — kontrol yapılamadı',
+        text:'Hata kuyruğu ' + HATA.length + ' satır taşıyor, ancak bu "hata yok" ANLAMINA ' +
+             'GELMEZ. Bir entegrasyon hatası ancak bir koşum varsa doğar; bu prototipte ' +
+             'koşum defteri koleksiyonu hiç bulunmuyor, webhook olayı ' + KANIT.webhookOlayi +
+             ' satır ve ölçülen bağlantı durumu "' + (OLCULEN || '—') + '". Yani kuyruk ' +
+             'temiz olduğu için değil, hiç doldurulmadığı için boştur.' }) +
+
+      '<div class="gv-card u-mt-4"><div class="gc-body">' +
+        GV.empty({ icon:'i-inbox',
+          title:'Hata kuyruğunda satır yok',
+          desc:'Boş liste ile ölçülemedi aynı şey değildir: burada gösterilecek bir kayıt ' +
+               'olmamasının sebebi hataların çözülmüş olması değil, hiçbir entegrasyonun ' +
+               'hiç çalıştırılmamış olmasıdır. Sunucu tarafı kuyruk gelene kadar bu liste dolmaz.' }) +
+      '</div></div>' +
+
+      '<section class="gv-card u-mt-4"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-columns') + 'Kayıt yazıldığında beklenen biçim</h3>' +
+        '<span class="u-faint u-sm">' + SEMA.length + ' alan</span></div>' +
+        '<div class="gc-body">' +
+          GV.dl(SEMA.map(function(s){
+            return [kod(s[0]), GV.esc(s[1])];
+          })) +
+          '<p class="u-sm u-muted u-mt-8">Bu şema, kuyruk sunucu tarafında doğduğunda ' +
+          'ekranın basacağı alanlardır; bugün tek bir örnek satır bile ÜRETİLMEDİ. ' +
+          'Örnek hata kaydı yazmak, çalışmayan bir entegrasyonun çalıştığını ve hata ' +
+          'verdiğini iddia etmek olurdu. Tekrar çalıştırma (replay) düğmesi de bu ' +
+          'yüzden yoktur: tetiklenecek bir koşum yok (BE-A6).</p>' +
+        '</div></section>';
+  }
+
+  /* ================================================================
+     BACKEND PAYI BEYANI — §10.2(b) biçimi, §21.7 tablosundan KOPYALANDI.
+     Yalnız BU ekranla ilgili dört madde: BE-A6 · BE-A7 · BE-S5 · B-08.
+     İlgisiz madde beyanı, beyanın kendisini gürültüye çevirir (§21.7).
+     ================================================================ */
+  var BACKEND = [
+    { kod:'BE-A6', madde:'Hiçbir entegrasyon adaptörü uygulanmadı; katalog bir niyet ' +
+        'kaydıdır, koşum defteri yoktur.' },
+    { kod:'BE-A7', madde:'Otomasyon kuralları çalışmaz; tetikleyici ve kanal alanları ' +
+        'bir katalogdur.' },
+    { kod:'BE-S5', madde:'Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır.' },
+    { kod:'B-08',  madde:'Gerçek sağlayıcı adaptörü — bugün TEST/mock ' +
+        '(DB.paymentBackendGaps).' }
+  ];
+  document.getElementById('ayarBackend').innerHTML =
+    '<section class="gv-card"><div class="gc-head">' +
+      '<h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+      '<span class="u-faint u-sm">' + BACKEND.length + ' madde</span></div>' +
+      '<div class="gc-body">' +
+        GV.dl(BACKEND.map(function(b){
+          return ['<span class="cell-code">' + GV.esc(b.kod) + '</span>', GV.esc(b.madde)];
+        })) +
+        '<p class="u-sm u-muted u-mt-8">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+        '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur. ' +
+        'Şartname §8.7 gereği bu ekranda hiçbir canlı sır alanı açılmadı; sağlayıcı ' +
+        'kimlik bilgileri sunucuda doğmalı ve istemciye hiç inmemelidir.</p>' +
+      '</div></section>';
+});
+</script>
+</body>
+</html>

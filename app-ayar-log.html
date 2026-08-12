@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Sistem Kayıtları — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="ayarlar" data-screen="log">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/hr.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/data/odeme.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   SİSTEM KAYITLARI — ekran brief §21.6 (rota 144 · 145 · 146)
+
+   AYAR KABUĞU (§21.1). Sekme listesi BU EKRANDA YAZILMAZ:
+   `GV.shell.ayarSekmeleri('log')` yetkiden süzülmüş kümeyi döndürür, ekran
+   ne gelirse onu basar — `GV.flow.adimlar` düğme üretiminin (§7.1) aynı
+   ilkesidir. Ölçüldü: ekrana girebilen beş rolün (`sahip` · `genelmudur` ·
+   `sistem` · `operasyon` · `devops`) hepsinde ÜÇ sekme döner
+   (`kayit` · `arsiv` · `kalite`); `kayit` sekmesi `perm:'log'` kapısındadır
+   ve beş rolün beşinde de `log:true`. Menü kapısını ekran KONTROL ETMEZ —
+   `shell.js` `SECTIONS.ayarlar` yetkisiz rolü içeri hiç almaz (§21.0).
+
+   ── BU EKRANIN EN ÖNEMLİ KURALI: İKİNCİ DEFTER ÜRETİLMEZ (§21.6) ──
+   `DB.logs`a doğrudan yazmak, `DB.activities`e `unshift` etmek ya da kendi
+   olay dizisini kurmak YASAKTIR. Tek yüzey `GV.audit`tir (§9.1): iki
+   defteri birleştirir, aynı olayın iki deftere düşen kopyasını TEKİLLEŞTİRİR
+   ve tek zaman çizelgesi döndürür. Bu ekran defteri yalnız OKUR:
+     · `GV.audit.oku(null, 0)` → 214 satır (olay 207 + sistem 7, tekil)
+     · `GV.audit.denetle()`    → { olay, sistem, toplam, kayitKodsuz, aktorsuz }
+   Satır kimliği `id` alanıdır ve `GV.list` `key:'id'` onu kullanır; içerikten
+   türetilmiş kararlı bir anahtardır, dizi indeksi DEĞİLDİR (iki defter de
+   `unshift` ile büyür, indeks kayar). Ekran `id`yi BASMAZ.
+
+   ── KALİTE SEKMESİ YENİ ÖLÇÜM ÜRETMEZ (§21.6) ──
+   Ortak katmanın kendi nöbetçileri OKUNUR ve BASILIR: `GV.audit.denetle()` ·
+   `DB.bayatAktif` · `DB.ikBayat` · `GV.varlik.sonTazeleme` ·
+   `DB.assetClaimDrops` · `GV.fin.sonSapma` · `GV.approval.sonSapma` ·
+   `GV.entegrasyon.kanit()` · `DB.paymentLinkDefaults`. Her satır üç şeyi
+   birden söyler: ne ölçüldü · değer · ölçülemediyse neden. Sıfır `0` olarak
+   basılır (kayıt var, değer sıfır); ölçülemeyen `—` + sebep olarak basılır
+   (§10.1 — boş ≠ sıfır ≠ ölçülemedi).
+
+   K-33 — `aktif` ALANI OKUNMAZ. `DB.documents` `durum` ekseni OLMAYAN üç
+   koleksiyondan biridir; orada arşiv kararı kanonik olarak alan üstünden
+   verilir ama soru YALNIZ `GV.arsivli(d)` yordamına sorulur (§20.2 · §21.9.9).
+   Ekran süzgeci elle kurmaz; arşiv anahtarını `GV.list` bileşeni aynı yordam
+   üzerinden çalıştırır. Denetim defteri satırlarının arşiv ekseni YOKTUR —
+   o listede `archive:false` bildirilir, çalışmayan bir anahtar basılmaz.
+
+   Veri dosyaları §21.0 tablosundan: `org` · `crm` · `work` · `misc` · `ops` ·
+   `hr` · `lifecycle` · `odeme`. `odeme.js` kalite sekmesi için ZORUNLUDUR
+   (`DB.paymentLinkDefaults` · `DB.paymentLinks` · `DB.webhookEvents`).
+   `firsat.js` yüklenmez.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+  var F = GV.fmt;
+
+  /* ---- yardımcılar ---------------------------------------------------- */
+  function bos(v){ return v == null || v === '' ? null : v; }
+  function empAd(kod){ return kod ? (DB.empName ? DB.empName(kod) : kod) : null; }
+  function empDep(kod){ var e = kod && DB.emp ? DB.emp(kod) : null; return e ? e.dep : null; }
+  function onek(kayitKod){ return String(kayitKod || '').split('-')[0] || null; }
+  function say(list, fn){ return list.filter(fn).length; }
+  function benzersiz(list, alan){
+    return list.reduce(function(acc, r){
+      var v = typeof alan === 'function' ? alan(r) : r[alan];
+      if(v != null && v !== '' && acc.indexOf(v) === -1) acc.push(v);
+      return acc;
+    }, []);
+  }
+  /* Ölçülemeyen değerin dili tek yerde: sayı yoksa `0` DEĞİL `—` + sebep. */
+  function olculemedi(sebep){ return GV.cell.faint('—') + GV.cell.sub(GV.esc(sebep)); }
+
+  /* ---- kaynaklar — hepsi okuma, hiçbiri yazma ------------------------- */
+  var LOG    = GV.audit.oku(null, 0) || [];      /* 214 satır — ölçüldü */
+  var DEN    = GV.audit.denetle() || null;       /* iki defterin ham sayımı */
+  var BELGE  = DB.documents || [];                /* 11 */
+  var SURUM  = DB.documentVersions || [];         /* 16 */
+  var ONAYAD = DB.documentApprovals || [];        /* 15 */
+
+  /* Arşiv sorusu YALNIZ yordamdan (K-33): ölçüldü, bugün 0 belge arşivli. */
+  var ARSIVLI_BELGE = say(BELGE, function(d){ return GV.arsivli(d); });
+
+  /* ⚠️ SIRA — `GV.pageHead` liste bileşeninden ÖNCE (brief §2.4). */
+  GV.pageHead({
+    eyebrow:'Sistem',
+    title:'Sistem Kayıtları',
+    sub:F.num(LOG.length) + ' denetim satırı · ' + BELGE.length + ' arşiv belgesi · ' +
+        'dokuz nöbetçi ölçümü — tümü ortak katmandan okundu',
+    actions:[]
+  });
+
+  /* ================================================================
+     AYAR KABUĞU — sekmeler yetkiden üretilir (§21.1, birebir desen)
+     ================================================================ */
+  var SEKME = GV.shell.ayarSekmeleri('log');
+  if(!SEKME.length){
+    mount.innerHTML = GV.empty({ icon:'i-lock',
+      title:'Görebileceğiniz ayar sekmesi yok',
+      desc:'Bu ekrana girebiliyorsunuz ama rolünüz hiçbir sekmeyi açmıyor. ' +
+           'Sistem kayıtları sekmesi permMatrix.log kapısındadır; kapıyı ekran gevşetmez.' });
+    return;                                      /* ölü sekme şeridi basma */
+  }
+
+  mount.innerHTML =
+    '<div class="gv-tabs" role="tablist" id="ayarSekme">' +
+      SEKME.map(function(t){
+        return '<button type="button" class="gv-tab" role="tab" data-tab="' + t.key + '"' +
+               ' aria-selected="false">' + GV.ico(t.ic,'ic-sm') + GV.esc(t.lbl) + '</button>';
+      }).join('') +
+    '</div>' +
+    SEKME.map(function(t){
+      return '<div role="tabpanel" data-panel="' + t.key + '" id="panel-' + t.key + '" hidden></div>';
+    }).join('') +
+    '<div id="ayarBackend" class="u-mt-8"></div>';
+
+  /* ⚠️ SIRA: dinleyici `GV.tabs`ten ÖNCE bağlanır — `GV.tabs` kurulurken ilk
+     sekmeyi hemen etkinleştirir ve `gv:tab` atar. Sonra bağlanırsa AÇILIŞTAKİ
+     sekme hiç çizilmez. Dinleyici `document`a bağlı (kalıcı düğüm) → `GV.on`
+     ile tekil anahtar üzerinden, `GV.refresh()` sonrası birikmesin (§2.6). */
+  var cizildi = {};
+  GV.on(document, 'gv:tab', function(e){ ciz(e.detail.key); }, 'ayarLog-tab');
+  GV.tabs('#ayarSekme');
+
+  function ciz(key){
+    if(cizildi[key]) return;                     /* tembel çizim — bir kez */
+    cizildi[key] = true;
+    var p = document.getElementById('panel-' + key);
+    if(!p) return;
+    if(key === 'kayit')  return kayitSekmesi(p);
+    if(key === 'arsiv')  return arsivSekmesi(p);
+    if(key === 'kalite') return kaliteSekmesi(p);
+  }
+
+  /* ================================================================
+     ÇEKMECE — tek çekmece açık tutulur (L-18: bileşen markup'ı
+     `document.body`ye basar, ekran kendi overlay'ini kurmaz).
+     ================================================================ */
+  var acikCekmece = null;
+  function cekmeceAc(baslik, html){
+    if(acikCekmece && acikCekmece.close) acikCekmece.close();
+    acikCekmece = GV.drawer({ title:baslik, body:'',
+      onMount:function(govde){ govde.innerHTML = html; } });
+  }
+
+  /* ================================================================
+     1) KAYIT — DENETİM İZİ (rota 144, perm:'log')
+
+     Tek `GV.list`, `key:'id'`, `pageSize:20`, `urlSync:false` (§21.1: bu
+     ekranda hiçbir liste adres anahtarı tutmaz; sekme anahtarı `#hash`tedir).
+     Filtre seçenekleri SÖZLÜKTEN DEĞİL SATIRLARDAN türetilir — modül sözlüğü
+     YOKTUR — ve ekran bunu her filtre etiketinde yazar (§10.1).
+     ================================================================ */
+  function kayitSekmesi(p){
+    var moduller = benzersiz(LOG, 'modul').sort();
+    var kisiler  = benzersiz(LOG, 'kisi').sort();
+    var onekler  = benzersiz(LOG, function(r){ return onek(r.kayit); }).sort();
+    var defterler = benzersiz(LOG, 'defter');
+    var modulluSatir = say(LOG, function(r){ return !!r.modul; });
+
+    p.innerHTML =
+      GV.notice({ tone:'info', icon:'i-shield',
+        title:'Tek defter — GV.audit',
+        text:'Bu ekran ikinci bir defter üretmez. ' + F.num(LOG.length) + ' satırın tamamı ' +
+             'GV.audit.oku() ile okundu: olay defteri ' + (DEN ? DEN.olay : '?') + ' + sistem günlüğü ' +
+             (DEN ? DEN.sistem : '?') + ', aynı olayın iki deftere düşen kopyası tekilleştirildi. ' +
+             'Kayıt kodu olmayan satır ' + (DEN ? DEN.kayitKodsuz : '?') + ', aktörü olmayan satır ' +
+             (DEN ? DEN.aktorsuz : '?') + ' — bunlar ölçülmüş sıfırlardır.' }) +
+      '<p class="u-sm u-muted u-mt-4">Görünen: <span id="logKayitSayac">—</span> · ' +
+      'süzgeç seçenekleri mevcut ' + F.num(LOG.length) + ' satırdan türetildi (modül sözlüğü yoktur) · ' +
+      'modül bilgisi ' + modulluSatir + '/' + F.num(LOG.length) + ' satırda dolu.</p>' +
+      '<div id="logKayitListe" class="u-mt-4"></div>';
+
+    GV.list({
+      mount:'#logKayitListe', id:'ayarLogKayit', key:'id',
+      source:function(){ return GV.audit.oku(null, 0); },
+      countTarget:'#logKayitSayac',
+      exportName:'sistem-kayitlari', exportTitle:'Sistem Kayıtları (denetim izi)',
+      pageSize:20, urlSync:false,
+      /* Denetim satırının arşiv ekseni YOKTUR — çalışmayan bir anahtar
+         basmak kullanıcıya tutulmayacak bir söz vermek olurdu (§14.6). */
+      archive:false,
+      defaultSort:'tarih', defaultDir:'desc',
+
+      search:{ placeholder:'Olay metni, kayıt kodu, LOG kodu ya da modül ara',
+               fields:['metin','kayit','kisi','kod','modul'],
+               extra:function(r){ return empAd(r.kisi) || ''; } },
+
+      /* Kapsam: satırın aktörü `kisi`dir. `departman` kapsamı satırda YAZILI
+         DEĞİL, aktörün personel kaydından türetilir (yordam eşlemesi, §4.7).
+         `proje` kapsamı (devops rolü) için oturumda karşılık YOK — bileşen
+         bunu şeritte kendisi söyler, ekran sessizce tam liste basmaz. */
+      scopeField:{ kendi:'kisi', departman:function(r){ return empDep(r.kisi); } },
+
+      kpis:[
+        { label:'Denetim satırı', icon:'i-list',
+          meta:function(base){ return 'GV.audit.oku(null,0) — iki defter birleşik ve tekil'; },
+          calc:function(base){ return base.length; } },
+        { label:'Olay defteri', icon:'i-activity', tone:'info',
+          meta:function(){ return 'DB.activities — modül ve IP taşımaz'; },
+          calc:function(base){ return say(base, function(r){ return r.defter === 'olay'; }); } },
+        { label:'Sistem günlüğü', icon:'i-shield', tone:'accent',
+          meta:function(){ return 'DB.logs — LOG kodu, modül ve IP yalnız burada'; },
+          calc:function(base){ return say(base, function(r){ return r.defter === 'sistem'; }); } },
+        { label:'Bugünkü hareket', icon:'i-calendar', tone:'warn',
+          meta:function(){ return 'DB.today = ' + F.date(DB.today) + ' — sabit tarih ekseni'; },
+          calc:function(base){ return say(base, function(r){
+            return String(r.tarih).slice(0,10) === DB.today; }); } },
+        { label:'Değer değişimi yazılı', icon:'i-edit',
+          meta:function(base){ return say(base, function(r){ return !r.eski && !r.yeni; }) +
+            ' satırda eski/yeni boş — değişim kaydedilmemiş'; },
+          metaTone:'warn',
+          calc:function(base){ return say(base, function(r){ return !!(r.eski || r.yeni); }); } }
+      ],
+
+      columns:[
+        /* `GV.cols.date` yalnız GÜNÜ basar (`Fmt.date` ilk 10 haneyi alır);
+           denetim izinde SAAT bilginin kendisidir, o yüzden kolon elle
+           kurulur ve `GV.fmt.dt` ile gün + saat basılır. */
+        { key:'tarih', label:'Zaman', width:'13%', cellClass:'center', locked:true,
+          sortValue:function(r){ return r.tarih || null; },
+          exportValue:function(r){ return r.tarih || ''; },
+          render:function(r){ return r.tarih
+            ? '<span class="cell-date">' + GV.esc(F.dt(r.tarih)) + '</span>'
+            : GV.cell.faint('—'); } },
+
+        GV.cols.kisi('kisi', 'Kişi', { width:'14%', bosMetin:'—' }),
+
+        { key:'metin', label:'Olay', cellClass:'cell-wrap',
+          exportValue:function(r){
+            var d = (r.eski || r.yeni) ? ' [' + (r.eski || '—') + ' → ' + (r.yeni || '—') + ']' : '';
+            return (r.metin || '') + d; },
+          render:function(r){
+            /* Satırın ikonu VERİDEN gelir; ölçüldü — 54 farklı ad, 54'ü de
+               113 sembollük sprite'ta var. Boş gelirse nötr `i-dot`. */
+            var alt = (r.eski || r.yeni)
+              ? GV.esc(r.eski || '—') + ' → ' + GV.esc(r.yeni || '—')
+              : 'değer değişimi kaydedilmemiş';
+            return '<span class="cell-main">' + GV.ico(r.icon || 'i-dot','ic-sm') + ' ' +
+                   GV.esc(r.metin || '—') + '</span>' + GV.cell.sub(alt); } },
+
+        { key:'kayit', label:'Kayıt', width:'13%',
+          exportValue:function(r){ return r.kayit || ''; },
+          render:function(r){ return r.kayit
+            ? '<span class="cell-code">' + GV.esc(r.kayit) + '</span>'
+            : GV.cell.faint('—'); } },
+
+        { key:'modul', label:'Modül', width:'12%', cellClass:'cell-wrap',
+          exportValue:function(r){ return r.modul || ''; },
+          render:function(r){ return r.modul
+            ? '<span class="cell-main">' + GV.esc(r.modul) + '</span>'
+            : olculemedi('olay defteri modül taşımaz'); } },
+
+        { key:'defter', label:'Defter', width:'11%', cellClass:'center',
+          exportValue:function(r){ return r.defter || ''; },
+          render:function(r){ return '<span class="cell-main">' +
+            GV.esc(r.defter === 'sistem' ? 'Sistem günlüğü' : 'Olay defteri') + '</span>'; } },
+
+        /* Bu iki alan YALNIZ sistem günlüğünden gelen 7 satırda doludur;
+           varsayılan görünümde kapalı, kolon yöneticisinden açılabilir. */
+        { key:'kod', label:'LOG kodu', visible:false, cellClass:'center',
+          exportValue:function(r){ return r.kod || ''; },
+          render:function(r){ return r.kod
+            ? '<span class="cell-code">' + GV.esc(r.kod) + '</span>'
+            : olculemedi('olay defterinde kod alanı yok'); } },
+        { key:'ip', label:'IP', visible:false, cellClass:'center',
+          exportValue:function(r){ return r.ip || ''; },
+          render:function(r){ return r.ip
+            ? '<span class="cell-code">' + GV.esc(r.ip) + '</span>'
+            : olculemedi('IP yalnız sistem günlüğünde tutulur'); } }
+      ],
+
+      filters:[
+        { key:'defter', label:'Defter (satırlardan türetildi)', type:'multi',
+          options:defterler.map(function(d){
+            return { value:d, label:(d === 'sistem' ? 'Sistem günlüğü' : 'Olay defteri') +
+              ' (' + say(LOG, function(r){ return r.defter === d; }) + ')' }; }) },
+        /* Modül SÖZLÜĞÜ YOKTUR — yedi değer 214 satırın 7'sinden türetildi. */
+        { key:'modul', label:'Modül (7 sistem satırından türetildi)', type:'multi',
+          options:moduller.map(function(m){
+            return { value:m, label:m + ' (' + say(LOG, function(r){ return r.modul === m; }) + ')' }; }) },
+        { key:'onek', label:'Kayıt kodu öneki (satırlardan türetildi)', type:'select',
+          options:onekler.map(function(o){
+            return { value:o, label:o + ' (' + say(LOG, function(r){ return onek(r.kayit) === o; }) + ')' }; }),
+          test:function(r, v){ return onek(r.kayit) === v; } },
+        { key:'kisi', label:'Kişi (satırlardan türetildi)', type:'select',
+          options:kisiler.map(function(k){ return { value:k, label:empAd(k) || k }; }) },
+        { key:'tarih', label:'Zaman aralığı', type:'daterange' },
+        { key:'degisim', label:'Değer değişimi', type:'select',
+          options:[{ value:'var', label:'eski/yeni yazılı' },
+                   { value:'yok', label:'değişim kaydedilmemiş' }],
+          test:function(r, v){ var d = !!(r.eski || r.yeni); return v === 'var' ? d : !d; } }
+      ],
+
+      mobile:function(r){
+        return GV.cell.mrow(
+          '<span class="cell-main">' + GV.esc(F.dt(r.tarih)) + '</span>',
+          GV.ico(r.icon || 'i-dot','ic-sm') + ' ' + GV.esc(r.metin || '—'),
+          [ GV.ico('i-user','ic-sm') + GV.esc(empAd(r.kisi) || '—'),
+            GV.ico('i-file','ic-sm') + GV.esc(r.kayit || '—'),
+            GV.ico('i-shield','ic-sm') + GV.esc(r.defter === 'sistem' ? 'Sistem günlüğü' : 'Olay defteri') ]
+        );
+      },
+
+      rowActions:[
+        { key:'ac', icon:'i-eye', label:'Satırı aç', run:function(r){ satirCekmecesi(r); } }
+      ],
+      bulk:[{ key:'disa', label:'Dışa aktar', icon:'i-download', export:true }],
+
+      emptyState:{ icon:'i-inbox', title:'Bu görünümde denetim satırı yok',
+        desc:'Filtreleri değiştirebilirsiniz. Birleşik defterde ' + F.num(LOG.length) +
+             ' satır var; bu ekran satır üretmez, yalnız okur.' }
+    });
+  }
+
+  /* Satır çekmecesi — altı kolon defterin ON bir alanını göstermez; çekmece
+     kalanını (LOG kodu · IP · ton) kaydın kendisinden basar. Kimlik alanı
+     `id` BASILMAZ: `GV.list` `key:`i olarak kullanılır (§21.6). */
+  function satirCekmecesi(r){
+    if(!r) return;
+    var satirlar = [
+      ['Zaman', GV.esc(F.dt(r.tarih))],
+      ['Kişi', r.kisi ? GV.user(r.kisi, { sm:true }) : olculemedi('aktör yazılmamış')],
+      ['Olay', GV.esc(r.metin || '—')],
+      ['Eski değer', bos(r.eski) ? GV.esc(r.eski) : null],
+      ['Yeni değer', bos(r.yeni) ? GV.esc(r.yeni) : null],
+      ['Kayıt', r.kayit ? '<span class="cell-code">' + GV.esc(r.kayit) + '</span>' : null],
+      ['Defter', GV.esc(r.defter === 'sistem' ? 'Sistem günlüğü (DB.logs)' : 'Olay defteri (DB.activities)')],
+      ['LOG kodu', r.kod ? '<span class="cell-code">' + GV.esc(r.kod) + '</span>'
+                         : olculemedi('olay defterinde kod alanı yok')],
+      ['Modül', r.modul ? GV.esc(r.modul) : olculemedi('olay defteri modül taşımaz')],
+      ['IP', r.ip ? '<span class="cell-code">' + GV.esc(r.ip) + '</span>'
+                  : olculemedi('IP yalnız sistem günlüğünde tutulur')]
+    ];
+    var degisimYok = !r.eski && !r.yeni;
+    cekmeceAc('Denetim satırı',
+      '<div class="gv-drawer-sec"><h4>Satır künyesi</h4>' +
+      GV.dl(satirlar, { skipEmpty:true }) + '</div>' +
+      (degisimYok ? GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Değer değişimi kaydedilmemiş',
+        text:'Bu satırda eski ve yeni değer alanları boştur; olayın neyi ' +
+             'değiştirdiği defterden türetilemez. Satır atlanmadı, eksiği yazıldı.' }) : '') +
+      GV.notice({ tone:'warn', icon:'i-lock',
+        title:'BE-A8 — defter değişmez (append-only) değildir',
+        text:'Bu satır düzeltilemez ve silinemez bir defterde durmuyor; bellekte tutuluyor ' +
+             've sayfa yenilenince sıfırlanıyor. Ekranda düzenleme/silme düğmesi yoktur.' }));
+  }
+
+  /* ================================================================
+     2) ARŞİV — BELGE ARŞİVİ (rota 145)
+
+     `DB.documents` (11) · `DB.documentVersions` (16) · `DB.documentApprovals`
+     (15). `durum` ekseni YOK → arşiv sorusu `GV.arsivli(d)` üzerinden
+     sorulur (§20.2 üç istisnadan biri) ve süzmeyi bileşen yapar.
+     İNDİRME DÜĞMESİ YOKTUR — `BE-S4`: dosya gerçek depoda değil; `boyut` ve
+     `format` alanları basılır, indirilemezlik yazılır.
+     ================================================================ */
+  function arsivSekmesi(p){
+    var turler     = benzersiz(BELGE, 'tur').sort();
+    var klasorler  = benzersiz(BELGE, 'klasor').sort();
+    var gizlilikler = benzersiz(BELGE, 'gizlilik').sort();
+    var onaylar    = benzersiz(BELGE, 'onay').sort();
+    var yukleyenler = benzersiz(BELGE, 'yukleyen').sort();
+    var formatlar  = benzersiz(BELGE, 'format');
+
+    function surumleri(kod){
+      return SURUM.filter(function(v){ return v.dokuman === kod; })
+                  .slice().sort(function(a, b){ return a.sira - b.sira; });
+    }
+    function onaylari(kod){
+      return ONAYAD.filter(function(a){ return a.dokuman === kod; })
+                   .slice().sort(function(a, b){ return a.sira - b.sira; });
+    }
+
+    p.innerHTML =
+      GV.notice({ tone:'warn', icon:'i-alert',
+        title:'BE-S4 — belgeler indirilemez',
+        text:'Dosyalar gerçek bir depoya yazılmadı; kaynak veride yalnız dosya adı, boyutu ve ' +
+             'formatı tutuluyor. Bu yüzden indirme düğmesi YOKTUR — yapılamayan iş düğme olarak ' +
+             'vaat edilmez. Ölçülen format: ' + formatlar.join(' · ') + ' (' + BELGE.length + '/' +
+             BELGE.length + ' kayıt).' }) +
+      '<p class="u-sm u-muted u-mt-4">Görünen: <span id="logArsivSayac">—</span> · ' +
+      'belge türü (' + turler.length + ') · klasör (' + klasorler.length + ') · gizlilik (' +
+      gizlilikler.length + ') seçenekleri mevcut ' + BELGE.length + ' kayıttan türetildi — ' +
+      'belge türü sözlüğü yoktur · arşivlenmiş belge ' + ARSIVLI_BELGE + ' (GV.arsivli ile ölçüldü).</p>' +
+      '<div id="logArsivListe" class="u-mt-4"></div>';
+
+    GV.list({
+      mount:'#logArsivListe', id:'ayarLogArsiv', key:'kod',
+      source:function(){ return DB.documents; },
+      countTarget:'#logArsivSayac',
+      exportName:'belge-arsivi', exportTitle:'Belge Arşivi',
+      pageSize:10, views:['table','card'], urlSync:false,
+      defaultSort:'tarih', defaultDir:'desc',
+
+      search:{ placeholder:'Belge adı, kod, tür ya da klasör ara',
+               fields:['kod','ad','tur','klasor','gizlilik','format'],
+               extra:function(d){ return empAd(d.yukleyen) || ''; } },
+
+      /* Belge kaydı müşteri taşır (5/11) — `musteri` kapsamı gerçek bir
+         eşlemedir. `departman` aktörün personel kaydından türetilir. */
+      scopeField:{ kendi:'yukleyen', musteri:'musteri',
+                   departman:function(d){ return empDep(d.yukleyen); } },
+
+      kpis:[
+        { label:'Belge', icon:'i-file',
+          meta:function(base){ return 'DB.documents · ' + SURUM.length + ' sürüm kaydı'; },
+          calc:function(base){ return base.length; } },
+        { label:'Onay bekleyen', icon:'i-stamp', tone:'warn',
+          meta:function(){ return 'zincirde bekleyen adım: ' +
+            say(ONAYAD, function(a){ return a.durum === 'Bekliyor'; }) + ' (DB.documentApprovals)'; },
+          metaTone:'warn',
+          calc:function(base){ return say(base, function(d){ return d.onay === 'Bekliyor'; }); } },
+        { label:'Süresi geçmiş', icon:'i-alert', tone:'danger',
+          meta:function(){ return 'kalanGun < 0 · son kullanma tarihi olmayan ' +
+            say(BELGE, function(d){ return !d.sonKullanma; }) + ' belge bu sayıya girmez'; },
+          calc:function(base){ return say(base, function(d){
+            return d.kalanGun != null && d.kalanGun < 0; }); } },
+        { label:'30 günde dolacak', icon:'i-hourglass', tone:'warn',
+          meta:function(){ return 'kalanGun 0–30 · eşik ekranda, veride bir uyarı alanı yok'; },
+          calc:function(base){ return say(base, function(d){
+            return d.kalanGun != null && d.kalanGun >= 0 && d.kalanGun <= 30; }); } },
+        { label:'Kişisel veri taşıyan', icon:'i-lock', tone:'purple',
+          meta:function(){ return 'gizlilik = "Kişisel veri" · sözlük yok, kayıtlardan türetildi'; },
+          calc:function(base){ return say(base, function(d){ return d.gizlilik === 'Kişisel veri'; }); } }
+      ],
+
+      columns:[
+        GV.cols.kod('kod', 'Belge', { width:'15%', locked:true }),
+        { key:'ad', label:'Ad', cellClass:'cell-wrap',
+          exportValue:function(d){ return d.ad || ''; },
+          render:function(d){
+            return '<span class="cell-main">' + GV.esc(d.ad) + '</span>' +
+              GV.cell.sub(GV.esc(d.klasor || 'klasörsüz')); } },
+        { key:'tur', label:'Tür', width:'11%', cellClass:'cell-wrap',
+          exportValue:function(d){ return d.tur || ''; },
+          render:function(d){ return d.tur
+            ? '<span class="cell-main">' + GV.esc(d.tur) + '</span>' : GV.cell.faint('—'); } },
+        { key:'versiyon', label:'Sürüm', width:'9%', cellClass:'num',
+          sortValue:function(d){ return d.versiyon == null ? null : d.versiyon; },
+          exportValue:function(d){ return d.versiyon == null ? '' : d.versiyon; },
+          render:function(d){
+            var n = surumleri(d.kod).length;
+            /* DOK-2026-206 v18 der ama tek sürüm kaydı vardır; eksik 17
+               koşumun tarihi ve boyutu hiçbir yerden türetilemez. Sayı
+               uydurulmaz, eksiklik yazılır (§10.1). */
+            var eksik = d.versiyon != null && n < d.versiyon;
+            return GV.cell.num(d.versiyon) +
+              GV.cell.sub(eksik
+                ? 'sürüm kaydı ' + n + '/' + d.versiyon + ' — öncekiler kaynak veride yok'
+                : n + ' sürüm kaydı'); } },
+        GV.cols.kisi('yukleyen', 'Yükleyen', { width:'14%' }),
+        GV.cols.date('tarih', 'Yükleme', { plain:true, width:'10%' }),
+        GV.cols.date('sonKullanma', 'Son kullanma', { plain:true, width:'11%',
+          bosMetin:'süresiz', bosSub:function(){ return 'kaynak veride son kullanma tarihi yok'; } }),
+        { key:'kalanGun', label:'Kalan', width:'9%', cellClass:'num',
+          sortValue:function(d){ return d.kalanGun == null ? null : d.kalanGun; },
+          exportValue:function(d){ return d.kalanGun == null ? '' : d.kalanGun; },
+          render:function(d){
+            if(d.kalanGun == null) return olculemedi('son kullanma tarihi yok');
+            return GV.cell.gun(d.kalanGun, d.kalanGun < 0 ? 'danger' : d.kalanGun <= 30 ? 'warn' : 'ok'); } },
+        { key:'gizlilik', label:'Gizlilik', width:'11%', cellClass:'cell-wrap',
+          exportValue:function(d){ return d.gizlilik || ''; },
+          /* Gizlilik bir DURUM ekseni değildir; ortak katmanın rozet ton
+             sözlüğünde karşılığı yok. Ton uydurmak yerine düz metin basılır. */
+          render:function(d){ return d.gizlilik
+            ? '<span class="cell-main">' + GV.esc(d.gizlilik) + '</span>' : GV.cell.faint('—'); } },
+        GV.cols.durum('onay', 'Onay', { width:'10%' }),
+        { key:'boyut', label:'Boyut', visible:false, cellClass:'center',
+          exportValue:function(d){ return d.boyut || ''; },
+          render:function(d){ return d.boyut
+            ? '<span class="cell-main">' + GV.esc(d.boyut) + '</span>' +
+              GV.cell.sub('dosya gerçek depoda değil — indirilemez')
+            : olculemedi('boyut kaydedilmemiş'); } },
+        { key:'format', label:'Format', visible:false, cellClass:'center',
+          exportValue:function(d){ return d.format || ''; },
+          render:function(d){ return d.format
+            ? '<span class="cell-main">' + GV.esc(d.format) + '</span>' : GV.cell.faint('—'); } },
+        { key:'klasor', label:'Klasör', visible:false, cellClass:'cell-wrap',
+          exportValue:function(d){ return d.klasor || ''; },
+          render:function(d){ return d.klasor
+            ? '<span class="cell-main">' + GV.esc(d.klasor) + '</span>' : GV.cell.faint('—'); } }
+      ],
+
+      filters:[
+        /* Belge türü sözlüğü YOKTUR (`contractTypes` bu depoda tanımlı değil);
+           on tür mevcut 11 kayıttan türetildi. */
+        { key:'tur', label:'Tür (mevcut ' + BELGE.length + ' kayıttan türetildi)', type:'multi',
+          options:turler.map(function(t){
+            return { value:t, label:t + ' (' + say(BELGE, function(d){ return d.tur === t; }) + ')' }; }) },
+        { key:'klasor', label:'Klasör (kayıtlardan türetildi)', type:'select',
+          options:klasorler.map(function(k){ return { value:k, label:k }; }) },
+        { key:'gizlilik', label:'Gizlilik (kayıtlardan türetildi)', type:'multi',
+          options:gizlilikler.map(function(g){
+            return { value:g, label:g + ' (' + say(BELGE, function(d){ return d.gizlilik === g; }) + ')' }; }) },
+        { key:'onay', label:'Onay (kayıtlardan türetildi)', type:'select',
+          options:onaylar.map(function(o){ return { value:o, label:o }; }) },
+        { key:'yukleyen', label:'Yükleyen (kayıtlardan türetildi)', type:'select',
+          options:yukleyenler.map(function(k){ return { value:k, label:empAd(k) || k }; }) },
+        { key:'tarih', label:'Yükleme tarihi', type:'daterange' },
+        { key:'sure', label:'Son kullanma', type:'select',
+          options:[{ value:'gecti', label:'süresi geçti' },
+                   { value:'yakin', label:'30 günde dolacak' },
+                   { value:'yok', label:'son kullanma tarihi yok' }],
+          test:function(d, v){
+            if(v === 'yok') return d.kalanGun == null;
+            if(v === 'gecti') return d.kalanGun != null && d.kalanGun < 0;
+            return d.kalanGun != null && d.kalanGun >= 0 && d.kalanGun <= 30; } }
+      ],
+
+      rowClass:function(d){ return d.kalanGun != null && d.kalanGun < 0 ? 'is-passive' : ''; },
+
+      card:function(d){
+        return '<div class="gv-rcard-top"><div>' +
+          '<span class="cell-main">' + GV.esc(d.ad) + '</span>' +
+          '<div class="cell-code">' + GV.esc(d.kod) + '</div></div>' +
+          GV.badge(d.onay) + '</div>' +
+        '<div class="gv-rcard-meta">' +
+          '<span>' + GV.esc(d.tur || '—') + '</span>' +
+          '<span>' + GV.esc(d.gizlilik || '—') + '</span>' +
+        '</div>' +
+        '<div class="gv-rcard-foot">' +
+          (d.yukleyen ? GV.user(d.yukleyen, { sm:true }) : '<span class="u-faint u-xs">yükleyen yok</span>') +
+          '<span>' + GV.esc(F.date(d.tarih)) + '</span>' +
+        '</div>';
+      },
+
+      mobile:function(d){
+        return GV.cell.mrow(
+          '<span class="cell-main">' + GV.esc(d.ad) + '</span>' + GV.badge(d.onay),
+          GV.esc(d.kod + ' · ' + (d.tur || '—')),
+          [ GV.ico('i-user','ic-sm') + GV.esc(empAd(d.yukleyen) || '—'),
+            GV.ico('i-calendar','ic-sm') + GV.esc(F.date(d.tarih)),
+            GV.ico('i-lock','ic-sm') + GV.esc(d.gizlilik || '—') ]
+        );
+      },
+
+      rowActions:[
+        { key:'ac', icon:'i-eye', label:'Belgeyi aç', run:function(d){ belgeCekmecesi(d); } }
+      ],
+      bulk:[{ key:'disa', label:'Dışa aktar', icon:'i-download', export:true }],
+
+      emptyState:{ icon:'i-archive', title:'Bu görünümde belge yok',
+        desc:'Filtreleri değiştirebilirsiniz. Kaynak veride ' + BELGE.length +
+             ' belge var; arşivlenmiş belge sayısı ' + ARSIVLI_BELGE + '.' }
+    });
+
+    /* Belge çekmecesi — künye + sürüm zinciri + onay zinciri. Ayrı bir belge
+       detay ekranı AÇILMAZ (§8.1 deseni). İndirme düğmesi yoktur. */
+    function belgeCekmecesi(d){
+      if(!d) return;
+      var vs = surumleri(d.kod);
+      var oz = onaylari(d.kod);
+      var kunye = [
+        ['Belge kodu', '<span class="cell-code">' + GV.esc(d.kod) + '</span>'],
+        ['Tür', bos(d.tur) ? GV.esc(d.tur) : null],
+        ['Klasör', bos(d.klasor) ? GV.esc(d.klasor) : null],
+        ['Gizlilik', bos(d.gizlilik) ? GV.esc(d.gizlilik) : null],
+        ['Yükleyen', d.yukleyen ? GV.user(d.yukleyen, { sm:true }) : null],
+        ['Yükleme tarihi', bos(d.tarih) ? GV.esc(F.date(d.tarih)) : null],
+        ['Son kullanma', d.sonKullanma
+          ? GV.esc(F.date(d.sonKullanma)) + GV.cell.sub(
+              d.kalanGun == null ? 'kalan gün hesaplanmamış'
+              : d.kalanGun < 0 ? Math.abs(d.kalanGun) + ' gün önce doldu'
+              : d.kalanGun + ' gün kaldı')
+          : olculemedi('kaynak veride son kullanma tarihi yok')],
+        ['Dosya', (bos(d.boyut) ? GV.esc(d.boyut) : '—') + ' · ' + (bos(d.format) ? GV.esc(d.format) : '—') +
+          GV.cell.sub('BE-S4 — dosya gerçek depoda değil, indirilemez')],
+        ['Müşteri', bos(d.musteri) ? '<span class="cell-code">' + GV.esc(d.musteri) + '</span>' : null],
+        ['Proje', bos(d.proje) ? '<span class="cell-code">' + GV.esc(d.proje) + '</span>' : null],
+        ['Araç', bos(d.arac) ? '<span class="cell-code">' + GV.esc(d.arac) + '</span>' : null]
+      ];
+
+      var surumHtml = vs.length
+        ? GV.dl(vs.map(function(v){
+            return ['v' + v.sira + ' · ' + GV.esc(F.date(v.tarih)),
+              GV.esc(v.not || '—') +
+              GV.cell.sub(GV.esc([v.boyut, v.format, empAd(v.yukleyen)].filter(Boolean).join(' · ')))];
+          })) +
+          (d.versiyon != null && vs.length < d.versiyon
+            ? GV.notice({ tone:'warn', icon:'i-alert',
+                title:'Sürüm zinciri eksik — ' + vs.length + '/' + d.versiyon,
+                text:'Kayıt ' + d.versiyon + '. sürüm diyor, ama önceki ' + (d.versiyon - vs.length) +
+                     ' sürümün tarihi, boyutu ve notu hiçbir yerden türetilemiyor. ' +
+                     'Eksik sürüm satırı UYDURULMADI.' })
+            : '')
+        : GV.empty({ icon:'i-file', title:'Sürüm kaydı yok',
+            desc:'Bu belge için DB.documentVersions içinde satır bulunmuyor.' });
+
+      /* Onay zinciri bir KOŞUMDUR (kişi · durum · tarih yazılı), tanım
+         değildir — `GV.chain` tam bunun için var. Alan adı `makam`, bileşen
+         `rol` bekliyor; kişi KODU ada çevrilerek verilir (bileşen çözmez). */
+      var onayHtml = oz.length
+        ? GV.chain(oz.map(function(a){
+            return { rol:a.makam, kisi:empAd(a.kisi), durum:a.durum,
+                     tarih:a.tarih, not:a.not }; }))
+        : GV.empty({ icon:'i-stamp', title:'Onay adımı yok',
+            desc:'Bu belge için DB.documentApprovals içinde adım bulunmuyor.' });
+
+      cekmeceAc(d.ad,
+        '<div class="gv-drawer-sec"><h4>Belge künyesi</h4>' +
+        GV.dl(kunye, { skipEmpty:true }) + '</div>' +
+        '<div class="gv-drawer-sec"><h4>Sürüm zinciri · ' + vs.length + ' kayıt</h4>' +
+        surumHtml + '</div>' +
+        '<div class="gv-drawer-sec"><h4>Onay zinciri · ' + oz.length + ' adım</h4>' +
+        onayHtml + '</div>' +
+        GV.notice({ tone:'warn', icon:'i-alert',
+          title:'BE-S4 — indirme yoktur',
+          text:'Belge yükleme gerçek depoya yazmaz; dosya adı ve boyutu bellekte tutulur. ' +
+               'Bu çekmecede indirme ya da yeni sürüm yükleme düğmesi bilerek yoktur.' }));
+    }
+  }
+
+  /* ================================================================
+     3) KALİTE — VERİ KALİTESİ (rota 146)
+
+     ⚠️ BU SEKME YENİ ÖLÇÜM ÜRETMEZ. Dokuz kontrolün dokuzu da ortak
+     katmanın kendi nöbetçisinden okunur; ekran yalnız basar. Her satır üç
+     şeyi birden söyler: ne ölçüldü · değer · ölçülemediyse neden.
+     Sıfır `0` basılır (kayıt var, değer sıfır); ölçülemeyen `—` + sebep.
+     Tablo yerine `GV.dl` kullanılır: dokuz satır heterojen bir TANIM
+     listesidir, arama/sayfalama/kolon yöneticisi gerektirmez (§21.4'te onay
+     zinciri için verilen aynı gerekçe).
+     ================================================================ */
+  function kaliteSekmesi(p){
+    var BA  = DB.bayatAktif || null;
+    var IK  = DB.ikBayat || null;
+    var TZ  = (GV.varlik && GV.varlik.sonTazeleme) || null;
+    var DUS = DB.assetClaimDrops || null;
+    var FS  = (GV.fin && GV.fin.sonSapma);
+    var AS  = (GV.approval && GV.approval.sonSapma);
+    var KANIT = (GV.entegrasyon && GV.entegrasyon.kanit) ? GV.entegrasyon.kanit() : null;
+    var ODM = DB.paymentLinkDefaults || null;
+    var LINK = DB.paymentLinks || [];
+
+    function sayi(v, altMetin){
+      return typeof v === 'number'
+        ? '<span class="u-num">' + GV.esc(F.num(v)) + '</span>' + GV.cell.sub(GV.esc(altMetin))
+        : olculemedi('nöbetçi bu sayfada koşmadı — kaynağı yüklenmemiş olabilir');
+    }
+
+    var KONTROL = [
+      { ad:'Denetim izi bütünlüğü',
+        deger:DEN
+          ? '<span class="u-num">' + DEN.olay + ' + ' + DEN.sistem + ' = ' + DEN.toplam + '</span>' +
+            GV.cell.sub('GV.audit.denetle() · kayıt kodsuz ' + DEN.kayitKodsuz +
+                        ' · aktörsüz ' + DEN.aktorsuz + ' — üçü de ölçülmüş sayı. ' +
+                        'Birleşik ve tekilleştirilmiş defter ' + LOG.length + ' satır.')
+          : olculemedi('GV.audit.denetle() null döndü — DB yüklenmemiş') },
+
+      { ad:'Bayat aktif alanı okuması',
+        deger:BA
+          ? sayi(BA.sayac, 'DB.bayatAktif · ' + (BA.tuzakli || []).length +
+              ' koleksiyonda alan tuzağa çevrildi, ' + (BA.kanon || []).length +
+              ' koleksiyonda `aktif` kanon (durum ekseni yok). Sayaç sıfırdan büyükse ' +
+              'bir ekran tuzaklı alanı okuyor demektir.')
+          : olculemedi('DB.bayatAktif yok — tuzak kurulmamış, ölçüm yapılamadı') },
+
+      { ad:'Bayat İK alanı okuması',
+        deger:IK
+          ? sayi(IK.sayac, 'DB.ikBayat · K-18 tuzağı; personel kaydında ölçülen bayat okuma sayısı')
+          : olculemedi('DB.ikBayat yok — hr.js yüklenmemiş olabilir') },
+
+      { ad:'Envanter türetimi',
+        deger:TZ
+          ? '<span class="u-num">' + F.num(TZ.olculen) + ' ölçüldü · ' +
+            F.num((TZ.degisen || []).length) + ' değişti</span>' +
+            GV.cell.sub('GV.varlik.sonTazeleme · K-30: değişen SIFIR KALMALIDIR. ' +
+              'Bir onarımın her açılışta tekrar koşması, onarılmamış demektir.')
+          : olculemedi('GV.varlik.sonTazeleme okunamadı — envanter tazelemesi koşmadı') },
+
+      { ad:'Düşen zimmet iddiası',
+        deger:DUS
+          ? sayi(DUS.length, 'DB.assetClaimDrops · tutanak DEĞİL, düşme kaydıdır: envanter bir ' +
+              'sahip yazıyordu ama hiç tutanak yoktu; defter kanonik olduğu için iddia düşürüldü, ' +
+              'eksik tutanak üretilmedi.')
+          : olculemedi('DB.assetClaimDrops yok — düşme kaydı koleksiyonu yüklenmemiş') },
+
+      { ad:'Fatura durumu sapması',
+        deger:sayi(FS, 'GV.fin.sonSapma · fatura durumu tahsis defterinden TÜRETİLİR; ' +
+          'sapma, yazılı durumla türetilmiş durumun ayrıştığı kayıt sayısıdır.') },
+
+      { ad:'Onay sayacı sapması',
+        deger:sayi(AS, 'GV.approval.sonSapma · onay sayaçları zincirden türetilir; ' +
+          'sapma, sayaçla zincirin ayrıştığı kayıt sayısıdır.') },
+
+      { ad:'Entegrasyon koşumu',
+        deger:KANIT
+          ? (KANIT.kosumDefteri == null
+              ? olculemedi('GV.entegrasyon.kanit() · koşum defteri koleksiyonu HİÇ YOK ' +
+                  '(hata kuyruğu ' + KANIT.hataKuyrugu + ' · webhook olayı ' + KANIT.webhookOlayi +
+                  '). Bu "hata yok" DEMEK DEĞİLDİR — kontrol yapılamadı.')
+              : sayi(KANIT.kosumDefteri, 'GV.entegrasyon.kanit() · koşum defteri satır sayısı'))
+          : olculemedi('GV.entegrasyon.kanit() okunamadı') },
+
+      { ad:'Ödeme sağlayıcısı',
+        deger:(ODM && ODM.saglayici)
+          ? '<span class="cell-code">' + GV.esc(ODM.saglayici) + '</span>' +
+            GV.cell.sub('DB.paymentLinkDefaults.saglayici · ' + GV.esc(ODM.saglayiciEtiket || 'seçilmedi') +
+              '. Gerçek tahsilat yoktur; ' + LINK.length + ' ödeme linki kaydı bu mock adaptörle üretildi.')
+          : olculemedi('DB.paymentLinkDefaults okunamadı — odeme.js yüklenmemiş') }
+    ];
+
+    p.innerHTML =
+      GV.notice({ tone:'info', icon:'i-shield-check',
+        title:'Dokuz nöbetçi — bu sekme yeni ölçüm üretmez',
+        text:'Aşağıdaki dokuz değerin dokuzu da ortak katmanın kendi nöbetçilerinden okundu; ' +
+             'ekran ikinci bir ölçüm yazmaz. Sıfır bir DEĞERDİR (kayıt var, sapma yok); ' +
+             'ölçülemeyen satır "—" ve sebebiyle basılır — "hata yok" ile "ölçülemedi" ayrı şeydir.' }) +
+      '<section class="gv-card u-mt-4"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico('i-gauge') + 'Nöbetçi ölçümleri</h3>' +
+        '<span class="u-faint u-sm">' + KONTROL.length + ' kontrol</span></div>' +
+        '<div class="gc-body">' +
+          GV.dl(KONTROL.map(function(k){ return [GV.esc(k.ad), k.deger]; })) +
+          '<p class="u-sm u-muted u-mt-8">Kaynaklar: <code>GV.audit.denetle()</code> · ' +
+          '<code>DB.bayatAktif</code> · <code>DB.ikBayat</code> · ' +
+          '<code>GV.varlik.sonTazeleme</code> · <code>DB.assetClaimDrops</code> · ' +
+          '<code>GV.fin.sonSapma</code> · <code>GV.approval.sonSapma</code> · ' +
+          '<code>GV.entegrasyon.kanit()</code> · <code>DB.paymentLinkDefaults</code>. ' +
+          'Hiçbiri bu ekranda hesaplanmadı; hepsi yüklemede koşan nöbetçilerin sonucudur.</p>' +
+        '</div></section>';
+  }
+
+  /* ================================================================
+     BACKEND PAYI BEYANI — §10.2(b) biçimi, §21.7 tablosundan KOPYALANDI.
+     Yalnız bu ekranla ilgili üç madde: BE-A8 · BE-S4 · BE-S5.
+     ================================================================ */
+  var BACKEND = [
+    { kod:'BE-A8', madde:'Denetim izi değişmez (append-only) değildir ve kalıcı değildir; ' +
+        'şartname §8.6 append-only defter ister.' },
+    { kod:'BE-S4', madde:'Belge yükleme gerçek depoya yazmaz; dosya adı ve boyutu bellekte ' +
+        'tutulur, indirilemez.' },
+    { kod:'BE-S5', madde:'Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır.' }
+  ];
+  document.getElementById('ayarBackend').innerHTML =
+    '<section class="gv-card"><div class="gc-head">' +
+      '<h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+      '<span class="u-faint u-sm">' + BACKEND.length + ' madde</span></div>' +
+      '<div class="gc-body">' +
+        GV.dl(BACKEND.map(function(b){
+          return ['<span class="cell-code">' + GV.esc(b.kod) + '</span>', GV.esc(b.madde)];
+        })) +
+        '<p class="u-sm u-muted u-mt-8">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+        '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+      '</div></section>';
+});
+</script>
+</body>
+</html>

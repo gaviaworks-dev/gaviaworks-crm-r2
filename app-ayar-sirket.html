@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Şirket ve Erişim — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="ayarlar" data-screen="sirket">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/hr.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   ŞİRKET VE ERİŞİM — ekran brief §21.0 · §21.1 · §21.4 (rota 136–141)
+
+   AYAR KABUĞU (§21.1). Sekme listesi BU EKRANDA YAZILMAZ (§21.9.3): tek
+   kayıt `shell.js` `AYAR_SEKME` içindedir ve `GV.shell.ayarSekmeleri('sirket')`
+   onu YETKİDEN süzerek döndürür. Ekran ne gelirse onu basar — `GV.flow`
+   düğme üretiminin (§7.1) aynı ilkesidir. Ölçüldü: ekrana girebilen üç rolün
+   (`sahip` · `genelmudur` · `sistem`) üçünde de ALTI sekme döner
+   (`sirket` · `departman` · `kullanici` · `rol` · `yetki` · `onay`); iki
+   sekmenin kapısı vardır (`kullanici` → `perm:'personel'`, `yetki` → yönetim
+   rol beyaz listesi) ve üç rol de o kapılardan geçer. Menü kapısını ekran
+   KONTROL ETMEZ — `shell.js` `SECTIONS.ayarlar` yetkisiz rolü içeri hiç
+   almaz, kabuk 403 basar (§21.0). İkinci bir rol listesi yazmak kuralı iki
+   yerde tanımlamak olurdu (§14.11).
+
+   ── BU DİLİMİN TEK GERÇEK MUTASYONU: MODÜL ANAHTARI (§21.4) ──
+   `DB.company` alanları doğrudan ATANMAZ (§21.9.8). Tek kapı
+   `GV.ayar.modulAyarla(anahtar, acik, gerekce)`dır ve KAPI İKİ YÖNDE DE
+   AYNIDIR: açmak ile kapatmak aynı yetki kümesini (`sahip · genelmudur ·
+   sistem`) ve aynı gerekçe koşulunu (≥8 karakter) ister. Ekran bu simetriyi
+   BOZMAZ — iki yön için ayrı düğme koşulu yazılmadı, tek koşul
+   `GV.ayar.modulYetkisi()`tir ve reddi yordamın kendi `r.mesaj`ı söyler.
+   Mutasyondan sonra `GV.refresh()` çağrılır (menü o anda yeniden çizilir);
+   `location.reload()` yasaktır (§14.1). Denetim izini yordam KENDİ yazar —
+   ekran ikinci kez `GV.audit.yaz` çağırmaz (§9.1).
+
+   ── `aktif` EKSENİ (K-33 · §20.2 · §21.9.9) ──
+   `DB.departments` `durum` ekseni OLMAYAN üç koleksiyondan biridir; orada
+   arşiv kararı kanonik olarak alan üstünden verilir ama soru YALNIZ
+   `GV.arsivli(d)` yordamına sorulur — ekran alanı hiç okumaz, süzgeci de
+   elle kurmaz (`GV.list` arşiv anahtarını aynı yordam üzerinden çalıştırır).
+   `DB.employees`te alan TUZAKTIR ve okunmaz; pasiflik `GV.hr.durum(e)`
+   üzerinden sorulur.
+
+   ── KİŞİSEL VERİ KAPISI (§20.1) ──
+   Kullanıcı listesinde MAAŞ KOLONU YOKTUR: kullanıcı yönetimi bir bordro
+   yüzeyi değildir. E-posta ÖZLÜK sınıfındadır ve `GV.hr.ozluk(e,'eposta')`
+   ile basılır; kolon maskesi satır bazlıdır (`mask:` → `GV.hr.ozlukGorebilir`)
+   ve maskelenen hücre ÇIKTIYA DA girmez (UID-28). İç maliyet sabitleri
+   `perm:'finans'` kapısındadır.
+
+   Veri dosyaları §21.0 tablosundan: `org` · `crm` · `work` · `misc` · `ops` ·
+   `hr` · `lifecycle`. `odeme.js` ve `firsat.js` bu ekranda YÜKLENMEZ.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+  var F = GV.fmt;
+
+  /* ---- ortak küçük yardımcılar ---------------------------------------- */
+  function kart(icon, baslik, metaHtml, govde){
+    return '<section class="gv-card u-mt-4"><div class="gc-head">' +
+        '<h3 class="gc-title">' + GV.ico(icon) + GV.esc(baslik) + '</h3>' +
+        (metaHtml ? '<span class="gc-meta">' + metaHtml + '</span>' : '') +
+      '</div><div class="gc-body">' + govde + '</div></section>';
+  }
+  function kodu(v){ return '<span class="cell-code">' + GV.esc(v) + '</span>'; }
+  function not(html){ return '<p class="u-sm u-muted u-mt-8">' + html + '</p>'; }
+  function faintNot(html){ return '<p class="u-faint u-sm u-mt-8">' + html + '</p>'; }
+  function say(list, fn){ return (list || []).filter(fn).length; }
+  function benzersiz(list, alan){
+    return (list || []).reduce(function(acc, r){
+      var v = typeof alan === 'function' ? alan(r) : r[alan];
+      if(v != null && v !== '' && acc.indexOf(v) === -1) acc.push(v);
+      return acc;
+    }, []);
+  }
+  /* Ölçülemeyen değerin dili TEK yerde: sayı yoksa `0` DEĞİL `—` + sebep. */
+  function olculemedi(sebep){ return GV.cell.faint('—') + GV.cell.sub(GV.esc(sebep)); }
+  function empDep(kod){ var e = kod && DB.emp ? DB.emp(kod) : null; return e ? e.dep : null; }
+  function empAd(kod){ return kod ? (DB.empName ? DB.empName(kod) : kod) : null; }
+
+  /* ---- kaynaklar — hepsi OKUMA; tek yazma yolu GV.ayar.modulAyarla ---- */
+  var SIRKET  = DB.company || {};
+  var DEP     = DB.departments || [];          /* 21 */
+  var GRUP    = DB.departmentGroups || [];     /* 8  */
+  var PERSONEL = DB.employees || [];           /* 16 */
+  var ROL     = DB.roles || [];                /* 27 */
+  var MATRIS  = DB.permMatrix || {};           /* 27 */
+  var AKIS    = DB.approvalFlows || [];        /* 3  */
+  var TIP     = DB.approvalTypes || {};        /* 8  */
+  var BELGE   = DB.documents || [];
+
+  /* Yetki matrisinin ANAHTAR LİSTESİ elle yazılmaz — ilk satırdan türetilir.
+     Elle tutulan bir liste, matrise bir anahtar eklendiğinde sessizce eskirdi. */
+  var MATRIS_ROL   = Object.keys(MATRIS);
+  var YETKI_ANAHTAR = MATRIS_ROL.length ? Object.keys(MATRIS[MATRIS_ROL[0]]) : [];
+
+  /* Anahtarın ekrandaki adı bir ETİKETTİR, veri değildir; kapsam ve boolean
+     DEĞERLERİ ise ham basılır (kendi etiketimizi uydurmuyoruz). */
+  var ANAHTAR_AD = {
+    gor:'Görme', ekle:'Ekleme', duzenle:'Düzenleme', sil:'Silme',
+    onay:'Onay', rapor:'Rapor', finans:'Finans', maas:'Ücret bilgisi',
+    personel:'Personel verisi', log:'Sistem kaydı', disaAktar:'Dışa aktarma'
+  };
+
+  /* Arşiv/pasiflik sorusu YALNIZ yordamdan (K-33): departmanlarda ölçüldü. */
+  var DEP_PASIF = say(DEP, function(d){ return GV.arsivli(d); });
+  var DEP_USTSUZ = say(DEP, function(d){ return !d.ustDepartman; });
+
+  /* ⚠️ SIRA — `GV.pageHead` liste bileşeninden ÖNCE (§2.4). */
+  GV.pageHead({
+    eyebrow:'Sistem',
+    title:'Şirket ve Erişim',
+    sub:DEP.length + ' departman · ' + PERSONEL.length + ' kullanıcı · ' + ROL.length +
+        ' rol × ' + YETKI_ANAHTAR.length + ' yetki anahtarı · ' + AKIS.length +
+        ' onay zinciri · ' + (GV.ayar.modulAnahtarlari() || []).length + ' modül anahtarı',
+    actions:[
+      { label:'Sistem kayıtları', icon:'i-list', href:'app-ayar-log.html' }
+    ]
+  });
+
+  /* ================================================================
+     AYAR KABUĞU — sekmeler yetkiden üretilir (§21.1, birebir desen)
+     ================================================================ */
+  var SEKME = GV.shell.ayarSekmeleri('sirket');
+  if(!SEKME.length){
+    mount.innerHTML = GV.empty({ icon:'i-lock',
+      title:'Görebileceğiniz ayar sekmesi yok',
+      desc:'Bu ekrana girebiliyorsunuz ama rolünüz hiçbir sekmeyi açmıyor. Sekme ' +
+           'kümesi kabukta tek yerde tanımlıdır; ekran kendi listesini yazmaz ve ' +
+           'kapıyı kendi lehine gevşetmez.' });
+    return;                                     /* ölü sekme şeridi basma */
+  }
+
+  mount.innerHTML =
+    '<div class="gv-tabs" role="tablist" id="ayarSekme">' +
+      SEKME.map(function(t){
+        return '<button type="button" class="gv-tab" role="tab" data-tab="' + t.key + '"' +
+               ' aria-selected="false">' + GV.ico(t.ic,'ic-sm') + GV.esc(t.lbl) + '</button>';
+      }).join('') +
+    '</div>' +
+    SEKME.map(function(t){
+      return '<div role="tabpanel" class="gv-tabpanel u-mt-8" data-panel="' + t.key +
+             '" id="panel-' + t.key + '" hidden></div>';
+    }).join('') +
+    '<div id="ayarBackend" class="u-mt-8"></div>';
+
+  /* ⚠️ SIRA: dinleyici `GV.tabs`ten ÖNCE bağlanır — `GV.tabs` kurulurken ilk
+     sekmeyi hemen etkinleştirir ve `gv:tab` atar. Sonra bağlarsan AÇILIŞTAKİ
+     sekme hiç çizilmez. Dinleyici `document`a bağlı (kalıcı düğüm) → `GV.on`
+     ile tekil anahtar üzerinden, `GV.refresh()` sonrası birikmesin (§2.6). */
+  var cizildi = {};
+  GV.on(document, 'gv:tab', function(e){ ciz(e.detail.key); }, 'ayarSirket-tab');
+  GV.tabs('#ayarSekme');
+
+  function ciz(key){
+    if(cizildi[key]) return;                    /* tembel çizim — bir kez */
+    cizildi[key] = true;
+    var p = document.getElementById('panel-' + key);
+    if(!p) return;
+    if(key === 'sirket')    return sirketSekmesi(p);
+    if(key === 'departman') return departmanSekmesi(p);
+    if(key === 'kullanici') return kullaniciSekmesi(p);
+    if(key === 'rol')       return rolSekmesi(p);
+    if(key === 'yetki')     return yetkiSekmesi(p);
+    if(key === 'onay')      return onaySekmesi(p);
+  }
+
+  /* ================================================================
+     1) ŞİRKET — KÜNYE · İÇ MALİYET SABİTLERİ · MODÜL ANAHTARLARI
+
+     `DB.company` 16 alan taşır ve hepsi burada basılır. İki nokta
+     sözleşmedir (§21.4):
+       1. İç maliyet sabitleri (`isverenMaliyetKatsayisi` · `aylikCalismaSaati`)
+          GÖRÜNÜR olmalıdır — proje maliyetinin girdisidir ve `org.js`
+          "hesabın girdisi koda gömülürse maliyet sessizce değişir" diyor.
+          `perm:'finans'` kapısı uygulanır; yetkisizde `0` değil MASKE.
+       2. Modül anahtarları — bu dilimin tek gerçek mutasyonu.
+     ================================================================ */
+  function sirketSekmesi(p){
+    var canFinans = GV.perm.can('finans');
+    var beyanEdilen = SIRKET.calisanSayisi;
+    var defterdeki  = PERSONEL.length;
+    var zorunluDok  = SIRKET.zorunluProjeDokuman || [];
+
+    /* — künye (kapı yok) — */
+    var out = kart('i-building', 'Şirket künyesi', kodu(SIRKET.tenant || '—'), GV.dl([
+      ['Ticari ad',      GV.esc(SIRKET.ad)],
+      ['Unvan',          GV.esc(SIRKET.unvan)],
+      ['Vergi dairesi',  GV.esc(SIRKET.vergiDairesi)],
+      ['Vergi numarası', kodu(SIRKET.vergiNo)],
+      ['Kuruluş',        SIRKET.kurulus ? F.date(SIRKET.kurulus) : null],
+      ['Adres',          GV.esc(SIRKET.adres)],
+      ['Telefon',        GV.esc(SIRKET.telefon)],
+      ['E-posta',        GV.esc(SIRKET.eposta)],
+      ['Web',            GV.esc(SIRKET.web)],
+      ['Abonelik paketi', GV.badge(GV.esc(SIRKET.paket))],
+      ['Kiracı anahtarı', kodu(SIRKET.tenant)],
+      ['Beyan edilen çalışan sayısı',
+        '<span class="u-num">' + F.num(beyanEdilen) + '</span>' +
+        GV.cell.sub(beyanEdilen === defterdeki
+          ? 'personel defterinden doğrulandı — defterde ' + F.num(defterdeki) + ' kayıt var'
+          : '⚠ personel defterinde ' + F.num(defterdeki) + ' kayıt var; iki sayı AYRIŞIYOR ' +
+            've ekran hangisinin doğru olduğuna karar vermez')],
+      ['Zorunlu proje dokümanı', zorunluDok.length
+        ? zorunluDok.map(function(t){ return GV.esc(t); }).join(' · ') +
+          GV.cell.sub(say(zorunluDok, function(t){
+              return say(BELGE, function(d){ return d.tur === t; }) > 0; }) + '/' +
+            zorunluDok.length + ' tür belge defterinde gerçekten var (' +
+            F.num(BELGE.length) + ' kayıt tarandı)')
+        : null]
+    ], { skipEmpty:true }) +
+      faintNot('Bu blok yalnız OKUR. `DB.company` alanları doğrudan atanmaz ' +
+        '(§21.9.8); bu ekranın tek mutasyonu aşağıdaki modül anahtarıdır. Künye ' +
+        'düzenleme sunucu payıdır ve düğme olarak vaat edilmez (§14.6).'));
+
+    /* — iç maliyet sabitleri: perm:'finans' kapısı — */
+    var maliyetSatir = canFinans
+      ? [['İşveren maliyet katsayısı',
+          '<span class="u-num">' + F.num(SIRKET.isverenMaliyetKatsayisi, 3) + '</span>' +
+          GV.cell.sub('brüt ücretin üstüne işveren payı — <b>GV.hr.icMaliyet</b> bu ' +
+                      'katsayıyı okur, ekran ikinci bir formül kurmaz')],
+         ['Aylık çalışma saati',
+          '<span class="u-num">' + F.num(SIRKET.aylikCalismaSaati) + '</span>' +
+          GV.cell.sub('22 iş günü × 8 saat — saatlik iç maliyetin paydası')]]
+      : [['İç maliyet sabitleri', '<span class="cell-mask">••••••</span>' +
+          GV.cell.sub('iki sabit de <b>perm:finans</b> kapısındadır')]];
+
+    out += kart('i-percent', 'İç maliyet sabitleri',
+      canFinans ? '<span class="u-ok">kapı açık</span>' : '<span class="u-muted">maskelendi</span>',
+      GV.dl(maliyetSatir) +
+      (canFinans
+        ? faintNot('Bu iki sayı <b>koda gömülü değildir</b> ve ayar ekranı onları ' +
+            'görünür kılan yerdir: proje personel maliyeti = onaylı saat × saatlik iç ' +
+            'maliyet ve saatlik iç maliyet bu iki sabitten türer. Ekran burada hiçbir ' +
+            'maliyet HESAPLAMAZ — hesabın tek sahibi <b>GV.hr.icMaliyet</b> ve ' +
+            '<b>GV.proje.maliyet</b>tir (§14.11).')
+        : not('Değerler <b>maskelendi</b>: <b>perm:finans</b> kapısı bu rolde kapalı. ' +
+            '<b>••••••</b> “veri yok” demek değildir — veri var ve bu rol göremiyor; ' +
+            'ikisi ayrı şeydir (UID-11). Yetkisiz rolde <b>0</b> basmak, ölçülmüş bir ' +
+            'sabiti sıfır göstermek olurdu.')));
+
+    /* — modül anahtarları — */
+    out += modulKarti();
+    p.innerHTML = out;
+
+    /* Düğmeler mount İÇİNDEDİR: `innerHTML` onları zaten siler, `GV.on`
+       gerekmez (§2.6). Tek dinleyici, olay devri ile. */
+    p.addEventListener('click', function(ev){
+      var b = ev.target.closest('[data-modul]');
+      if(!b) return;
+      modulPenceresi(b.getAttribute('data-modul'), b.getAttribute('data-hedef') === 'ac');
+    });
+  }
+
+  /* ---------------------------------------------------------------------
+     MODÜL ANAHTARLARI — bu dilimin TEK gerçek mutasyonu (§21.4)
+
+     ⚠️ KAPI İKİ YÖNDE DE AYNIDIR. Açma ile kapatma aynı yetki kümesini ve
+     aynı gerekçe koşulunu ister; ekran bu simetriyi bozmaz. Aşağıda İKİ YÖN
+     İÇİN AYRI KOŞUL YOKTUR: tek `yetkili` değişkeni her iki düğmeyi de
+     üretir, hedef yalnız `data-hedef` özniteliğinde ayrışır. Reddi yordam
+     söyler (`r.mesaj`), ekran kendi hata cümlesini yazmaz.
+     ------------------------------------------------------------------- */
+  function modulKarti(){
+    var anahtarlar = GV.ayar.modulAnahtarlari() || [];
+    var yetkili    = GV.ayar.modulYetkisi();
+    var acikSayi   = say(anahtarlar, function(k){ return GV.ayar.modulAcik(k); });
+    var girdiler   = (GV.shell.visibleItems && GV.shell.visibleItems()) || [];
+
+    var satirlar = anahtarlar.map(function(k){
+      var acik = GV.ayar.modulAcik(k);
+      var dugme = yetkili
+        ? '<button type="button" class="btn btn-sm ' + (acik ? 'btn-danger-line' : 'btn-acc') +
+          '" data-modul="' + GV.esc(k) + '" data-hedef="' + (acik ? 'kapat' : 'ac') + '">' +
+          GV.ico(acik ? 'i-eye-off' : 'i-eye','ic-sm') + (acik ? 'Kapat' : 'Aç') + '</button>'
+        : '';
+      return [kodu(k),
+        GV.badge(acik ? 'Açık' : 'Kapalı') +
+        (dugme ? ' ' + dugme : '') +
+        GV.cell.sub(acik
+          ? 'modülün menü girdileri kullanıcıya görünür'
+          : 'menü girdileri gizli — <b>veri silinmedi</b>, anahtar geri açılınca aynen döner')];
+    });
+
+    return kart('i-sliders', 'Modül anahtarları',
+      F.num(acikSayi) + '/' + F.num(anahtarlar.length) + ' açık',
+      (yetkili ? '' : GV.notice({ tone:'info', icon:'i-lock',
+        title:'Bu rolde anahtar değiştirilemez',
+        text:'Modül anahtarını yalnız şirket sahibi, genel müdür ve sistem yöneticisi ' +
+             'değiştirebilir. Kapı iki yönde de aynıdır: açmak da kapatmak da aynı ' +
+             'yetkiyi ister. Düğme basılmadı — çalışmayacak bir düğme, tutulmayacak ' +
+             'bir söz verir.' })) +
+      GV.dl(satirlar) +
+      not('Anahtar adları <b>DB.company.aktifModuller</b> defterinin kendi ' +
+        'anahtarlarıdır ve <b>ham basıldı</b>: sözlükte insan okur bir modül adı ' +
+        'YOKTUR, ekran da uydurmaz. Modül kapatmak <b>veri silmek değildir</b> — ' +
+        'kapalı modülün ekranı menüden düşer ve doğrudan adresle de açılmaz, ' +
+        'dosyası ve kaydı yerinde kalır.') +
+      faintNot('Mutasyonun tek kapısı <b>GV.ayar.modulAyarla</b>dır: yetkiyi, gerekçeyi ' +
+        've “değişiklik yok” hâlini o denetler, denetim izini de <b>kendisi</b> yazar — ' +
+        'ekran ikinci kez <b>GV.audit.yaz</b> çağırmaz (§9.1). Değişimden sonra ' +
+        '<b>GV.refresh()</b> koşar ve menü yeniden çizilir. Şu an görünür menü ' +
+        'girdisi <b>' + F.num(girdiler.length) + '</b>; anahtarı değiştirdiğinizde bu sayı ' +
+        'yeniden ölçülür. Hangi girdinin düşeceğini bu ekran ÖNCEDEN türetemez — ' +
+        '<b>GV.shell.visibleItems()</b> satır başına modül anahtarı bildirmiyor ve ' +
+        'ekran kabuğun eşlemesinin ikinci bir kopyasını kurmaz (§14.11).'));
+  }
+
+  function modulPenceresi(anahtar, ac){
+    var kodlar = (DB.reasonCodes || []).filter(function(r){
+      return (r.tur || []).indexOf('istisna') !== -1; });
+
+    GV.action({
+      eylem:ac ? 'Modülü Aç' : 'Modülü Kapat',
+      kayit:{ kod:anahtar, baslik:'DB.company.aktifModuller anahtarı' },
+      sonuc:(ac
+        ? 'Anahtar açılacak: modülün menü girdileri kullanıcıya yeniden görünür olacak.'
+        : 'Anahtar kapatılacak: modülün menü girdileri gizlenecek ve ekranları ' +
+          'doğrudan adresle de açılmayacak. VERİ SİLİNMEZ.') +
+        ' Gerekçe her iki yönde de zorunludur ve en az 8 karakter olmalıdır — ' +
+        'geri almak, yapmaktan ağır değildir.',
+      gerekce:true,
+      nedenTuru:'istisna',
+      tone:ac ? 'accent' : 'danger',
+      run:function(v){
+        var ad = (kodlar.filter(function(x){ return x.kod === v.neden; })[0] || {}).ad || v.neden;
+        var r = GV.ayar.modulAyarla(anahtar, ac, ad + ' — ' + v.not);
+        if(r.ok === false) return { ok:false, mesaj:r.mesaj };   /* reddi YORDAM söyler */
+        GV.refresh();                                            /* menü yeniden çizilir */
+        return { mesaj:'Modül anahtarı “' + r.anahtar + '” ' +
+                       (r.yeni ? 'açıldı' : 'kapatıldı') + '.' };
+      }
+    });
+  }
+
+  /* ================================================================
+     2) DEPARTMANLAR — GV.list (urlSync:false)
+
+     `DB.departments` `durum` ekseni YOKTUR → `aktif` orada KANONDUR ve
+     soru YALNIZ `GV.arsivli(d)` üzerinden sorulur (§20.2 üç istisnadan
+     biri). Ekran alanı okumaz, süzgeci de elle kurmaz: arşiv anahtarını
+     bileşen aynı yordamla çalıştırır.
+     ================================================================ */
+  function departmanSekmesi(p){
+    var yoneticiler = benzersiz(DEP, 'yonetici').sort();
+
+    p.innerHTML =
+      GV.notice({ tone:'info', icon:'i-layers',
+        title:'Departman defteri — ' + F.num(DEP.length) + ' kayıt',
+        text:'Pasif departman ' + F.num(DEP_PASIF) + ' (soru GV.arsivli yordamına soruldu; ' +
+             'bu koleksiyonda durum ekseni yoktur ve alan kanondur). Pasif kayıtlar ' +
+             'varsayılan görünümde gizlidir — listenin arşiv anahtarıyla açılır. ' +
+             'Üst departman ' + F.num(DEP.length - DEP_USTSUZ) + '/' + F.num(DEP.length) +
+             ' kayıtta dolu; ' + F.num(DEP_USTSUZ) + ' kayıt departman değil ÇALIŞMA ' +
+             'TİPİDİR ve üst departmanı yoktur.' }) +
+      '<p class="u-sm u-muted u-mt-4">Görünen: <span id="depSayac">—</span> · ' +
+      'ana departman seçenekleri <b>DB.departmentGroups</b> sözlüğünden (' +
+      F.num(GRUP.length) + ' grup), yönetici seçenekleri mevcut ' + F.num(DEP.length) +
+      ' kayıttan türetildi.</p>' +
+      '<div id="depListe" class="u-mt-4"></div>';
+
+    GV.list({
+      mount:'#depListe', id:'ayarSirketDep', key:'kod',
+      source:function(){ return DB.departments; },
+      countTarget:'#depSayac',
+      exportName:'departmanlar', exportTitle:'Departman Listesi',
+      pageSize:10, views:['table','card'], urlSync:false,
+      defaultSort:'kod', defaultDir:'asc',
+
+      search:{ placeholder:'Departman kodu, adı, kısa adı ya da ana departman ara',
+               fields:['kod','ad','kisa','ustDepartman'],
+               extra:function(d){ return empAd(d.yonetici) || ''; } },
+
+      /* Departman kaydının `departman` kapsamı KENDİ kodudur; `kendi`
+         kapsamı yöneticisidir. Ekrana girebilen üç rolün üçü de `gor:'tum'`
+         taşır, yani süzgeç bugün kesmez — yine de bildirilir (§4.7). */
+      scopeField:{ kendi:'yonetici', departman:'kod' },
+
+      kpis:[
+        { label:'Departman', icon:'i-layers',
+          meta:function(){ return 'DB.departments · ' + F.num(GRUP.length) + ' ana departman grubu'; },
+          calc:function(base){ return base.length; } },
+        { label:'Pasif', icon:'i-archive', tone:'neutral',
+          meta:function(){ return 'GV.arsivli ile ölçüldü — alan elle süzülmedi'; },
+          calc:function(){ return DEP_PASIF; } },
+        { label:'Üst departmanı yok', icon:'i-alert', tone:'warn',
+          meta:function(){ return 'departman değil çalışma tipi olan kayıtlar'; },
+          calc:function(base){ return say(base, function(d){ return !d.ustDepartman; }); } },
+        { label:'Kadrolu personel', icon:'i-users',
+          meta:function(){ return 'personel defterinden türetildi (' +
+            F.num(PERSONEL.length) + ' kayıt), alan toplamı değil'; },
+          calc:function(base){
+            return base.reduce(function(s, d){
+              return s + say(PERSONEL, function(e){ return e.dep === d.kod; }); }, 0); } }
+      ],
+
+      columns:[
+        GV.cols.kod('kod', 'Kod', { width:'11%', locked:true }),
+        { key:'ad', label:'Departman', cellClass:'cell-wrap',
+          exportValue:function(d){ return d.ad || ''; },
+          render:function(d){
+            return '<span class="cell-main">' + GV.esc(d.ad) + '</span>' +
+              GV.cell.sub('kısa ad: ' + GV.esc(d.kisa || '—')); } },
+        { key:'ustDepartman', label:'Ana departman', width:'16%', cellClass:'cell-wrap',
+          exportValue:function(d){ return d.ustDepartman || ''; },
+          render:function(d){ return d.ustDepartman
+            ? '<span class="cell-main">' + GV.esc(d.ustDepartman) + '</span>'
+            : olculemedi('bu kayıt bir departman değil, çalışma tipidir'); } },
+        GV.cols.kisi('yonetici', 'Yönetici', { width:'16%', bosMetin:'atanmamış' }),
+        { key:'personel', label:'Personel', width:'12%', cellClass:'num',
+          sortValue:function(d){ return d.personel == null ? null : d.personel; },
+          exportValue:function(d){ return d.personel == null ? '' : d.personel; },
+          render:function(d){
+            var turetilen = say(PERSONEL, function(e){ return e.dep === d.kod; });
+            if(d.personel == null) return olculemedi('kayıtta personel alanı yok');
+            return GV.cell.num(d.personel) + GV.cell.sub(d.personel === turetilen
+              ? 'personel defterinden doğrulandı'
+              : '⚠ defterden türetilen: ' + F.num(turetilen) + ' — iki sayı ayrışıyor'); } },
+        { key:'durum', label:'Durum', width:'12%', cellClass:'center',
+          sortValue:function(d){ return GV.arsivli(d) ? 1 : 0; },
+          exportValue:function(d){ return GV.arsivli(d) ? 'Pasif' : 'Aktif'; },
+          /* Soru YALNIZ yordamdan (K-33 · §21.9.9): alan okunmaz. */
+          render:function(d){ return GV.badge(GV.arsivli(d) ? 'Pasif' : 'Aktif'); } }
+      ],
+
+      filters:[
+        { key:'ustDepartman', label:'Ana departman (DB.departmentGroups sözlüğünden)',
+          type:'multi',
+          options:GRUP.map(function(g){
+            return { value:g, label:g + ' (' + say(DEP, function(d){
+              return d.ustDepartman === g; }) + ')' }; }) },
+        { key:'yonetici', label:'Yönetici (kayıtlardan türetildi)', type:'select',
+          options:yoneticiler.map(function(y){
+            return { value:y, label:(empAd(y) || y) + ' (' + say(DEP, function(d){
+              return d.yonetici === y; }) + ')' }; }) },
+        { key:'pasif', label:'Pasiflik (GV.arsivli ile)', type:'select',
+          options:[{ value:'aktif', label:'Aktif departmanlar' },
+                   { value:'pasif', label:'Pasif departmanlar' }],
+          test:function(d, v){ return v === 'pasif' ? GV.arsivli(d) : !GV.arsivli(d); } },
+        { key:'bospersonel', label:'Kadro', type:'select',
+          options:[{ value:'dolu', label:'Kadrosu olanlar' },
+                   { value:'bos',  label:'Kadrosu boş olanlar' }],
+          test:function(d, v){
+            var n = say(PERSONEL, function(e){ return e.dep === d.kod; });
+            return v === 'dolu' ? n > 0 : n === 0; } }
+      ],
+
+      mobile:function(d){
+        return GV.cell.mrow(
+          '<span class="cell-main">' + GV.esc(d.ad) + '</span>',
+          '<span class="cell-code">' + GV.esc(d.kod) + '</span>',
+          [ GV.ico('i-layers','ic-sm') + GV.esc(d.ustDepartman || 'ana departmanı yok'),
+            GV.ico('i-user','ic-sm') + GV.esc(empAd(d.yonetici) || 'atanmamış'),
+            GV.ico('i-users','ic-sm') + F.num(say(PERSONEL, function(e){ return e.dep === d.kod; })) + ' kişi' ],
+          GV.badge(GV.arsivli(d) ? 'Pasif' : 'Aktif')
+        );
+      },
+
+      bulk:[{ key:'disa', label:'Dışa aktar', icon:'i-download', export:true }],
+
+      emptyState:{ icon:'i-layers', title:'Bu görünümde departman yok',
+        desc:'Filtreleri değiştirebilir ya da arşiv anahtarıyla ' + F.num(DEP_PASIF) +
+             ' pasif departmanı da görünür yapabilirsiniz. Defterde toplam ' +
+             F.num(DEP.length) + ' kayıt var.' }
+    });
+
+    p.insertAdjacentHTML('beforeend',
+      faintNot('Departman <b>ekleme ve düzenleme</b> düğmesi bu ekranda yoktur: ' +
+        'yazacak bir sunucu yok ve <b>DB.departments</b> üstüne doğrudan yazmak ' +
+        'ortak katmanın dışına çıkmak olurdu. Yapılamayan iş düğme olarak vaat ' +
+        'edilmez (§14.6) — sunucu payı aşağıda <b>BE-A3</b> olarak beyan edildi.'));
+  }
+
+  /* ================================================================
+     3) KULLANICILAR — GV.list (urlSync:false)
+
+     `DB.employees`te `aktif` alanı TUZAKTIR ve OKUNMAZ (§20.2); pasiflik
+     `GV.hr.durum(e)` üzerinden sorulur. MAAŞ KOLONU YOKTUR — kullanıcı
+     yönetimi bir bordro yüzeyi değildir. `eposta` özlük sınıfındadır ve
+     satır bazlı maske ile basılır: maskelenen hücre çıktıya da girmez.
+     ================================================================ */
+  function kullaniciSekmesi(p){
+    var durumlar = benzersiz(PERSONEL, function(e){ return GV.hr.durum(e); }).sort();
+    var roller   = benzersiz(PERSONEL, 'rol').sort();
+    var depler   = benzersiz(PERSONEL, 'dep').sort();
+    var atanabilir = (GV.hr.atanabilirler() || []).length;
+    var ozlukAcik = say(PERSONEL, function(e){ return GV.hr.ozlukGorebilir(e); });
+
+    p.innerHTML =
+      GV.notice({ tone:'info', icon:'i-users',
+        title:'Kullanıcı defteri — ' + F.num(PERSONEL.length) + ' kayıt',
+        text:'Durum dağılımı GV.hr.durum ile ölçüldü: ' +
+             durumlar.map(function(d){
+               return d + ' ' + say(PERSONEL, function(e){ return GV.hr.durum(e) === d; });
+             }).join(' · ') + '. Yeni iş atanabilir kullanıcı ' + F.num(atanabilir) +
+             ' (GV.hr.atanabilirler — yalnız Aktif). Bu ekran istihdam durumunu ' +
+             'DEĞİŞTİRMEZ: geçiş GV.flow.gec(\'employee\', …) yetkisine ve personel ' +
+             'ekranına aittir.' }) +
+      '<p class="u-sm u-muted u-mt-4">Görünen: <span id="kulSayac">—</span> · ' +
+      'rol · departman · durum seçenekleri mevcut ' + F.num(PERSONEL.length) +
+      ' kayıttan türetildi · e-posta ÖZLÜK sınıfındadır ve kapısı bu oturumda ' +
+      F.num(ozlukAcik) + '/' + F.num(PERSONEL.length) + ' kayıtta açık.</p>' +
+      '<div id="kulListe" class="u-mt-4"></div>';
+
+    GV.list({
+      mount:'#kulListe', id:'ayarSirketKullanici', key:'kod',
+      source:function(){ return DB.employees; },
+      countTarget:'#kulSayac',
+      exportName:'kullanicilar', exportTitle:'Kullanıcı Listesi',
+      pageSize:10, views:['table','card'], urlSync:false,
+      /* Personel kaydının ARŞİV ekseni yoktur (`Arşivlendi` diye bir istihdam
+         durumu yok); çalışmayan bir anahtar basılmaz (§14.6). Pasiflik bir
+         DURUM sorusudur ve aşağıda filtre olarak sorulur. */
+      archive:false,
+      defaultSort:'kod', defaultDir:'asc',
+
+      search:{ placeholder:'Ad, kod, pozisyon ya da departman ara',
+               fields:['kod','ad','pozisyon','depAd','dep'],
+               extra:function(e){ return DB.roleName(e.rol) || ''; } },
+
+      scopeField:{ kendi:'kod', departman:'dep' },
+
+      kpis:[
+        { label:'Kullanıcı', icon:'i-users',
+          meta:function(){ return 'DB.employees — kullanıcı defteri personel defteridir'; },
+          calc:function(base){ return base.length; } },
+        { label:'Yeni iş atanabilir', icon:'i-user-check', tone:'ok',
+          meta:function(){ return 'GV.hr.atanabilirler() — yalnız Aktif durum'; },
+          calc:function(base){ return say(base, function(e){ return GV.hr.atanabilir(e); }); } },
+        { label:'Bordroda', icon:'i-briefcase', tone:'info',
+          meta:function(){ return 'GV.hr.istihdamda — Taslak ve Ayrıldı hariç'; },
+          calc:function(base){ return say(base, function(e){ return GV.hr.istihdamda(e); }); } },
+        { label:'Etkin rol çeşidi', icon:'i-shield', tone:'accent',
+          meta:function(){ return ROL.length + ' rollük sözlüğün kaçı bir kullanıcıda etkin'; },
+          calc:function(base){ return benzersiz(base, 'rol').length; } }
+      ],
+
+      columns:[
+        GV.cols.kod('kod', 'Kod', { width:'11%', locked:true }),
+        { key:'ad', label:'Kullanıcı', cellClass:'cell-wrap',
+          exportValue:function(e){ return e.ad || ''; },
+          render:function(e){
+            return GV.user(e.kod, { sm:true }) +
+              GV.cell.sub(GV.esc(e.pozisyon || 'pozisyon yazılmamış')); } },
+        { key:'rol', label:'Etkin rol', width:'15%', cellClass:'cell-wrap',
+          sortValue:function(e){ return DB.roleName(e.rol); },
+          exportValue:function(e){ return DB.roleName(e.rol); },
+          render:function(e){
+            var roller = Array.isArray(e.roller) ? e.roller : [];
+            return '<span class="cell-main">' + GV.esc(DB.roleName(e.rol)) + '</span>' +
+              GV.cell.sub(roller.length > 1
+                ? 'tanımlı: ' + roller.map(function(r){ return GV.esc(DB.roleName(r)); }).join(' · ')
+                : 'ad <b>DB.roleName(key)</b> ile çözüldü · anahtar ' + GV.esc(e.rol)); } },
+        { key:'dep', label:'Departman', width:'15%', cellClass:'cell-wrap',
+          exportValue:function(e){ return e.depAd || e.dep || ''; },
+          render:function(e){ return e.dep
+            ? '<span class="cell-main">' + GV.esc(e.depAd || e.dep) + '</span>' +
+              GV.cell.sub('<span class="cell-code">' + GV.esc(e.dep) + '</span>')
+            : olculemedi('kayıtta departman yok'); } },
+        { key:'pozisyon', label:'Pozisyon', cellClass:'cell-wrap', visible:false,
+          exportValue:function(e){ return e.pozisyon || ''; },
+          render:function(e){ return e.pozisyon
+            ? '<span class="cell-main">' + GV.esc(e.pozisyon) + '</span>'
+            : GV.cell.faint('—'); } },
+        /* ÖZLÜK SINIFI — satır bazlı maske. Maskelenen hücre ÇIKTIYA DA
+           girmez (UID-28): maske dekor değil kapıdır. */
+        { key:'eposta', label:'E-posta', width:'18%', cellClass:'cell-wrap',
+          mask:function(e){ return !GV.hr.ozlukGorebilir(e); },
+          exportValue:function(e){ return GV.hr.ozluk(e, 'eposta') || ''; },
+          render:function(e){
+            var v = GV.hr.ozluk(e, 'eposta');
+            return v ? '<span class="cell-main">' + GV.esc(v) + '</span>'
+                     : olculemedi('kayıtta e-posta yazılmamış'); } },
+        GV.cols.durum('durum', 'Durum', { width:'12%',
+          deger:function(e){ return GV.hr.durum(e); },
+          bosMetin:'durum yazılmamış' }),
+        GV.cols.date('girisTarihi', 'İşe giriş', { width:'12%', plain:true,
+          bosMetin:'—', bosSub:function(){ return 'kayıtta giriş tarihi yok'; } })
+      ],
+
+      filters:[
+        { key:'rol', label:'Etkin rol (kayıtlardan türetildi)', type:'multi',
+          options:roller.map(function(r){
+            return { value:r, label:DB.roleName(r) + ' (' + say(PERSONEL, function(e){
+              return e.rol === r; }) + ')' }; }) },
+        { key:'dep', label:'Departman (kayıtlardan türetildi)', type:'multi',
+          options:depler.map(function(d){
+            var dep = DEP.filter(function(x){ return x.kod === d; })[0];
+            return { value:d, label:(dep ? dep.ad : d) + ' (' + say(PERSONEL, function(e){
+              return e.dep === d; }) + ')' }; }) },
+        { key:'durum', label:'İstihdam durumu (GV.hr.durum ile türetildi)', type:'multi',
+          options:durumlar.map(function(d){
+            return { value:d, label:d + ' (' + say(PERSONEL, function(e){
+              return GV.hr.durum(e) === d; }) + ')' }; }),
+          test:function(e, v){ return v.indexOf(String(GV.hr.durum(e))) !== -1; } },
+        { key:'atanabilir', label:'Yeni iş atanabilir mi', type:'select',
+          options:[{ value:'evet', label:'Atanabilir (Aktif)' },
+                   { value:'hayir', label:'Atanamaz' }],
+          test:function(e, v){ return v === 'evet' ? GV.hr.atanabilir(e) : !GV.hr.atanabilir(e); } },
+        { key:'girisTarihi', label:'İşe giriş aralığı', type:'daterange' }
+      ],
+
+      mobile:function(e){
+        var eposta = GV.hr.ozlukGorebilir(e)
+          ? GV.esc(GV.hr.ozluk(e, 'eposta') || '—')
+          : '<span class="cell-mask">••••••</span>';
+        return GV.cell.mrow(
+          GV.user(e.kod, { sm:true }),
+          '<span class="cell-code">' + GV.esc(e.kod) + '</span>',
+          [ GV.ico('i-shield','ic-sm') + GV.esc(DB.roleName(e.rol)),
+            GV.ico('i-layers','ic-sm') + GV.esc(e.depAd || e.dep || '—'),
+            GV.ico('i-mail','ic-sm') + eposta ],
+          GV.badge(GV.hr.durum(e))
+        );
+      },
+
+      rowActions:[
+        { key:'ac', icon:'i-external', label:'Personel kaydını aç',
+          href:function(e){ return 'app-personel-detay.html?id=' + e.kod; } }
+      ],
+      bulk:[{ key:'disa', label:'Dışa aktar', icon:'i-download', export:true }],
+
+      emptyState:{ icon:'i-users', title:'Bu görünümde kullanıcı yok',
+        desc:'Filtreleri değiştirebilirsiniz. Kullanıcı defterinde ' +
+             F.num(PERSONEL.length) + ' kayıt var.' }
+    });
+
+    p.insertAdjacentHTML('beforeend',
+      not('<b>Bu listede maaş kolonu YOKTUR</b> ve bu bir eksik değil, kapsam ' +
+        'kararıdır: kullanıcı yönetimi bir erişim yüzeyidir, bordro yüzeyi değildir. ' +
+        'Ücret alanları <b>permMatrix</b> ücret anahtarının arkasındadır ve ' +
+        '<a href="app-personel-detay.html">personel kaydının</a> yetkisine aittir. ' +
+        'E-posta ise ÖZLÜK sınıfındadır (§20.1): kolon satır bazlı maskelidir ve ' +
+        'maskelenen hücre çıktıya da girmez.') +
+      faintNot('<b>Rol değiştirme, kullanıcı ekleme ve silme düğmesi yoktur.</b> ' +
+        '<b>DB.employees[].rol</b> alanına doğrudan yazmak ortak katmanın dışına ' +
+        'çıkmak olurdu; istihdam durumu ise yalnız <b>GV.flow.gec(\'employee\', …)</b> ' +
+        'ile değişir ve o yüzey personel ekranıdır. Erişim yönetiminin sunucu payı ' +
+        'aşağıda <b>BE-A3</b> olarak beyan edildi.'));
+  }
+
+  /* ================================================================
+     4) ROLLER — GV.list (urlSync:false)
+
+     `DB.roles` 27 kayıt. Rolün kaç kişide ETKİN olduğu `DB.employees`
+     `rol` alanından, kaç kişide TANIMLI olduğu `roller[]` dizisinden
+     TÜRETİLİR; türetilemeyen sayı basılmaz.
+     ================================================================ */
+  function rolSekmesi(p){
+    var yetimRol    = ROL.filter(function(r){ return !MATRIS[r.key]; }).map(function(r){ return r.key; });
+    var yetimMatris = MATRIS_ROL.filter(function(k){
+      return !ROL.some(function(r){ return r.key === k; }); });
+    var kademeler = benzersiz(ROL, 'kademe').sort();
+    var dashlar   = benzersiz(ROL, 'dash').sort();
+    var etkinCesit = benzersiz(PERSONEL, 'rol').length;
+
+    function etkinSayi(key){ return say(PERSONEL, function(e){ return e.rol === key; }); }
+    function tanimliSayi(key){
+      return say(PERSONEL, function(e){
+        return Array.isArray(e.roller) && e.roller.indexOf(key) !== -1; });
+    }
+
+    p.innerHTML =
+      GV.notice({ tone:(yetimRol.length || yetimMatris.length) ? 'warn' : 'info',
+        icon:'i-shield',
+        title:'Rol sözlüğü — ' + F.num(ROL.length) + ' rol · yetki matrisi ' +
+              F.num(MATRIS_ROL.length) + ' satır',
+        text:(yetimRol.length || yetimMatris.length)
+          ? 'Eşleşme BOZUK: matris satırı olmayan rol ' + yetimRol.join(', ') +
+            ' · rol sözlüğünde karşılığı olmayan matris satırı ' + yetimMatris.join(', ') + '.'
+          : 'İki defter birebir eşleşiyor: her rolün bir matris satırı, her matris ' +
+            'satırının bir rol karşılığı var — yetim kayıt yok. Rol adı hiçbir yerde ' +
+            'elle yazılmaz, DB.roleName(key) ile çözülür.' }) +
+      '<p class="u-sm u-muted u-mt-4">Görünen: <span id="rolSayac">—</span> · ' +
+      'kademe (' + kademeler.length + ') ve panel varyantı (' + dashlar.length +
+      ') seçenekleri ' + F.num(ROL.length) + ' rol kaydından türetildi · ' +
+      F.num(etkinCesit) + ' rol bir kullanıcıda etkin.</p>' +
+      '<div id="rolListe" class="u-mt-4"></div>';
+
+    GV.list({
+      mount:'#rolListe', id:'ayarSirketRol', key:'key',
+      source:function(){ return DB.roles; },
+      countTarget:'#rolSayac',
+      exportName:'roller', exportTitle:'Rol Sözlüğü',
+      pageSize:10, views:['table','card'], urlSync:false,
+      archive:false,                 /* rol kaydının arşiv ekseni yoktur */
+      defaultSort:'kademe', defaultDir:'asc',
+
+      search:{ placeholder:'Rol adı ya da anahtarı ara', fields:['key','ad','dash'] },
+      /* Rol sözlüğü kişiye bağlı değildir; satır kapsamı için eşlenecek bir
+         alan YOKTUR. Bileşen kapsamsızlığı şeritte kendisi söyler (§4.7). */
+      scopeField:{},
+
+      kpis:[
+        { label:'Rol', icon:'i-shield',
+          meta:function(){ return 'DB.roles · yetki matrisi ' + MATRIS_ROL.length + ' satır'; },
+          calc:function(base){ return base.length; } },
+        { label:'Bir kullanıcıda etkin', icon:'i-user-check', tone:'ok',
+          meta:function(){ return F.num(PERSONEL.length) + ' personel kaydından türetildi'; },
+          calc:function(base){ return say(base, function(r){ return etkinSayi(r.key) > 0; }); } },
+        { label:'Hiç kullanılmayan', icon:'i-alert', tone:'warn',
+          meta:function(){ return 'ne etkin ne tanımlı — rol yaşıyor, taşıyanı yok'; },
+          calc:function(base){ return say(base, function(r){
+            return etkinSayi(r.key) === 0 && tanimliSayi(r.key) === 0; }); } },
+        { label:'Yönetim kademesi', icon:'i-award', tone:'accent',
+          meta:function(){ return 'kademe 1 — kademe ekseni DB.roles kaydındadır'; },
+          calc:function(base){ return say(base, function(r){ return r.kademe === 1; }); } }
+      ],
+
+      columns:[
+        { key:'key', label:'Anahtar', width:'14%', locked:true,
+          exportValue:function(r){ return r.key; },
+          render:function(r){ return kodu(r.key); } },
+        { key:'ad', label:'Rol', cellClass:'cell-wrap',
+          exportValue:function(r){ return r.ad; },
+          render:function(r){
+            return '<span class="cell-main">' + GV.esc(r.ad) + '</span>' +
+              GV.cell.sub(MATRIS[r.key]
+                ? 'yetki matrisi satırı var'
+                : '⚠ yetki matrisinde satırı YOK'); } },
+        GV.cols.num('kademe', 'Kademe', { width:'10%',
+          sub:function(r){ return r.kademe === 1 ? 'yönetim' : r.kademe === 4 ? 'dış / kısıtlı' : ''; } }),
+        { key:'dash', label:'Panel varyantı', width:'14%', cellClass:'center',
+          exportValue:function(r){ return r.dash || ''; },
+          render:function(r){ return r.dash ? kodu(r.dash) : GV.cell.faint('—'); } },
+        { key:'etkin', label:'Etkin kullanıcı', width:'14%', cellClass:'num',
+          sortValue:function(r){ return etkinSayi(r.key); },
+          exportValue:function(r){ return etkinSayi(r.key); },
+          render:function(r){
+            var n = etkinSayi(r.key);
+            return GV.cell.num(n) + GV.cell.sub(n
+              ? 'DB.employees[].rol alanından türetildi'
+              : 'personel defterinde bu rol etkin değil'); } },
+        { key:'tanimli', label:'Tanımlı kullanıcı', width:'14%', cellClass:'num',
+          sortValue:function(r){ return tanimliSayi(r.key); },
+          exportValue:function(r){ return tanimliSayi(r.key); },
+          render:function(r){
+            var n = tanimliSayi(r.key);
+            return GV.cell.num(n) + GV.cell.sub(n
+              ? 'DB.employees[].roller dizisinden türetildi'
+              : 'hiçbir kullanıcının rol dizisinde yok'); } }
+      ],
+
+      filters:[
+        { key:'kademe', label:'Kademe (rol kayıtlarından türetildi)', type:'multi',
+          options:kademeler.map(function(k){
+            return { value:String(k), label:'Kademe ' + k + ' (' + say(ROL, function(r){
+              return r.kademe === k; }) + ')' }; }),
+          test:function(r, v){ return v.indexOf(String(r.kademe)) !== -1; } },
+        { key:'dash', label:'Panel varyantı (rol kayıtlarından türetildi)', type:'multi',
+          options:dashlar.map(function(d){
+            return { value:d, label:d + ' (' + say(ROL, function(r){
+              return r.dash === d; }) + ')' }; }) },
+        { key:'kullanim', label:'Kullanım (personel defterinden türetildi)', type:'select',
+          options:[{ value:'etkin', label:'Bir kullanıcıda etkin' },
+                   { value:'tanimli', label:'Tanımlı ama etkin değil' },
+                   { value:'bos', label:'Hiç kullanılmıyor' }],
+          test:function(r, v){
+            var e = etkinSayi(r.key), t = tanimliSayi(r.key);
+            if(v === 'etkin')   return e > 0;
+            if(v === 'tanimli') return e === 0 && t > 0;
+            return e === 0 && t === 0; } }
+      ],
+
+      mobile:function(r){
+        return GV.cell.mrow(
+          '<span class="cell-main">' + GV.esc(r.ad) + '</span>',
+          '<span class="cell-code">' + GV.esc(r.key) + '</span>',
+          [ GV.ico('i-award','ic-sm') + 'kademe ' + GV.esc(r.kademe),
+            GV.ico('i-grid','ic-sm') + GV.esc(r.dash || '—'),
+            GV.ico('i-user-check','ic-sm') + F.num(etkinSayi(r.key)) + ' etkin' ]
+        );
+      },
+
+      bulk:[{ key:'disa', label:'Dışa aktar', icon:'i-download', export:true }],
+
+      emptyState:{ icon:'i-shield', title:'Bu görünümde rol yok',
+        desc:'Filtreleri değiştirebilirsiniz. Rol sözlüğünde ' + F.num(ROL.length) +
+             ' kayıt var.' }
+    });
+
+    p.insertAdjacentHTML('beforeend',
+      faintNot('“Etkin” ve “tanımlı” AYNI ŞEY DEĞİLDİR: <b>rol</b> kullanıcının şu an ' +
+        'oturum açtığı roldür, <b>roller[]</b> ise açabileceği rollerin listesidir. İki ' +
+        'sayı da personel defterinden türetildi; sıfır burada <b>ölçülmüş bir sıfırdır</b> ' +
+        '(defter yüklü, o rolü taşıyan kayıt yok) — “ölçülemedi” demek değildir. ' +
+        'Müşteri kullanıcısı rolü personel defterinde yaşamaz: o oturum ' +
+        '<b>DB.contacts</b> üzerinden kurulur (§2.2) ve bu sayımın dışındadır.'));
+  }
+
+  /* ================================================================
+     5) YETKİ MATRİSİ — GV.list (urlSync:false)
+
+     27 rol × 11 anahtar bir TABLODUR ve kolonlar da satırlar da veridir.
+     `GV.cols.tbl` rapor tablosu iskeletidir; burada `GV.list` kullanılır
+     ve 11 anahtar 11 kolondur (§21.4). Boolean hücre rozetle, kapsam
+     hücresi düz metinle basılır; `'yok'` değeri soluklaştırılır —
+     `0` BASILMAZ, çünkü `0` bir DEĞERDİR ve burada değer bir dizedir.
+     ================================================================ */
+  function yetkiSekmesi(p){
+    /* Satırlar rol sözlüğünden türetilir; matris satırı olmayan rol de
+       basılır ve eksikliği yazılır (kayıt gizlenmez). */
+    function satirlar(){
+      return (DB.roles || []).map(function(r){
+        var m = (DB.permMatrix || {})[r.key] || null;
+        var s = { rol:r.key, ad:r.ad, kademe:r.kademe, matrisVar:!!m };
+        YETKI_ANAHTAR.forEach(function(k){ s[k] = m ? m[k] : null; });
+        return s;
+      });
+    }
+    var SATIR = satirlar();
+
+    function hucre(v){
+      if(v === true)  return GV.badge('Açık');
+      if(v === false) return GV.badge('Kapalı');
+      if(v == null)   return olculemedi('bu rolün matris satırı yok');
+      if(v === 'yok') return GV.cell.faint('yok');
+      return '<span class="cell-main">' + GV.esc(v) + '</span>';
+    }
+    function anahtarKolonu(k){
+      return { key:k, label:ANAHTAR_AD[k] || k, width:'8%', cellClass:'center',
+        sortValue:function(r){ return r[k] == null ? null : String(r[k]); },
+        exportValue:function(r){ return r[k] == null ? '' : String(r[k]); },
+        render:function(r){ return hucre(r[k]); } };
+    }
+    function anahtarFiltresi(k){
+      var degerler = benzersiz(SATIR, function(r){
+        return r[k] == null ? null : String(r[k]); }).sort();
+      return { key:k, label:(ANAHTAR_AD[k] || k) + ' (satırlardan türetildi)', type:'multi',
+        options:degerler.map(function(v){
+          return { value:v, label:(v === 'true' ? 'Açık' : v === 'false' ? 'Kapalı' : v) +
+            ' (' + say(SATIR, function(r){ return String(r[k]) === v; }) + ')' }; }),
+        test:function(r, v){ return v.indexOf(String(r[k])) !== -1; } };
+    }
+
+    var kapsamDegerleri = benzersiz(SATIR, function(r){
+      return typeof r[YETKI_ANAHTAR[0]] === 'string' ? r[YETKI_ANAHTAR[0]] : null; }).sort();
+
+    p.innerHTML =
+      GV.notice({ tone:'warn', icon:'i-key',
+        title:'Yetki matrisi SALT OKUNURDUR',
+        text:F.num(SATIR.length) + ' rol × ' + F.num(YETKI_ANAHTAR.length) + ' anahtar. Bu ekran ' +
+             'matrise YAZMAZ ve düzenleme düğmesi basmaz: bir yetki değişikliğinin ' +
+             'sunucuda sürümü ve yürürlük tarihi olmalıdır (BE-A3). Kapsam değerleri ' +
+             '(' + kapsamDegerleri.join(' · ') + ') DB.permMatrix hücrelerinin ham ' +
+             'dizesidir — kendi etiketimizi uydurmuyoruz.' }) +
+      '<p class="u-sm u-muted u-mt-4">Görünen: <span id="yetkiSayac">—</span> · ' +
+      'her anahtarın süzgeç seçenekleri ' + F.num(SATIR.length) + ' satırdan türetildi · ' +
+      'tablo geniştir ve dar ekranda yatay kayar; 980 px altında satırlar kart olarak ' +
+      'basılır.</p>' +
+      '<div id="yetkiListe" class="u-mt-4"></div>';
+
+    GV.list({
+      mount:'#yetkiListe', id:'ayarSirketYetki', key:'rol',
+      source:satirlar,
+      countTarget:'#yetkiSayac',
+      exportName:'yetki-matrisi', exportTitle:'Yetki Matrisi (rol × anahtar)',
+      pageSize:15, urlSync:false,
+      archive:false,                 /* matris satırının arşiv ekseni yoktur */
+      defaultSort:'kademe', defaultDir:'asc',
+
+      search:{ placeholder:'Rol adı ya da anahtarı ara', fields:['rol','ad'] },
+      scopeField:{},
+
+      kpis:[
+        { label:'Matris satırı', icon:'i-key',
+          meta:function(){ return F.num(YETKI_ANAHTAR.length) + ' anahtar · ' +
+            'anahtar listesi matrisin kendisinden türetildi'; },
+          calc:function(base){ return base.length; } },
+        { label:'Tam görme yetkisi', icon:'i-eye', tone:'accent',
+          meta:function(){ return 'gor = tum'; },
+          calc:function(base){ return say(base, function(r){ return r.gor === 'tum'; }); } },
+        { label:'Onay yetkisi', icon:'i-stamp', tone:'ok',
+          meta:function(){ return 'onay = true'; },
+          calc:function(base){ return say(base, function(r){ return r.onay === true; }); } },
+        { label:'Silme yetkisi', icon:'i-trash', tone:'danger',
+          meta:function(){ return 'sil = tum — kalan satırlarda silme kapalıdır'; },
+          calc:function(base){ return say(base, function(r){ return r.sil === 'tum'; }); } },
+        { label:'Sistem kaydı', icon:'i-list', tone:'info',
+          meta:function(){ return 'log = true'; },
+          calc:function(base){ return say(base, function(r){ return r.log === true; }); } }
+      ],
+
+      columns:[
+        { key:'ad', label:'Rol', width:'16%', cellClass:'cell-wrap', locked:true,
+          exportValue:function(r){ return r.ad; },
+          render:function(r){
+            return '<span class="cell-main">' + GV.esc(r.ad) + '</span>' +
+              GV.cell.sub('<span class="cell-code">' + GV.esc(r.rol) + '</span> · kademe ' +
+                GV.esc(r.kademe)); } }
+      ].concat(YETKI_ANAHTAR.map(anahtarKolonu)),
+
+      filters:[
+        { key:'kademe', label:'Kademe (rol kayıtlarından türetildi)', type:'multi',
+          options:benzersiz(SATIR, 'kademe').sort().map(function(k){
+            return { value:String(k), label:'Kademe ' + k + ' (' + say(SATIR, function(r){
+              return r.kademe === k; }) + ')' }; }),
+          test:function(r, v){ return v.indexOf(String(r.kademe)) !== -1; } }
+      ].concat(YETKI_ANAHTAR.map(anahtarFiltresi)),
+
+      mobile:function(r){
+        return GV.cell.mrow(
+          '<span class="cell-main">' + GV.esc(r.ad) + '</span>',
+          '<span class="cell-code">' + GV.esc(r.rol) + '</span>',
+          YETKI_ANAHTAR.map(function(k){
+            var v = r[k];
+            var m = v === true ? 'açık' : v === false ? 'kapalı' : v == null ? '—' : v;
+            return '<span class="u-xs">' + GV.esc(ANAHTAR_AD[k] || k) + ': <b>' +
+                   GV.esc(m) + '</b></span>';
+          })
+        );
+      },
+
+      bulk:[{ key:'disa', label:'Dışa aktar', icon:'i-download', export:true }],
+
+      emptyState:{ icon:'i-key', title:'Bu görünümde rol yok',
+        desc:'Anahtar süzgeçlerini gevşetebilirsiniz. Matriste ' + F.num(SATIR.length) +
+             ' satır var.' }
+    });
+
+    p.insertAdjacentHTML('beforeend',
+      not('Dört anahtar bir <b>KAPSAM DİZESİ</b> taşır (' + kapsamDegerleri.join(' · ') +
+        '), yedisi <b>boolean</b>dır. Boolean hücre rozetle, kapsam hücresi düz metinle ' +
+        'basıldı; <b>yok</b> değeri soluklaştırıldı ve hiçbir hücreye <b>0</b> ' +
+        'YAZILMADI — bu hücrelerin değeri bir sayı değil, bir kapsamdır. Sıfır basmak ' +
+        '“yetki sıfır” gibi okunur, oysa doğru cümle “bu eksende yetki yok”tur.') +
+      faintNot('Bu tablo <b>DB.permMatrix</b>in kendisidir; ekran ikinci bir yetki ' +
+        'kuralı tanımlamaz. Kapıların çalışan karşılığı <b>GV.perm.can</b> · ' +
+        '<b>GV.perm.scope</b> · <b>GV.perm.mask</b> yordamlarıdır ve bu ekran onları ' +
+        'yalnız OKUR.'));
+  }
+
+  /* ================================================================
+     6) ONAY AKIŞLARI — GV.dl (GV.chain KULLANILMAZ)
+
+     `DB.approvalFlows` bir TANIMDIR, bir KOŞUM değildir. `GV.chain`
+     bileşeni bir zincirin KOŞUMUNU basmak içindir ve alan adları farklıdır
+     (`{rol, kisi, durum, tarih, not}`); burada kişi de durum da tarih de
+     YOKTUR — tanımda olmayan alanları rozetlemek, koşmamış bir adımı
+     koşmuş göstermek olurdu. O yüzden adımlar `GV.dl` ile basılır (§21.4).
+     ================================================================ */
+  function onaySekmesi(p){
+    var tipAdlari  = Object.keys(TIP);
+    var zincirliTip = tipAdlari.filter(function(t){
+      return AKIS.some(function(a){ return a.tur === t; }); });
+    var entitysiz  = tipAdlari.filter(function(t){ return !TIP[t].entity; });
+    var toplamAdim = AKIS.reduce(function(s, a){ return s + (a.adimlar || []).length; }, 0);
+    var esikliAdim = AKIS.reduce(function(s, a){
+      return s + say(a.adimlar || [], function(x){ return x.esik != null; }); }, 0);
+
+    /* Adımın rol anahtarı 27 rollük sözlükte var mı — ölçülür, varsayılmaz. */
+    function rolCozum(adim){
+      var bilinen = ROL.some(function(r){ return r.key === adim.rol; });
+      return bilinen
+        ? GV.esc(DB.roleName(adim.rol)) + GV.cell.sub('<span class="cell-code">' +
+            GV.esc(adim.rol) + '</span> · ad DB.roleName(key) ile çözüldü')
+        : GV.esc(adim.ad || adim.rol) + GV.cell.sub('⚠ <span class="cell-code">' +
+            GV.esc(adim.rol) + '</span> ' + F.num(ROL.length) + ' rollük sözlükte YOK; ' +
+            'adım kendi <b>ad</b> alanını taşıyor — rol adı uydurulmadı');
+    }
+    /* Eşik: `esik:null` “her zaman çalışır” diye YAZILIR, `0` yazılmaz —
+       `0` bir eşik varmış ve sıfıra ayarlanmış gibi okunur (§10.1). */
+    function kosulMetni(adim){
+      if(adim.esik == null)
+        return '<span class="cell-main">her zaman çalışır</span>' +
+               GV.cell.sub('koşul <span class="cell-code">' + GV.esc(adim.kosul) +
+                 '</span> · eşik tanımlı değil — bu adım atlanamaz');
+      if(adim.kosul === 'tutar')
+        return GV.cell.mny(adim.esik, { cur:'₺' }) +
+               GV.cell.sub('ve üzeri tutarda devreye girer (koşul: tutar)');
+      if(adim.kosul === 'gun')
+        return GV.cell.gun(adim.esik) +
+               GV.cell.sub('ve üzeri sürede devreye girer (koşul: gün)');
+      return '<span class="u-num">' + F.num(adim.esik) + '</span>' +
+             GV.cell.sub('koşul <span class="cell-code">' + GV.esc(adim.kosul) +
+               '</span> · birimi sözlükte yazılı değil, ham basıldı');
+    }
+
+    var out =
+      GV.notice({ tone:'warn', icon:'i-stamp',
+        title:'Onay zincirleri bir TANIMDIR, koşum motoru değildir',
+        text:F.num(AKIS.length) + ' zincir · ' + F.num(toplamAdim) + ' adım · ' +
+             F.num(esikliAdim) + ' adımda eşik var. Eşik ve SLA burada yalnız YAZILIDIR: ' +
+             'prototipte bir zamanlayıcı yoktur, adımlar kendiliğinden ilerlemez. ' +
+             'Çalışan onay yüzeyi GV.approval yordamlarıdır; bu ekran zincirin ' +
+             'TANIMINI gösterir, bir koşumunu değil.' });
+
+    /* — zincir tanımları — */
+    AKIS.forEach(function(a){
+      var adimlar = (a.adimlar || []).slice().sort(function(x, y){ return x.sira - y.sira; });
+      out += kart('i-stamp', a.ad,
+        kodu(a.kod) + ' · sürüm ' + F.num(a.surum),
+        GV.dl([
+          ['Onay tipi', GV.esc(a.tur) + GV.cell.sub(TIP[a.tur]
+            ? 'DB.approvalTypes içinde karşılığı var'
+            : '⚠ DB.approvalTypes içinde bu tip YOK')],
+          ['Tanım durumu', GV.badge(a.durum) +
+            GV.cell.sub('sürümlü tanım — ' + (DB.approvalFlowStatuses || []).join(' · '))],
+          ['Yürürlük', a.yururluk ? F.date(a.yururluk) : olculemedi('yürürlük tarihi yazılmamış')],
+          ['Adım sayısı', '<span class="u-num">' + F.num(adimlar.length) + '</span>' +
+            GV.cell.sub('süreç başlatıldığında sürüm örneğe sabitlenir; şablon sonradan ' +
+                        'değişse bile çalışan zincir değişmez')]
+        ], { skipEmpty:true }) +
+        '<h4 class="gc-sub u-mt-8">Adımlar</h4>' +
+        GV.dl(adimlar.map(function(x){
+          return [F.num(x.sira) + '. ' + rolCozum(x),
+                  kosulMetni(x) +
+                  (x.sla != null
+                    ? GV.cell.sub('hedef süre: ' + F.num(x.sla) + ' iş günü')
+                    : GV.cell.sub('hedef süre yazılmamış'))];
+        })));
+    });
+
+    /* — onay tipleri — */
+    out += kart('i-clipboard-check', 'Onay tipleri',
+      F.num(tipAdlari.length) + ' tip · ' + F.num(zincirliTip.length) + ' tanesinde zincir tanımı var',
+      GV.dl(tipAdlari.map(function(t){
+        var v = TIP[t];
+        var zincir = AKIS.filter(function(a){ return a.tur === t; })[0];
+        var alt = v.entity
+          ? 'kaynak varlık <span class="cell-code">' + GV.esc(v.entity) + '</span> · onay → ' +
+            GV.esc(v.onay) + ' · ret → ' + GV.esc(v.ret) + ' · iade → ' +
+            (v.iade ? GV.esc(v.iade) : 'tanımlı değil')
+          : (v.not ? GV.esc(v.not) : 'kaynak kaydın durum makinesi yoktur');
+        return [GV.esc(t),
+          (v.entity
+            ? GV.badge('Bağlı', 'is-ok')
+            : GV.badge('Durum makinesi yok', 'is-neutral')) +
+          (zincir ? ' ' + kodu(zincir.kod) : '') +
+          GV.cell.sub(alt + (zincir ? '' : ' · yayında bir zincir tanımı YOK'))];
+      })) +
+      not('Ölçüldü: ' + F.num(tipAdlari.length) + ' onay tipinin <b>' +
+        F.num(zincirliTip.length) + '</b> tanesinde yayında bir zincir tanımı var; kalan <b>' +
+        F.num(tipAdlari.length - zincirliTip.length) + '</b> tip zincirsiz çalışır (tek ' +
+        'adımlı karar). <b>' + F.num(entitysiz.length) + '</b> tipte ise <b>entity</b> alanı ' +
+        'boştur (' + entitysiz.map(function(t){ return GV.esc(t); }).join(' · ') + '): bu bir ' +
+        'eksik değil, “kaynak kaydın durum makinesi yok” beyanıdır — onay kaydı ' +
+        'sonuçlanır, kaynak kayda geçiş uygulanmaz.'));
+
+    out += faintNot('<b>GV.chain KULLANILMADI</b> ve bu bilinçli: o bileşen bir zincirin ' +
+      'KOŞUMUNU basar ve <b>kisi · durum · tarih</b> alanlarını bekler. Burada koşum ' +
+      'yoktur — kişi atanmamış, hiçbir adım onaylanmamış, tarih yok. Tanımı koşum ' +
+      'bileşeniyle basmak, her adımı “Atanmadı / Bekliyor” diye rozetleyip <b>bekleyen ' +
+      'bir onay varmış gibi</b> göstermek olurdu. Adımlar bu yüzden <b>GV.dl</b> ile ' +
+      'basıldı. Zincir tanımına yeni adım eklemek ya da eşik değiştirmek bu ekranda ' +
+      'YAPILAMAZ; sunucu payı aşağıda <b>BE-A5</b> olarak beyan edildi.');
+
+    p.innerHTML = out;
+  }
+
+  /* ================================================================
+     BACKEND PAYI BEYANI — §10.2(b) biçimi, §21.7 tablosundan KOPYALANDI.
+     Yalnız BU ekranla ilgili beş madde: BE-A3 · BE-A4 · BE-A5 · BE-K1 ·
+     BE-S5. İlgisiz madde beyanı beyanı gürültüye çevirir; bildirim
+     tercihi (BE-A1), profil yazımı (BE-A2), entegrasyon (BE-A6/A7),
+     append-only defter (BE-A8) ve belge deposu (BE-S4) diğer üç ayar
+     ekranına aittir.
+     ================================================================ */
+  var BACKEND = [
+    { kod:'BE-A3', bolum:'brief §21.4',
+      madde:'Rol ve yetki matrisi salt okunurdur; yetki değişikliği sunucuda sürüm ve ' +
+            'yürürlük tarihi ile saklanmalıdır' },
+    { kod:'BE-A4', bolum:'brief §21.4',
+      madde:'Modül anahtarı bellekte tutulur; sayfa yenilenince şirket varsayılanına döner' },
+    { kod:'BE-A5', bolum:'brief §21.4',
+      madde:'Onay zincirleri bir tanımdır, koşum motoru değildir; eşik ve SLA sunucuda ' +
+            'uygulanmalıdır' },
+    { kod:'BE-K1', bolum:'brief §20.1',
+      madde:'Kişisel veri kapısı yalnız arayüzdedir; özlük ve ücret alanları sunucuda ' +
+            'filtrelenmeli, maskelenmiş alan istemciye hiç gitmemelidir' },
+    { kod:'BE-S5', bolum:'şartname §9 audit_event',
+      madde:'Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır' }
+  ];
+  var beHost = document.getElementById('ayarBackend');
+  if(beHost) beHost.innerHTML =
+    '<section class="gv-card"><div class="gc-head">' +
+      '<h3 class="gc-title">' + GV.ico('i-shield') + 'Backend payı</h3>' +
+      '<span class="gc-meta">' + BACKEND.length + ' madde</span>' +
+    '</div><div class="gc-body">' +
+      '<ul class="odl-gap">' +
+        BACKEND.map(function(b){
+          return '<li><span class="odl-gap-kod">' + GV.esc(b.kod) + '</span>' +
+            '<span>' + GV.esc(b.madde) + '</span>' +
+            '<span class="odl-gap-bolum">' + GV.esc(b.bolum) + '</span></li>';
+        }).join('') +
+      '</ul>' +
+      '<p class="u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+        '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur.</p>' +
+      '<p class="u-faint u-sm"><b>BE-A4</b> bu ekranda doğrudan ölçülebilir: modül ' +
+        'anahtarını değiştirin, menü anında değişir — ama sayfayı yeniden yüklerseniz ' +
+        'değer şirket varsayılanına döner. <b>BE-A3</b> ise düğmelerin yokluğunda ' +
+        'görünür: departman, kullanıcı, rol ve yetki yüzeylerinde tek bir yazma düğmesi ' +
+        'yoktur, çünkü yazacak bir yer yoktur — sahte bir “Kaydet” basmak yasaktır ' +
+        '(§14.6). Bu sayfadaki TEK gerçek mutasyon modül anahtarıdır ve o da ' +
+        '<b>GV.ayar.modulAyarla</b> kapısından geçer.</p>' +
+    '</div></section>';
+});
+</script>
+</body>
+</html>
