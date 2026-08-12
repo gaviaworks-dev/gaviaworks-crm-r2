@@ -156,9 +156,12 @@ document.addEventListener('gv:ready', function(){
      okunur ve MASKELİ basılır (`••••••`, UID-11: `0` bir DEĞERDİR), kayıt
      listesine hiç girmez — düzenlemede mevcut bütçeye DOKUNULMAZ.
      ================================================================= */
-  var TEMEL_ALANLAR = canFinans
-    ? ['hesap','baslik','hizmet','butce','kapanisTahmini','sorumlu']
-    : ['hesap','baslik','hizmet','kapanisTahmini','sorumlu'];
+  /* ⚠️ İKİ VARYANT YAMASI KALKTI (K-44). Liste yetkiye göre iki biçimde
+     kuruluyordu; kapı böylece DÖRT yerde yaşıyordu (liste · alan tanımı ·
+     kaydetme dalı · aside dalı). Artık kapı TEK yerde: alanın kendi
+     `perm:'finans'` bildirimi. Alan düşünce `read()` anahtarı da düşer,
+     bu yüzden kaydetme listesinin ayrıca süzülmesine gerek yok. */
+  var TEMEL_ALANLAR = ['hesap','baslik','hizmet','butce','kapanisTahmini','sorumlu'];
   var EK_ALANLAR = ['sicaklik','puan','kaynak','referans','sonrakiAksiyon','sonrakiTarih'];
   var KAYIT_ALANLARI = TEMEL_ALANLAR.concat(EK_ALANLAR);
 
@@ -211,14 +214,19 @@ document.addEventListener('gv:ready', function(){
              label:(h.unvan || h.kod) + ' · ' + (GV.lifecycle.ad(h.evre) || 'evresiz') };
   });
 
-  /* Bütçe alanı — yetkiye göre iki biçim (yukarıdaki gerekçe). */
-  var butceAlan = canFinans
-    ? { key:'butce', label:'Bütçe', type:'money', cols:6,
-        hint:'Tahmini sözleşme tutarı. Ağırlıklı tutar bu değerin aşama olasılığıyla çarpımıdır.' }
-    : { key:'butce', label:'Bütçe', type:'text', cols:6, readonly:true,
-        value:GV.perm.mask('', 'finans'),
-        hint:'Bütçe finans yetkisi gerektirir; rolünüzde (' + GV.perm.role() + ') maskelenir. ' +
-             'Kaydetme bu alana dokunmaz, mevcut değer olduğu gibi kalır.' };
+  /* ⚠️ MASKELİ İKİZ ALAN YAMASI KALKTI (K-44 · brief §14.16'nın tam tarifi).
+     Yetkisiz rolde alan `value:GV.perm.mask('', 'finans')` ile DEĞERLİ ve
+     salt okunur basılıyordu — yani formda gerçek bir `<input>` içinde
+     `••••••` duruyordu. Bugün veri kaybı doğurmuyordu çünkü alan
+     `KAYIT_ALANLARI`ndan ayrıca dışlanmıştı; ama desen yasak, çünkü o
+     dışlama unutulduğu an maske gerçek tutarın üstüne yazılır.
+     Tek biçim + `perm`: yetkisiz rolde alan HİÇ ÇİZİLMEZ, doğrulanmaz ve
+     `read()` çıktısında anahtar olarak BULUNMAZ. */
+  var butceAlan = { key:'butce', label:'Bütçe', type:'money', cols:6,
+    perm:'finans',
+    maskSebep:'bütçe finans yetkisi gerektirir; alan çizilmez ve kaydetme ' +
+              'mevcut değere dokunmaz',
+    hint:'Tahmini sözleşme tutarı. Ağırlıklı tutar bu değerin aşama olasılığıyla çarpımıdır.' };
 
   /* Düzenleme kipinde aşama SALT OKUNUR — ikinci mutasyon yolu yok.
      Değer `record`tan DEĞİL, alanın kendi `value`sundan gelir: `asama`
@@ -341,8 +349,13 @@ document.addEventListener('gv:ready', function(){
     var h = hesapKod ? GV.lifecycle.hesap(hesapKod) : null;
     var asamaKey = rec ? rec.asama : ILK_ASAMA;
     var s = asamaOf(asamaKey);
-    var butce = canFinans ? sayiNull(v.butce) : null;
-    var agirlikli = canFinans ? agirlikliTutar(butce, asamaKey) : null;
+    /* Kapı alanın tanımında olduğu için burada ikinci bir süzgeç yok:
+       alan düştüyse `v.butce` zaten YOK ve `sayiNull` null döner (K-44).
+       Aşağıdaki maske DALI kalıyor — o bir ALAN kapısı değil, salt okunur
+       panelin gösterim kararıdır ve formda yasaklanan şey maskelenmiş
+       GİRDİdir, maskelenmiş gösterim değil. */
+    var butce = sayiNull(v.butce);
+    var agirlikli = agirlikliTutar(butce, asamaKey);
 
     var firsatlar = h ? DB.accountOpportunities(h.kod) : [];
     var acik = firsatlar.filter(acikMi);
@@ -437,7 +450,11 @@ document.addEventListener('gv:ready', function(){
         baslik:bosNull(v.baslik),
         asama:ILK_ASAMA,
         hizmet:bosNull(v.hizmet),
-        butce:canFinans ? sayiNull(v.butce) : null,
+        /* Yeni kayıtta alan düşmüşse anahtar da yok — `sayiNull(undefined)`
+           null döner ve yeni fırsat bütçesiz doğar. Bu, eski dalın yaptığı
+           şeyin AYNISI; fark, kararın artık alanın kendi kapısından
+           gelmesi (K-44). */
+        butce:sayiNull(v.butce),
         sicaklik:bosNull(v.sicaklik),
         puan:sayiNull(v.puan),
         kapanisTahmini:bosNull(v.kapanisTahmini),
@@ -463,6 +480,15 @@ document.addEventListener('gv:ready', function(){
       hedefKod = rec.kod;
       var degisen = [];
       KAYIT_ALANLARI.forEach(function(k){
+        /* ⚠️ `k in v` ZORUNLU (K-44 · emsal `app-proje-form.html`). Kapıyla
+           düşen alan `read()` çıktısında ANAHTAR OLARAK BULUNMAZ; döngü
+           anahtarın varlığını sormadan yazarsa `undefined` okur ve mevcut
+           değeri NULL'a çevirir. Ölçüldü ve tam bu oldu: `perm:'finans'`
+           geldiğinde `satistemsilci` rolünde kaydetmek `FRS-2026-001`in
+           450.000 ₺ bütçesini null yapıyordu. Eski yamada aynı kaza
+           `KAYIT_ALANLARI`nı role göre süzerek savuşturuluyordu — yani
+           koruma, kapının kendisinde değil listenin kurulumundaydı. */
+        if(!(k in v)) return;
         var yeniD = alanDegeri(k, v[k]);
         var formD = alanDegeri(k, formKayit[k]);
         if(yeniD !== formD) degisen.push(k);
