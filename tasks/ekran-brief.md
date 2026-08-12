@@ -3790,12 +3790,80 @@ tur, *"kaza olmadı"* değil.
 **KPI'lar (türetilir, kaynağı yazılır):** bakımı yaklaşan (`kalanGun` ·
 `sonrakiBakimTarihi` vs `DB.today`) · toplam gider (`DB.vehicleExpenses`
 `tutar` toplamı) · ödenmemiş ceza (`fines.durum === 'Ödenmedi'`) · muayene
-son tarihi · ortalama yakıt tüketimi — ⚠️ **son KPI TÜRETİLEMEZ ve
-BASILMAZ**: 5 yakıt kaydı bir araca ait ardışık iki dolum içermiyor, iki km
-farkı olmadan tüketim hesaplanamaz. `GV.empty`/`—` + sebep basılır.
+son tarihi · yakıt tüketimi.
+
+⚠️ **YAKIT TÜKETİMİ SATIRI DÜZELTİLDİ — eski hâli YANLIŞTI.** Brief ve
+V2-77 "hiçbir araçta ardışık iki dolum yok" diyordu; ÖLÇÜLDÜ ve tutmuyor:
+
+| araç | dolum | ölçüm |
+|---|---|---|
+| **ARC-001** | **2** | `YKT-2026-092` 2026-07-18 km 67380 → `YKT-2026-088` 2026-07-30 km 68120 · **Δ740 km**, sonraki dolum **52,4 L** → **7,08 L/100km** |
+| ARC-002 · ARC-003 · ARC-004 | 1'er | iki km farkı YOK — türetilemez |
+
+Sözleşme bu ölçümden çıkar, "basılmaz"dan değil:
+- KPI'ın adı **"Ortalama tüketim" DEĞİL "İki dolum arası tüketim"**. Tek
+  aralığa "ortalama" demek, bir ölçümü bir eğilim gibi göstermektir.
+- Türetilebilen araçta **sayı basılır ve DAYANAĞI yazılır** (hangi iki kayıt,
+  kaç km, kaç litre). Türetilemeyen araçta `—` + **gerçek sebep**: *"bu
+  araçta tek dolum kaydı var, iki km farkı olmadan tüketim türetilemez"* —
+  "veri yok" değil, hangi verinin neden yetmediği (§10.1).
+- ⚠️ Sayının **varsayımı da basılır**: tüketim ancak her iki dolumun da depoyu
+  DOLDURDUĞU varsayımıyla anlamlıdır ve `DB.fuelLogs` bunu söyleyen bir alan
+  taşımaz (`kod · arac · tarih · istasyon · litre · birimFiyat · tutar · km ·
+  surucu · aktif`). Varsayımı yazmadan basılan sayı, ölçüm değil iddiadır.
 
 ⚠️ **`aktif` alanı `fuelLogs` · `vehicleExpenses` · `policies` defterlerinde
-TUZAKSIZ ama OKUNMAZ** — §22.5. Pasiflik `GV.arsivli(r)`den geçer.
+TUZAKSIZ ama OKUNMAZ** — §22.5. Pasiflik `GV.arsivli(r)`den geçer. Ölçüldü:
+üç defterin 19 kaydının tamamı `GV.arsivli` gözüyle **aktif**, yani bu ekranda
+arşiv dalı bugün hiç ateşlenmiyor — dal yine de yazılır, ama "çalışıyor" diye
+raporlanamaz (ölçülmemiş dal ölçülmüş sayılmaz).
+
+**ARAÇ BAŞINA DEFTER DAĞILIMI — ölçüldü, sayı brief'ten değil ölçümden alınır:**
+
+| araç | durum · mülkiyet | bakım | yakıt | ceza | muayene | kaza | gider | poliçe |
+|---|---|---|---|---|---|---|---|---|
+| `ARC-001` 06 GW 1907 Passat | Aktif · Satın alınan | 2 | 2 | 1 | 1 | 0 | 4 | 2 |
+| `ARC-002` 06 GW 2201 Clio | Aktif · **Kiralık** | 1 | 1 | 0 | 1 | 0 | 1 | 1 |
+| `ARC-003` 06 GW 3388 Transit | **Serviste** · Satın alınan | 1 | 1 | 0 | 1 | **1** | 2 | 1 |
+| `ARC-004` 06 GW 5544 Corolla | Aktif · Satın alınan | 1 | 1 | 1 | 1 | 0 | 1 | 2 |
+
+`ARC-001` en kalabalık, `ARC-003` kaza kaydı OLAN tek araç ve tek `Serviste`,
+`ARC-002` tek kiralık. Ölçüm kayıtları bunlardır (§12 tarayıcı girdileri).
+
+**ALT DEFTERLERİN ALANLARI — kaynaktan okundu:**
+
+| defter | alanlar |
+|---|---|
+| `DB.maintenance` | `kod · arac · tur · planTarihi · planKm · gercekTarihi · servis · maliyet · durum · kalanGun · islemler` |
+| `DB.fuelLogs` | `kod · arac · tarih · istasyon · litre · birimFiyat · tutar · km · surucu · aktif` |
+| `DB.fines` | `kod · arac · tarih · surucu · tur · tutar · sonOdeme · durum · belge` |
+| `DB.inspections` | `kod · arac · sonTarih · gecerlilik · sonrakiTarih · sonuc · kusur · istasyon · kalanGun · durum` |
+| `DB.accidents` | `kod · arac · tarih · konum · surucu · karsiArac · kusurOrani · tutanak · ekspertiz · sigortaDosya · onarimServis · onarimMaliyet · durum · aciklama` |
+| `DB.vehicleExpenses` | `kod · arac · tur · tarih · tutar · aciklama · belge · aktif` |
+| `DB.policies` | `kod · arac · tur · sirket · police · baslangic · bitis · prim · teminat · acente · kalanGun · yenileme · odeme · aktif` |
+
+⚠️ **`inspections.sonTarih` BİR SON TARİH DEĞİL, SON MUAYENE TARİHİDİR.**
+Bu turda bir kez yanlış okundu ve ölçümle düzeltildi: dört kaydın `sonTarih`i
+de geçmişte (2024-08-28 … 2026-03-02) ve okuyan kişi "dört muayene de geçmiş"
+sanıyor. Vade `sonrakiTarih`tir; `kalanGun` **4/4 kayıtta ondan türetilenle
+birebir tutuyor** (25 · 103 · 577 · 595) — yani bu defterde bayat alan YOKTUR.
+Aynı ölçüm `policies.kalanGun` için de yapıldı: **6/6 tutuyor** (`bitis`ten).
+`maintenance.kalanGun` **5/5 tutuyor** (`planTarihi`den; ikisi negatif).
+
+**DURUM SÖZLÜKLERİ — ölçüldü, uydurulmaz:**
+`maintenance.durum`: Yaklaşıyor · Serviste · Planlandı · Tamam ·
+`inspections.durum`: Yaklaşıyor · Planlandı · `fines.durum`: Ödendi · Ödenmedi ·
+`accidents.durum`: Kapandı · `policies.tur`: Trafik Sigortası · Kasko ·
+`policies.yenileme`: Bekliyor · Teklif alındı · `—` ·
+`vehicleExpenses.tur`: Bakım · Yakıt · HGS · Kira · Ceza · Sigorta · Kasko · Lastik
+
+**KULLANILACAK ORTAK İMZALAR — hepsi kaynakta DOĞRULANDI:**
+`GV.pageHead` (`shell.js`) · `GV.guardRecord` · `GV.tabs(root)` (`ui.js:2084`) ·
+`GV.list` · `GV.empty` · `GV.badge(v, extra)` · `GV.tone` · `GV.arsivli(r, pasif)`
+(`domain.js:63`) · `GV.fmt.date · .money · .num · .days` · `GV.cell.*`.
+⚠️ `shell.js` `BUILT` kaydı ekranı YAZAN AJANIN İŞİ DEĞİLDİR (ajan `assets/`
+altına dokunmaz) — kaydı bütünleyen taraf ekler, yoksa ekrana giden her bağ
+"yayında değil" diye işaretlenir.
 
 ### 22.14 `app-personel-detay.html` — rota 81 · YEDİ SEKME
 
