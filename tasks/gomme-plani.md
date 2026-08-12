@@ -1,5 +1,23 @@
 # Gömme dilimi — 39 satırın HEDEF EKRANA göre gruplanması
 
+> ⚠️⚠️ **BU DOSYA TARİHSEL KAYITTIR — DALGA SIRASI BAYATLADI (13 Ağustos,
+> yürütme turu).** Ajan açılmadan ÖNCE her grubun yazma yordamı ölçüldü ve
+> plan yarıya indi. Yürütülecek sıra artık **`tasks/handoff.md` §7**'dir.
+>
+> Ölçümün bozduğu satırlar:
+> * **GRUP 2**'nin `85`'i · **GRUP 3**'ün beş drawer'ı (35·38·41·44·47) ·
+>   **GRUP 4**'ün `53`'ü · **GRUP 7**'nin `64`'ü · **GRUP 8**'in
+>   `23`·`29`·`119`·`122`'si → **BLOKE, yazma yordamı yok** (brief §23.1,
+>   borç V2-99). Bu dokuz+üç satır için ajan AÇILMADI.
+> * **GRUP 4**'ün `51` ve `52`'si → **ZATEN YAYINDAYDI** (`kuyruk.js`in
+>   altıncı tipi). Ajan gerekmedi, ölçülüp işaretlendi.
+> * **GRUP 5** (27·28·60) ve **GRUP 3**'ün `79`'u → **KAPANDI**.
+> * **GRUP 8**'in `125`'i → kapandı, ama "yüzey zaten var" ön ölçümü
+>   YARIMDI (brief §23.12).
+> * **GRUP 7**'nin `65`'i → kapandı; `62`·`63` açık.
+> * **GRUP 6**'nın `2`'si → "yüzey zaten var" ön ölçümü YARIM çıktı
+>   (brief §23.13); rota 2 ve 5 aynı ekrana yazar, birlikte ele alınır.
+
 > 13 Ağustos 2026 · ölçülerek yazıldı. Sayılar rota defterinden ve **gerçek
 > Chromium'da hedef ekranların sekme şeritlerinden** okundu, brief'ten değil.
 >
