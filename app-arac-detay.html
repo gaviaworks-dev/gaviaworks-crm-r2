@@ -859,8 +859,13 @@ document.addEventListener('gv:ready', function(){
           'olan bir sözleşme, olan bir olay değil. Yedinci bir olay sekmesi açmak "ayrı ekran ' +
           'ailesi açma" ilkesini sekme düzeyinde delerdi. ' +
           'Poliçe defterinde `durum` alanı YOKTUR (ölçüldü, 14 alanlık şema); yenileme ekseni ' +
-          '`yenileme` alanıdır ve bir tarih hesabı yapmaz. Poliçe yenileyen, ekleyen ya da ' +
-          'iptal eden yordam da YOK (§22.16 madde 7) — düğme basılmadı.'));
+          '`yenileme` alanıdır ve bir tarih hesabı yapmaz.') +
+      /* ROTA 106 (sigorta formu) — Beyar kararı burada ÇEKMECE İLE
+         karşılanmadı ve sebebi ölçüldü: poliçenin TAMAMI zaten bu blokta
+         satır satır basılı. İkinci bir yüzey açmak aynı defteri iki yerde
+         göstermek olurdu (K-21). Karardan uygulanan kısım kaydetme
+         düğmesidir: gizlenmedi, devre dışı basıldı, sebebi yazıldı. */
+      kaydetmeYok('police', 'DB.policies', '106'));
   }
 
   /* ---- 7.5 Aktivite ------------------------------------------------- */
@@ -1044,7 +1049,8 @@ document.addEventListener('gv:ready', function(){
       BAKIM.length) + salt('bakım');
 
     liste({
-      mount:'#adListe-bakim', id:'adBakim', key:'kod',
+      mount:'#adListe-bakim', id:'adBakim',
+      rowOpen:function(r){ saltCekmece('bakim', r); }, key:'kod',
       source:function(){ return BAKIM; },
       countTarget:'#adSay-bakim',
       exportName:'bakim-' + arac.kod, exportTitle:'Bakım kayıtları — ' + arac.plaka,
@@ -1121,7 +1127,8 @@ document.addEventListener('gv:ready', function(){
       YAKIT.length) + basi + salt('yakıt');
 
     liste({
-      mount:'#adListe-yakit', id:'adYakit', key:'kod',
+      mount:'#adListe-yakit',
+      rowOpen:function(r){ saltCekmece('yakit', r); }, id:'adYakit', key:'kod',
       source:function(){ return YAKIT; },
       countTarget:'#adSay-yakit',
       exportName:'yakit-' + arac.kod, exportTitle:'Yakıt kayıtları — ' + arac.plaka,
@@ -1214,7 +1221,8 @@ document.addEventListener('gv:ready', function(){
         : '') + salt('ceza');
 
     liste({
-      mount:'#adListe-ceza', id:'adCeza', key:'kod',
+      mount:'#adListe-ceza',
+      rowOpen:function(r){ saltCekmece('ceza', r); }, id:'adCeza', key:'kod',
       source:function(){ return CEZA; },
       countTarget:'#adSay-ceza',
       exportName:'ceza-' + arac.kod, exportTitle:'Ceza kayıtları — ' + arac.plaka,
@@ -1288,7 +1296,8 @@ document.addEventListener('gv:ready', function(){
       MUAYENE.length) + uyari + salt('muayene');
 
     liste({
-      mount:'#adListe-muayene', id:'adMuayene', key:'kod',
+      mount:'#adListe-muayene',
+      rowOpen:function(r){ saltCekmece('muayene', r); }, id:'adMuayene', key:'kod',
       source:function(){ return MUAYENE; },
       countTarget:'#adSay-muayene',
       exportName:'muayene-' + arac.kod, exportTitle:'Muayene kayıtları — ' + arac.plaka,
@@ -1363,7 +1372,8 @@ document.addEventListener('gv:ready', function(){
       KAZA.map(kazaDosyasi).join('') + salt('kaza');
 
     liste({
-      mount:'#adListe-kaza', id:'adKaza', key:'kod',
+      mount:'#adListe-kaza',
+      rowOpen:function(r){ saltCekmece('kaza', r); }, id:'adKaza', key:'kod',
       source:function(){ return KAZA; },
       countTarget:'#adSay-kaza',
       exportName:'kaza-' + arac.kod, exportTitle:'Kaza kayıtları — ' + arac.plaka,
@@ -1477,7 +1487,8 @@ document.addEventListener('gv:ready', function(){
              'kez eklenmez.' }) + '</div>' + salt('gider');
 
     liste({
-      mount:'#adListe-gider', id:'adGider', key:'kod',
+      mount:'#adListe-gider',
+      rowOpen:function(r){ saltCekmece('gider', r); }, id:'adGider', key:'kod',
       source:function(){ return GIDER; },
       countTarget:'#adSay-gider',
       exportName:'gider-' + arac.kod, exportTitle:'Gider kayıtları — ' + arac.plaka,
@@ -1512,16 +1523,145 @@ document.addEventListener('gv:ready', function(){
     });
   }
 
-  /* SALT OKUNUR BEYANI — her alt defterin altında. Yapılamayan iş DÜĞME
-     OLARAK VAAT EDİLMEZ (§14.6 · §22.16 madde 7): yedi defterin hiçbirine
-     kayıt ekleyen, güncelleyen ya da silen yordam yazılmamıştır. Devre
-     dışı bir düğme bile vaat sayıldığı için beyan cümle olarak basılır. */
+  /* ===================================================================
+     SALT OKUNUR ÇEKMECE — BEYAR KARARI (13 Ağustos 2026)
+
+     ⚠️ DURUŞ DEĞİŞTİ ve bu blok o değişikliğin kendisidir. Bu ekran bir
+     tur önce şunu yazıyordu: *"yapılamayan bir iş, devre dışı bir
+     düğmeyle bile vaat edilmez"* — ve hiçbir düğme basmıyordu.
+
+     Beyar kararı bunun tersini istedi ve gerekçesi ölçülebilir: alt
+     deftere kayıt EKLEYEN yordam yazılmayacak (kapsam donduruldu,
+     `v2-borc.md` **V2-98**), ama kullanıcı satırın tamamını görebilmeli
+     ve **kaydedemeyeceğini ekranda okuyabilmeli**. Yokluğu hiç
+     göstermemek, yokluğu yanlış göstermekten daha az dürüst değildir:
+     tablo satırı alanların bir kısmını kesiyor ve kesilen alanın
+     nerede olduğunu kullanıcı bilmiyordu.
+
+     ÜÇ KURAL:
+       1. Çekmece SALT OKUNURDUR — hiçbir `<input>` basılmaz.
+       2. Kaydetme düğmesi GİZLENMEZ, `disabled` basılır ve SEBEBİ
+          yanında yazılıdır. Gizlemek, sorunun kendisini gizlemektir.
+       3. Sebep cümlesi defterin ADINI ve borç numarasını söyler —
+          "bu sürümde yok" gibi kapalı bir cümle kurulmaz.
+
+     Kolon sözlüğü olmayan alanlar AYRI bir grupta ve HAM ANAHTAR adıyla
+     basılır. Onlara insan okunur bir etiket uydurmak, defterde olmayan
+     bir sözlüğü varmış gibi göstermek olurdu (§22.17.12'nin alan
+     ölçeğindeki hâli).
+     =================================================================== */
+  var CEKMECE_ALAN = {
+    bakim:{ ad:'bakım', ikon:'i-wrench', defter:'DB.maintenance', rota:'102',
+      alan:[['kod','Kayıt'],['tur','Tür'],['planTarihi','Plan tarihi'],['planKm','Plan km'],
+            ['gercekTarihi','Gerçekleşen'],['servis','Servis'],['maliyet','Maliyet'],
+            ['durum','Durum'],['kalanGun','Kalan gün'],['islemler','İşlemler']] },
+    yakit:{ ad:'yakıt dolumu', ikon:'i-fuel', defter:'DB.fuelLogs', rota:'108',
+      alan:[['kod','Kayıt'],['tarih','Tarih'],['istasyon','İstasyon'],['litre','Litre'],
+            ['birimFiyat','Birim fiyat'],['tutar','Tutar'],['km','Kilometre'],
+            ['surucu','Sürücü'],['depoDoldu','Depo doldu']] },
+    ceza:{ ad:'trafik cezası', ikon:'i-alert', defter:'DB.fines', rota:'—',
+      alan:[['kod','Kayıt'],['tarih','Ceza tarihi'],['tur','Tür'],['surucu','Sürücü'],
+            ['tutar','Tutar'],['sonOdeme','Son ödeme'],['durum','Durum'],['belge','Belge']] },
+    muayene:{ ad:'muayene', ikon:'i-clipboard-check', defter:'DB.inspections', rota:'104',
+      alan:[['kod','Kayıt'],['sonTarih','Son muayene'],['gecerlilik','Geçerlilik'],
+            ['sonrakiTarih','Vade (sonraki)'],['sonuc','Sonuç'],['kusur','Kusur'],
+            ['istasyon','İstasyon'],['durum','Durum'],['kalanGun','Kalan gün']] },
+    kaza:{ ad:'kaza/hasar dosyası', ikon:'i-alert-circle', defter:'DB.accidents', rota:'112',
+      alan:[['kod','Kayıt'],['tarih','Tarih'],['konum','Konum'],['surucu','Sürücü'],
+            ['karsiArac','Karşı araç'],['kusurOrani','Kusur oranı'],
+            ['onarimMaliyet','Onarım maliyeti'],['durum','Durum']] },
+    gider:{ ad:'gider', ikon:'i-receipt', defter:'DB.vehicleExpenses', rota:'110',
+      alan:[['kod','Kayıt'],['tur','Tür'],['tarih','Tarih'],['tutar','Tutar'],
+            ['aciklama','Açıklama'],['belge','Belge']] }
+  };
+
+  /* Kaydetme düğmesi + sebep — TEK YERDE üretilir. Yedi yüzey aynı
+     cümleyi kurmak zorunda ve cümle kararın kendisinden türemeli;
+     yedi kopya, kararın değiştiği gün altı bayat cümle bırakırdı. */
+  function kaydetmeYok(key, defterKod, rota){
+    /* ⚠️ `GV.notice` `text` alanını KAÇIRIR (`esc`) — içine işaretleme
+       konmaz. Ölçüldü: konsaydı `<span>` kullanıcıya harf harf basılırdı.
+       Bu yüzden `aria-describedby` hedefi notice'in DIŞINDAKİ sarmalayıcıya
+       kondu ve metin düz metin olarak verildi. */
+    var neden = defterKod + ' defterine kayıt EKLEYEN ya da GÜNCELLEYEN ortak yordam ' +
+      'yazılmamıştır. Düğme gizlenmedi çünkü gizlemek, eksikliğin kendisini gizlemek ' +
+      'olurdu; devre dışı bırakıldı ve sebebi burada yazılı. ' +
+      (rota === '—'
+        ? 'Ceza defterinin ayrı bir rota satırı yoktur; aynı mekanizmayı paylaştığı ' +
+          'için aynı kural uygulandı.'
+        : 'Rota satırı ' + rota + ' bu yüzden KAPATILMADI, "bloke — yazma yordamı yok" ' +
+          'işaretlendi.') +
+      ' V2 borcu: V2-98 (araç alt defteri yazma yordamı).';
+    return '<div class="u-mt-4" id="adKaydetNeden-' + esc(key) + '">' +
+      '<button type="button" class="btn btn-acc" disabled ' +
+        'aria-describedby="adKaydetNeden-' + esc(key) + '" ' +
+        'title="' + esc('Kaydetme yordamı yok — ' + defterKod +
+          ' defterine kayıt ekleyen ortak yordam yazılmadı') + '">' +
+        'Kaydet</button>' +
+      GV.notice({ tone:'warn', icon:'i-lock',
+        title:'Bu çekmece SALT OKUNURDUR — kaydetme düğmesi devre dışı',
+        text:neden }) +
+      '</div>';
+  }
+
+  function saltCekmece(key, kayit){
+    var C = CEKMECE_ALAN[key];
+    if(!C || !kayit) return;
+    var bilinen = {};
+    var satirlar = C.alan.map(function(a){
+      bilinen[a[0]] = true;
+      var v = kayit[a[0]];
+      return [a[1], v == null || v === ''
+        ? faint('—') + GV.cell.sub('kayıtta boş')
+        : (typeof v === 'boolean' ? (v ? 'Evet' : 'Hayır') : esc(String(v)))];
+    });
+    /* `arac` ve `aktif` bilerek dışarıda: birincisi çekmecenin bağlamı
+       (zaten bu araçtayız), ikincisi TUZAKLI alan — arşiv sorusu yalnız
+       `GV.arsivli` yordamına sorulur (§22.5). */
+    var artan = Object.keys(kayit).filter(function(k){
+      return !bilinen[k] && k !== 'arac' && k !== 'aktif'; });
+
+    GV.drawer({
+      title:C.ad.charAt(0).toUpperCase() + C.ad.slice(1) + ' — ' + (kayit.kod || ''),
+      body:
+        GV.dl(satirlar, { skipEmpty:false }) +
+        (artan.length
+          ? '<div class="u-mt-4"><h3 class="u-sm u-muted">Kolon sözlüğü olmayan alanlar (' +
+            artan.length + ')</h3>' +
+            GV.dl(artan.map(function(k){
+              var v = kayit[k];
+              return ['<code>' + esc(k) + '</code>', v == null || v === ''
+                ? faint('—')
+                : (typeof v === 'boolean' ? (v ? 'Evet' : 'Hayır') : esc(String(v)))];
+            }), { skipEmpty:false }) +
+            '<p class="u-sm u-muted">Bu alanların ekranda bir etiketi yok ve ' +
+            '<b>uydurulmadı</b>: ham anahtar adıyla basıldılar.</p></div>'
+          : '') +
+        kaydetmeYok(key, C.defter, C.rota),
+      actions:[{ label:'Kapat', cls:'btn-line' }]
+    });
+  }
+
+  /* SALT OKUNUR BEYANI — her alt defterin altında.
+
+     ⚠️ BU CÜMLE BAYATLAMIŞTI ve aynı turda ölçülüp düzeltildi. Eskiden
+     şöyle bitiyordu: *"Devre dışı bir düğme bile vaat sayıldığı için beyan
+     cümle olarak basılır."* Beyar kararı (13 Ağustos) tam tersini söyledi
+     — düğme gizlenmez, DEVRE DIŞI basılır ve sebebi ekranda yazılır — ve
+     karar uygulandığı anda bu cümle ekranda yanlışa döndü.
+
+     DERS (dilim 6'nın `EMP-016` dersinin aynısı): bir kapının ya da
+     yordamın hâlini anlatan cümle, o kapının KENDİSİNDEN türetilmeli;
+     elle yazılmış her beyan, kural değiştiği gün sessizce yalana döner. */
   function salt(defterAdi){
     return '<div class="u-mt-4">' + GV.notice({ tone:'neutral', icon:'i-lock',
-      title:'Bu defter SALT OKUNURDUR',
+      title:'Bu defter SALT OKUNURDUR — satıra tıklayıp tam kaydı açabilirsiniz',
       text:'Alt defterlere (bakım · yakıt · ceza · muayene · kaza · gider · poliçe) kayıt ' +
-           'EKLEYEN ortak yordam YAZILMAMIŞTIR. Bu yüzden "yeni ' + defterAdi + ' ekle" düğmesi ' +
-           'basılmadı: yapılamayan bir iş, devre dışı bir düğmeyle bile vaat edilmez. ' +
+           'EKLEYEN ortak yordam YAZILMAMIŞTIR ve Beyar kararıyla bu sürümde yazılmayacak ' +
+           '(kapsam donduruldu · V2-98). Satıra tıklayınca kaydın tamamı SALT OKUNUR bir ' +
+           'çekmecede açılır; çekmecedeki "Kaydet" düğmesi gizlenmedi, devre dışı basıldı ' +
+           've sebebi orada yazılı. "Yeni ' + defterAdi + ' ekle" düğmesi ise HİÇ basılmadı: ' +
+           'olmayan bir kaydı doğuracak yüzey, devre dışı bile olsa açılmıyor. ' +
            'Defterlere doğrudan satır yazmak (push) yasaktır.' }) + '</div>';
   }
 
