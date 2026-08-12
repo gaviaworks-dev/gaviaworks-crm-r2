@@ -682,8 +682,16 @@ document.addEventListener('gv:ready', function(){
     var toplamEl = kalemEl.querySelector('[data-kalemtoplam]');
     if(toplamEl) toplamEl.innerHTML = paraHtml(kalemToplam());
     if(form){
-      var araEl = form.el.querySelector('[name="araToplam"]');
-      if(araEl && kalemliMi()) araEl.value = kalemToplam();
+      /* ⚠️ DOM'A DEĞER YAZMA YAMASI KALKTI (K-44). Önceden alanın `<input>`u
+         bulunup `araEl.value = …` yazılıyordu; bileşen bunu bilmiyordu ve
+         `showIf`/`aside` yeniden koşmuyordu. `form.setValue` türetilmiş
+         yazmanın sözleşmesidir: alan tipini kendisi bilir, `dirty`
+         İŞARETLEMEZ (türetilmiş yazma kullanıcı düzenlemesi değildir) ve
+         ardından `showIf` + `aside` yeniden koşar.
+         `setDirty(true)` yine de çağrılıyor ama başka bir sebeple: KALEM
+         SATIRINI kullanıcı değiştirdi — kirlilik ara toplamdan değil,
+         tablodaki düzenlemeden geliyor. */
+      if(kalemliMi()) form.setValue('araToplam', kalemToplam());
       form.aside();
       form.setDirty(true);
     }
