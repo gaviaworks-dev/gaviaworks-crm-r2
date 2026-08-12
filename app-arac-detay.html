@@ -1,0 +1,1565 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Araç Kartı — GaviaWorks CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/shell.css">
+<link rel="stylesheet" href="assets/css/ui.css">
+<link rel="stylesheet" href="assets/css/r2.css">
+</head>
+<body data-sec="ekip" data-screen="varlik">
+<div id="rec"></div>
+
+<script src="assets/data/org.js"></script>
+<script src="assets/data/crm.js"></script>
+<script src="assets/data/work.js"></script>
+<script src="assets/data/misc.js"></script>
+<script src="assets/data/ops.js"></script>
+<script src="assets/data/hr.js"></script>
+<script src="assets/data/lifecycle.js"></script>
+<script src="assets/js/shell.js"></script>
+<script src="assets/js/ui.js"></script>
+<script src="assets/js/domain.js"></script>
+<script src="assets/js/quicknote.js"></script>
+<script>
+/* =====================================================================
+   ARAÇ KARTI — rota 99 · brief §6 (detay deseni) · §10.1 · §12 · §18.9 ·
+   §22.0 · §22.4 · §22.5 · §22.12 · §22.13 · §22.15 · §22.16 · §22.17
+
+   TEK KAYIT, YEDİ SEKME: ozet · bakim · yakit · ceza · muayene · kaza ·
+   gider. ALTI OLAY DEFTERİ + ÖZET. Sekme mekaniği `app-proje-detay.html`
+   (dokuz sekme) ve `app-personel-detay.html` (yedi sekme) desenlerinin
+   birebir aynısıdır — üçüncü bir sekme dili yazılmadı.
+
+   ── `DB.policies` NEDEN AYRI SEKME DEĞİL (brief §22.13, tartışma kapalı) ──
+   Altı defter birer OLAY kaydıdır: bir bakım yapıldı, bir ceza kesildi, bir
+   kaza oldu. Poliçe ise bir MÜLKİYET NİTELİĞİDİR — süresi olan bir
+   sözleşme, olan bir olay değil. Yedinci bir olay sekmesi açmak §20.5'in
+   "ayrı ekran ailesi açma" ilkesini sekme düzeyinde delerdi. Poliçe bu
+   yüzden `ozet` sekmesinde "Sigorta ve poliçe" bloğudur ve `kalanGun`/
+   `bitis` üzerinden bir yenileme uyarısı üretir.
+
+   ── ŞERİTTE İKON YOK (V2-04 · brief §22.13) ──
+   Ölçülen sebep `app-proje-detay.html:192-196`'da yazılı: ikonlu yedi/dokuz
+   sekme 1440 px'te içerik sütununa sığmıyor, `.gv-tabs` yatay kayıyor ama
+   scrollbar'ı gizli — kesilen sekme kullanıcıya işaret bırakmadan
+   kaybolurdu. İkonlar KART BAŞLIKLARINDA yaşar. Her sekme başlığı ÖLÇÜLEN
+   kayıt sayısını taşır (`.gv-tab-cnt`); sayı brief'ten kopyalanmaz,
+   `DB` üstünde sayılır.
+
+   ── TEMBEL ÇİZİM ZORUNLU ──
+   Sekme gövdesi yalnız `gv:tab` olayında ve yalnız BİR KEZ çizilir.
+   Dinleyici `document`a `GV.on` ile tekil anahtar üzerinden bağlanır
+   (`GV.refresh()`te ölmeyen kalıcı düğüm — brief §2.6 · L-16).
+   `#hash` derin bağlantısı SÖZLEŞMEDİR:
+   `app-arac-detay.html?id=ARC-001#yakit` doğrudan o sekmeyi açar.
+
+   ── ARAÇ BİR `GV.flow` VARLIĞI DEĞİLDİR (brief §22.12 · §22.3) ──
+   `DB.transitions.vehicle` YOKTUR, `vehicleStatuses` sözlüğü YOKTUR
+   (V2-43). `durum` DÜZ ALANDIR; `GV.flow.gec` çağrılmaz (olmayan bir
+   varlık için çağırmak sessizce `null` dönerdi) ve durum yazan bir yordam
+   da yok. Bu yüzden bu ekranda TEK BİR durum düğmesi basılmaz; karar
+   `app-arac-form.html`de, düz alan olarak verilir. Beyanı `BE-P4`.
+
+   ── ALT DEFTERLER SALT OKUNURDUR (brief §22.16 madde 7) ──
+   Bakım · yakıt · ceza · muayene · kaza · gider · poliçe — YEDİSİNE DE
+   kayıt EKLEYEN yordam YAZILMAMIŞTIR. "Yeni bakım ekle" düğmesi
+   BASILMAZ; devre dışı bir düğme bile vaat sayılır (§14.6), o yüzden
+   yokluk düğmeyle değil BEYANLA kapatılır.
+
+   ── `aktif` OKUNMAZ · YAZILMAZ · SÜZÜLMEZ (brief §22.5 · §22.17.4) ──
+   `DB.fuelLogs` · `DB.vehicleExpenses` · `DB.policies` `durum` ekseni
+   taşımaz, yani orada `aktif` TUZAKSIZDIR; buna rağmen OKUNMAZ. Pasiflik
+   sorusu her zaman `GV.arsivli(r)`den geçer — o yordam `durum` yoksa
+   `aktif`e düşer ve tuzağı tetiklemez. Kalan dört defter (`maintenance` ·
+   `inspections` · `fines` · `accidents`) `durum` taşır, orada alan
+   TUZAKLIDIR. Ekran ikisini de aynı yordamla sorar; aşağıdaki ARSIV
+   ölçümü hangi dalın bugün ateşlendiğini SAYIYLA söyler.
+
+   ── YÜKLENEN VERİ (brief §22.0, sıra §1.1 gereği pazarlığa kapalı) ──
+   org · crm · work · misc · ops · hr · lifecycle.
+   `DB.vehicles` · `maintenance` · `inspections` · `policies` · `fuelLogs` ·
+   `vehicleExpenses` · `accidents` · `fines` — SEKİZİ DE `ops.js`tedir
+   (ölçüldü). `firsat.js` · `odeme.js` · `notes.js` · `reports.js`
+   yüklenmez.
+
+   ⚠️ ORTAK KATMANDA ARAÇ EKSENİ YOK. `GV.varlik.kayit` yalnız `DB.assets`
+   içinde arar (`domain.js:3212`), araç kaydını bulmaz; `GV.arac.*` ya da
+   `GV.filo.*` diye bir ad alanı da yoktur (brief §22.16 madde 6 bunu
+   söylüyor). Bu yüzden kayıt araması bu ekranda kuruldu — raporlandı,
+   `assets/` altına dokunulmadı.
+   ===================================================================== */
+document.addEventListener('gv:ready', function(){
+  var mount = document.getElementById('rec');
+  if(!mount) return;
+
+  var esc = GV.esc, ico = GV.ico, F = GV.fmt;
+  var EYEBROW = 'Ekip ve Kaynaklar · Filo';
+  var LISTE   = 'app-varlik.html?t=filo';
+  var BOS     = '<span class="u-faint">—</span>';
+  var MASK    = '<span class="cell-mask">••••••</span>';
+  var kod     = new URLSearchParams(location.search).get('id');
+
+  /* Para ekseni yetki arkasındadır (`app-demirbas-detay.html` ile aynı
+     kural, ikinci kez TANIMLANMADI — L-40). Maskeleme "veri var,
+     göremezsin" der; boş değer "veri yok" der. İkisi ayrı şeydir
+     (UID-11 · §10.1) ve boş bir alan MASKELENMEZ. */
+  var canFinans = GV.perm.can('finans');
+  var canDuzen  = GV.perm.can('duzenle');
+
+  var FILO      = DB.vehicles || [];
+  var BAKIM_T   = DB.maintenance || [];
+  var YAKIT_T   = DB.fuelLogs || [];
+  var CEZA_T    = DB.fines || [];
+  var MUAYENE_T = DB.inspections || [];
+  var KAZA_T    = DB.accidents || [];
+  var GIDER_T   = DB.vehicleExpenses || [];
+  var POLICE_T  = DB.policies || [];
+
+  /* ===================================================================
+     0. KÜÇÜK YARDIMCILAR — ekran içi, ortak katmana dokunulmadı
+     =================================================================== */
+  function bos(v){ return v == null || String(v).trim() === '' ? null : v; }
+  function faint(s){ return '<span class="u-faint">' + esc(s) + '</span>'; }
+  function not(html){ return '<p class="u-sm u-muted u-mb-0">' + html + '</p>'; }
+  function kodEt(s){ return s ? '<span class="cell-code">' + esc(s) + '</span>' : BOS; }
+  function tarihEt(iso){ return iso ? '<span class="cell-date">' + esc(F.date(iso)) + '</span>' : null; }
+  function paraEt(v, altHtml){
+    if(v == null) return null;
+    return (canFinans ? GV.cell.mny(v) : MASK) + (altHtml ? GV.cell.sub(altHtml) : '');
+  }
+  function kmEt(v){ return v == null ? null : GV.cell.num(v) + ' km'; }
+  function kisiLink(k){
+    if(!k) return null;
+    return '<a href="app-personel-detay.html?id=' + esc(k) + '">' + GV.user(k, { sm:true }) + '</a>';
+  }
+  function kartBasi(ikon, baslik, sag){
+    return '<div class="gc-head"><h3 class="gc-title">' + ico(ikon) + esc(baslik) + '</h3>' +
+      (sag ? '<span class="gc-meta">' + sag + '</span>' : '') + '</div>';
+  }
+  function kart(ikon, baslik, sag, govde, ek){
+    return '<section class="gv-card' + (ek ? ' ' + ek : '') + '">' + kartBasi(ikon, baslik, sag) +
+      '<div class="gc-body">' + govde + '</div></section>';
+  }
+  function benzersiz(list, alan){
+    var out = [];
+    (list || []).forEach(function(r){
+      if(r[alan] != null && r[alan] !== '' && out.indexOf(r[alan]) === -1) out.push(r[alan]);
+    });
+    return out;
+  }
+  function toplam(list, alan){
+    return (list || []).reduce(function(a, r){ return a + (r[alan] || 0); }, 0);
+  }
+  function depAd(k){ return (k && DB.depName) ? (DB.depName(k) || k) : (k || ''); }
+
+  /* ---- SÖZLÜKSÜZ ALAN — rozet UYDURULMAZ (§22.17.12) ---------------
+     Ölçüldü: bu ekranın okuduğu HİÇBİR alanın `DB` tarafında sözlüğü yok.
+     `vehicleStatuses` · `maintenanceStatuses` · `inspectionStatuses` ·
+     `fineStatuses` · `policyTypes` · `expenseTypes` — altısı da YOKTUR
+     (V2-43 ve kardeşleri). Değerler defterden türetilir ve KAYNAĞI
+     yazılır. */
+  function sozluksuz(v, kaynakNotu){
+    if(!bos(v)) return BOS;
+    return '<span class="u-sm">' + esc(v) + '</span>' +
+      (kaynakNotu ? GV.cell.sub(esc(kaynakNotu)) : '');
+  }
+
+  /* ---- ROZET YALNIZ ÖLÇÜLDÜĞÜNDE BASILIR ---------------------------
+     §22.14'ün personel `durum`u için kurduğu disiplin burada da geçerli:
+     ekran rozet UYDURMAZ, `GV.tone(deger)` ile ui.js ton sözlüğünde
+     karşılığı OLUP OLMADIĞINI ÖLÇER ve karşılığı olmayanı düz metin basar.
+
+     ⚠️ ÖLÇÜMÜN SINIRI YAZILIYOR: `GV.tone` (`ui.js:296`)
+     `TONE[v] || 'neutral'` döner, yani "sözlükte YOK" ile "sözlükte var ve
+     BİLEREK nötr" (`Sözleşmeye dahil` · `Hurda` · `İade edildi`) aynı
+     cevabı verir; `TONE` nesnesi dışa açılmamıştır. Bu ekran bu yüzden
+     TEMKİNLİ tarafı seçiyor: yalnız ton GERÇEKTEN bir şey söylediğinde
+     (nötr olmayan) rozet basar, kalanı düz metindir. Sonuç bir rozetin
+     eksik kalması olabilir — ama uydurulmuş bir rozetten ucuzdur.
+     Eksik imza (ton sözlüğünde ANAHTAR VAR MI sorusunun yordamı)
+     raporlandı.
+
+     Bu araç defterlerinde ÖLÇÜLEN ton karşılıkları:
+       Yaklaşıyor→warn · Serviste→warn · Planlandı→info · Tamam→ok ·
+       Ödendi→ok · Ödenmedi→danger · Kapandı→ok · Geçti→ok ·
+       Bekliyor→warn · Teklif alındı→info · Aktif→ok · Kiralık→info ·
+       Ortak kullanım→accent.
+     Ton sözlüğünde KARŞILIĞI OLMAYAN (ya da bilerek nötr) değerler:
+       Sözleşmeye dahil · Personele tahsisli · Satın alınan ·
+       Trafik Sigortası · Kasko · sekiz gider türü · iki bakım türü ·
+       iki ceza türü · `—`. */
+  function tonlu(v){ return !!bos(v) && GV.tone(v) !== 'neutral'; }
+  function rozet(v, kaynakNotu){
+    if(!bos(v)) return BOS;
+    return tonlu(v)
+      ? GV.badge(v) + (kaynakNotu ? GV.cell.sub(esc(kaynakNotu)) : '')
+      : sozluksuz(v, kaynakNotu);
+  }
+
+  /* Sekme içindeki HER liste `urlSync:false` bildirir (brief §18.9 ·
+     §22.13 · §22.17.9): bayrak İKİ YÖNLÜDÜR — yazmayan liste okumaz da.
+     Bu sayfada yedi panel var; biri diğerinin adres durumunu üstlenemez.
+     `archive:false` — arşiv düğmesi bu defterlerde bir şey ayırt etmiyor
+     (aşağıdaki ARSIV ölçümü: 0/25 kayıt arşivli) ve ölçülmemiş bir düğme
+     basmak vaat olurdu.
+     `countTarget` ZORUNLU: verilmezse `GV.list` sayfada tek liste
+     gördüğünde sayacı `GV.pageHead`in `[data-listcount]` düğümüne yazar ve
+     aracın künye satırını ezerdi (UID-06). */
+  function liste(cfg){
+    cfg.urlSync = false;
+    cfg.archive = false;
+    cfg.delay = 0;
+    cfg.pageSize = cfg.pageSize || 10;
+    return GV.list(cfg);
+  }
+
+  /* Boş sekme "kayıt yok" DEMEZ, HANGİ DEFTERİN boş olduğunu söyler
+     (brief §10.1 · §22.13). "Bu araç için kaza defterinde kayıt yok"
+     ile "kaza olmadı" aynı cümle değildir: ikincisi ölçülmemiş bir
+     iddiadır. */
+  function bosKart(ikon, baslik, cumle, sebep){
+    return '<section class="gv-card">' + kartBasi(ikon, baslik, '0 kayıt') +
+      '<div class="gc-body">' + GV.empty({ icon:ikon, title:cumle, desc:sebep }) +
+      '</div></section>';
+  }
+  function listeKabuk(key, ikon, baslik, aciklama, sayi){
+    return '<section class="gv-card">' +
+        kartBasi(ikon, baslik, '<span id="adSay-' + key + '">' + sayi + ' kayıt</span>') +
+        '<div class="gc-body u-sm u-muted">' + aciklama + '</div>' +
+      '</section>' +
+      '<div class="u-mt-4" id="adListe-' + key + '"></div>';
+  }
+
+  /* KPI şeridi — `.kpi-grid` / `.kpi` ui.css'te yayındadır ama JS
+     karşılığı yalnız `GV.list` ve `GV.report` İÇİNDE vardır (`ui.js:1044`
+     ve `ui.js:3528`); tek kayıt ekseninde KPI basan bir ortak yordam
+     yoktur. Emsal `app-panel.html:84-92` aynı işaretlemeyi elle kuruyor;
+     desen oradan alındı, yeni sınıf yazılmadı (§12). Eksik imza
+     raporlandı. */
+  function kpiSerit(kpis){
+    return '<div class="kpi-grid">' + kpis.map(function(k){
+      return '<div class="kpi' + (k.tone ? ' is-' + k.tone : '') + '">' +
+        '<div class="kpi-ico">' + ico(k.ikon || 'i-chart-bar', 'ic-lg') + '</div>' +
+        '<div class="kpi-body">' +
+          '<div class="kpi-num' + (k.maskeli ? ' is-masked' : '') + '">' + k.deger + '</div>' +
+          '<div class="kpi-lbl">' + esc(k.etiket) + '</div>' +
+          (k.meta ? '<div class="kpi-meta' + (k.metaTon ? ' is-' + k.metaTon : '') + '">' + k.meta + '</div>' : '') +
+        '</div></div>';
+    }).join('') + '</div>';
+  }
+
+  /* ===================================================================
+     1. KAYIT YOK KAPISI (brief §6 adım 1) — pageHead + errorState, ÇIK
+     -------------------------------------------------------------------
+     Arama burada kuruldu çünkü ortak katmanda araç ekseninde bir `kayit`
+     yordamı YOK (`GV.varlik.kayit` yalnız `DB.assets`e bakar).
+     =================================================================== */
+  var arac = kod ? FILO.filter(function(x){ return x.kod === kod; })[0] || null : null;
+
+  if(!arac){
+    GV.pageHead({
+      eyebrow:EYEBROW, title:'Kayıt bulunamadı',
+      sub:kod ? kod : 'Adreste araç kodu yok',
+      actions:[{ label:'Filo listesine dön', icon:'i-arrow-left', href:LISTE }]
+    });
+    mount.innerHTML = '<div class="gv-card">' + GV.errorState({
+      title:(kod ? kod + ' bulunamadı' : 'Araç kodu verilmedi'),
+      desc:(kod
+        ? 'Bu kod filo defterindeki ' + FILO.length + ' aracın hiçbiriyle eşleşmedi. ' +
+          'Adres çubuğundaki kodu kontrol edin ya da kaydı filo yüzeyinden seçin.'
+        : 'Bu ekran bir araç kartıdır ve adreste ?id=ARC-… beklenir. ' +
+          'Defterde ' + FILO.length + ' araç var; listeden seçerek gelin.'),
+      action:'<a class="btn btn-acc" href="' + LISTE + '">Filo listesine dön</a>'
+    }) + '</div>';
+    return;
+  }
+
+  /* ===================================================================
+     2. KAYIT SAHİPLİĞİ KAPISI (brief §6 adım 2)
+     -------------------------------------------------------------------
+     `DB.vehicles` 34 alanlık şemasında `musteri` alanı YOKTUR (ölçüldü) —
+     kapıya `musteri:null` verilir: yordam müşteri oturumunu her hâlükârda
+     reddeder, personel oturumunu geçirir. Ekran ikinci bir "müşteri mi"
+     testi yazmaz.
+     ⚠️ KAYIT BAZLI DÜZENLEME KAPSAMI YORDAMI YOK (brief §22.1e.2 · borç
+     V2-85): "bu kullanıcı BU kaydı düzenleyebilir mi" sorusunun ortak bir
+     cevabı yazılmamış. Ekran kendi kuralını UYDURMAZ, `GV.perm.can` ile
+     yetinir ve eksiği backend payında beyan eder.
+     =================================================================== */
+  if(!GV.guardRecord({ mount:'#rec', musteri:null, kod:arac.kod,
+        eyebrow:EYEBROW,
+        title:arac.plaka || arac.kod,
+        geriHref:LISTE, geriLabel:'Filo listesine dön' })) return;
+
+  /* ===================================================================
+     3. BAĞLAR — hepsi `arac` alanı üzerinden. Tarih yakınlığı bağ
+        değildir; her sayı ölçülür, hiçbiri varsayılmaz.
+     =================================================================== */
+  function buArac(list){
+    return (list || []).filter(function(r){ return r.arac === arac.kod; });
+  }
+  var BAKIM   = buArac(BAKIM_T);
+  var YAKIT   = buArac(YAKIT_T).slice().sort(function(a, b){
+                  return String(a.tarih).localeCompare(String(b.tarih)); });
+  var CEZA    = buArac(CEZA_T);
+  var MUAYENE = buArac(MUAYENE_T);
+  var KAZA    = buArac(KAZA_T);
+  var GIDER   = buArac(GIDER_T);
+  var POLICE  = buArac(POLICE_T);
+  var IZLER   = GV.audit.oku(arac.kod, 20) || [];
+
+  /* Defterin YÜKLÜ OLMAMASI ile defterin BU ARACI KAPSAMAMASI ayrı
+     şeylerdir (L-13); ekran hangisini söylediğini bilsin diye ayrı
+     ölçülür. Yükleme sırası §1.1 ile sabit olduğu için sekizi de
+     yüklü OLMALI — "olmalı" bir ölçüm değildir, o yüzden sayılır. */
+  var DEFTER = [
+    { ad:'DB.maintenance',     n:BAKIM_T.length,   bu:BAKIM.length },
+    { ad:'DB.fuelLogs',        n:YAKIT_T.length,   bu:YAKIT.length },
+    { ad:'DB.fines',           n:CEZA_T.length,    bu:CEZA.length },
+    { ad:'DB.inspections',     n:MUAYENE_T.length, bu:MUAYENE.length },
+    { ad:'DB.accidents',       n:KAZA_T.length,    bu:KAZA.length },
+    { ad:'DB.vehicleExpenses', n:GIDER_T.length,   bu:GIDER.length },
+    { ad:'DB.policies',        n:POLICE_T.length,  bu:POLICE.length }
+  ];
+  var YUKSUZ = DEFTER.filter(function(d){ return d.n === 0; });
+
+  /* ---- ARŞİV EKSENİ — `GV.arsivli` ile ÖLÇÜLÜR (§22.5) -------------
+     Dal YAZILIR ama "çalışıyor" diye RAPORLANMAZ: ölçülmemiş dal ölçülmüş
+     sayılmaz. Aşağıdaki iki sayı ekranda basılır ki okuyan, süzgecin bugün
+     hiçbir kaydı düşürmediğini görsün. */
+  function arsivSay(list){
+    return (list || []).filter(function(r){ return GV.arsivli(r); }).length;
+  }
+  var ARSIV_TOPLAM = arsivSay(BAKIM_T) + arsivSay(YAKIT_T) + arsivSay(CEZA_T) +
+                     arsivSay(MUAYENE_T) + arsivSay(KAZA_T) + arsivSay(GIDER_T) +
+                     arsivSay(POLICE_T);
+  var KAYIT_TOPLAM = BAKIM_T.length + YAKIT_T.length + CEZA_T.length +
+                     MUAYENE_T.length + KAZA_T.length + GIDER_T.length + POLICE_T.length;
+  var ARAC_ARSIVLI = GV.arsivli(arac);
+
+  /* ---- FİLO DAĞILIMI — "bu araç kalabalık mı" sorusunun ölçümü ----- */
+  var DAGILIM = FILO.map(function(x){
+    return {
+      kod:x.kod, plaka:x.plaka,
+      toplam:[BAKIM_T, YAKIT_T, CEZA_T, MUAYENE_T, KAZA_T, GIDER_T, POLICE_T]
+        .reduce(function(a, L){
+          return a + L.filter(function(r){ return r.arac === x.kod; }).length; }, 0)
+    };
+  }).sort(function(a, b){ return b.toplam - a.toplam; });
+
+  /* ===================================================================
+     4. KPI TÜRETİMLERİ — hepsi türetilir, KAYNAĞI yazılır (§22.13)
+     =================================================================== */
+
+  /* ---- 4.1 Bakımı yaklaşan ----------------------------------------
+     İKİ KAYNAK VAR ve ikisi aynı şey değil: bakım defterindeki AÇIK plan
+     (`DB.maintenance[].planTarihi`) ile aracın künyesindeki plan
+     (`DB.vehicles[].sonrakiBakimTarihi`). Defterde açık plan varsa o
+     otoritedir — daha yeni ve servis/işlem bilgisi taşır; yoksa künyeye
+     düşülür ve DÜŞÜLDÜĞÜ YAZILIR.
+     ⚠️ `kalanGun` alanı da kayıtta yazılı; ölçüldü ki `planTarihi`den
+     türetilenle 5/5 kayıtta birebir tutuyor (§22.13), yani bayat değil.
+     Ekran yine de TÜRETİR — yazılı bir sayacı okumak, o sayaç bir gün
+     bayatladığında sessizce yanlış konuşmak demektir. */
+  var BAKIM_ACIK = BAKIM.filter(function(m){
+      return m.planTarihi && F.days(m.planTarihi) >= 0; })
+    .sort(function(a, b){ return F.days(a.planTarihi) - F.days(b.planTarihi); });
+
+  var BAKIM_KPI = (function(){
+    if(BAKIM_ACIK.length){
+      var m = BAKIM_ACIK[0];
+      return { gun:F.days(m.planTarihi), tarih:m.planTarihi, kayit:m,
+               kaynak:'DB.maintenance · ' + m.kod + ' (' + m.durum + ')' };
+    }
+    if(arac.sonrakiBakimTarihi){
+      return { gun:F.days(arac.sonrakiBakimTarihi), tarih:arac.sonrakiBakimTarihi, kayit:null,
+               kaynak:'DB.vehicles.sonrakiBakimTarihi — bakım defterinde açık plan yok, ' +
+                      'aracın künyesindeki plana düşüldü' };
+    }
+    return null;
+  })();
+
+  /* `kalanGun` bayatlık ölçümü — kayıttaki sayı ile türetilen fark. */
+  var KALANGUN_SAPMA = [];
+  BAKIM.forEach(function(m){
+    if(m.planTarihi && m.kalanGun != null && F.days(m.planTarihi) !== m.kalanGun)
+      KALANGUN_SAPMA.push(m.kod);
+  });
+  MUAYENE.forEach(function(m){
+    if(m.sonrakiTarih && m.kalanGun != null && F.days(m.sonrakiTarih) !== m.kalanGun)
+      KALANGUN_SAPMA.push(m.kod);
+  });
+  POLICE.forEach(function(p){
+    if(p.bitis && p.kalanGun != null && F.days(p.bitis) !== p.kalanGun)
+      KALANGUN_SAPMA.push(p.kod);
+  });
+
+  /* ---- 4.2 Toplam gider ------------------------------------------- */
+  var GIDER_TOPLAM = toplam(GIDER, 'tutar');
+  var GIDER_TUR = benzersiz(GIDER, 'tur');
+
+  /* ---- 4.3 Ödenmemiş ceza ------------------------------------------
+     `fines.durum === 'Ödenmedi'` — sözlüğü olmayan ama defterde ÖLÇÜLEN
+     iki değerden biri (`Ödendi` · `Ödenmedi`). */
+  var CEZA_ODENMEMIS = CEZA.filter(function(c){ return c.durum === 'Ödenmedi'; });
+  var CEZA_BORC = toplam(CEZA_ODENMEMIS, 'tutar');
+
+  /* ---- 4.4 Muayene son tarihi --------------------------------------
+     ⚠️ `inspections.sonTarih` BİR SON TARİH DEĞİL, SON MUAYENE TARİHİDİR
+     (brief §22.13, bu turda ölçümle düzeltildi). Dört kaydın `sonTarih`i
+     de geçmişte (2024-08-28 … 2026-03-02) ve okuyan "dört muayene de
+     geçmiş" sanıyor. VADE `sonrakiTarih`tir. Ekran ikisini de basar ve
+     aradaki farkı YAZAR — bir alan adının yanlış okunması bu defterde
+     ölçülmüş bir olaydır. */
+  var MUAYENE_SIRA = MUAYENE.slice().sort(function(a, b){
+    return String(a.sonrakiTarih || '').localeCompare(String(b.sonrakiTarih || '')); });
+  var MUAYENE_ACIK = MUAYENE_SIRA.filter(function(m){
+    return m.sonrakiTarih && F.days(m.sonrakiTarih) >= 0; })[0] ||
+    MUAYENE_SIRA[MUAYENE_SIRA.length - 1] || null;
+
+  /* ---- 4.5 İki dolum arası tüketim ---------------------------------
+     ⚠️ ADI "ORTALAMA TÜKETİM" DEĞİLDİR (brief §22.13). Tek bir aralığa
+     "ortalama" demek, bir ölçümü bir eğilim gibi göstermektir.
+
+     ÖLÇÜLDÜ (brief bu satırda bir kez YANILDI ve düzeltildi — V2-77
+     "hiçbir araçta ardışık iki dolum yok" diyordu, tutmuyor):
+       ARC-001 → 2 dolum · YKT-2026-092 (2026-07-18, km 67380) →
+                 YKT-2026-088 (2026-07-30, km 68120) · Δ740 km ·
+                 sonraki dolum 52,4 L → 7,08 L/100km
+       ARC-002 · ARC-003 · ARC-004 → 1'er dolum, iki km farkı YOK.
+
+     TÜRETİLEMEYENDE `—` + GERÇEK SEBEP basılır ("veri yok" değil, hangi
+     verinin neden yetmediği — §10.1).
+
+     ⚠️ VARSAYIM DA BASILIR: tüketim ancak HER İKİ DOLUMUN DA depoyu
+     DOLDURDUĞU varsayımıyla anlamlıdır ve `DB.fuelLogs` bunu söyleyen bir
+     alan TAŞIMAZ (`kod · arac · tarih · istasyon · litre · birimFiyat ·
+     tutar · km · surucu · aktif`). Varsayımı yazmadan basılan sayı, ölçüm
+     değil iddiadır. */
+  var TUKETIM = (function(){
+    if(!YAKIT.length)
+      return { ok:false, neden:'bu araç için yakıt defterinde hiç dolum kaydı yok; ' +
+                               'tüketim iki dolum arasındaki km farkından türetilir' };
+    if(YAKIT.length < 2)
+      return { ok:false, neden:'bu araçta tek dolum kaydı var, iki km farkı olmadan ' +
+                               'tüketim türetilemez' };
+    var onceki = YAKIT[YAKIT.length - 2], sonraki = YAKIT[YAKIT.length - 1];
+    if(onceki.km == null || sonraki.km == null)
+      return { ok:false, neden:'son iki dolumun birinde km alanı boş; kilometre farkı ' +
+                               'olmadan tüketim türetilemez' };
+    var dk = sonraki.km - onceki.km;
+    if(dk <= 0)
+      return { ok:false, neden:'son iki dolum arasındaki km farkı ' + dk + ' — pozitif bir ' +
+                               'aralık olmadan tüketim türetilemez' };
+    if(sonraki.litre == null)
+      return { ok:false, neden:'sonraki dolumun litre alanı boş; tüketim türetilemez' };
+    return { ok:true, deger:sonraki.litre / dk * 100, km:dk, litre:sonraki.litre,
+             onceki:onceki, sonraki:sonraki };
+  })();
+
+  /* ---- 4.6 Poliçe yenileme uyarısı ---------------------------------
+     ⚠️ EŞİK EKRANIN KENDİ KARARIDIR. Ortak katmanda bir "yenileme eşiği"
+     yordamı ya da `DB` tarafında bir eşik alanı YOKTUR (arandı, yok);
+     `policies.yenileme` yalnız üç değer taşıyor (`Bekliyor` ·
+     `Teklif alındı` · `—`) ve bir tarih hesabı yapmıyor. 60 gün eşiği bu
+     yüzden AÇIKÇA ekranda yazılır — sessiz bir eşik, uydurulmuş bir
+     kuraldır. Eksik imza raporlandı. */
+  var YENILEME_ESIK = 60;
+  var POLICE_SIRA = POLICE.slice().sort(function(a, b){
+    return String(a.bitis || '').localeCompare(String(b.bitis || '')); });
+  var POLICE_YAKIN = POLICE_SIRA.filter(function(p){
+    var g = p.bitis ? F.days(p.bitis) : null;
+    return g != null && g <= YENILEME_ESIK; });
+
+  /* ===================================================================
+     5. BACKEND PAYI — brief §10.2 · §18.10 · §22.15 tablolarından
+        KOPYALANIR; ajan kendi maddesini uydurmaz.
+     =================================================================== */
+  var BE = [
+    ['BE-P4', 'Araç için durum makinesi yok; durum düz alan olarak yazılır ve geçiş kaydı üretmez', 'araç formu · araç detayı'],
+    ['BE-S4', 'Belge yükleme gerçek depoya yazmaz; dosya adı ve boyutu bellekte tutulur', '§9'],
+    ['BE-S5', 'Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır', '§9 audit_event']
+  ];
+
+  /* ===================================================================
+     6. SEKME ŞERİDİ — brief §22.13 tablosu birebir, YEDİ sekme
+        ⚠️ İKON YOK (V2-04). Sayaçlar `DB` üstünde ÖLÇÜLDÜ.
+     =================================================================== */
+  var SEKME = [
+    { key:'ozet', label:'Özet', sayac:POLICE.length,
+      ipucu:'künye · mülkiyet/kira · sigorta ve poliçe (' + POLICE.length + ' poliçe) · km ve bakım planı' },
+    { key:'bakim', label:'Bakım', sayac:BAKIM.length,
+      ipucu:'DB.maintenance · bu araca ait bakım kaydı (defterde toplam ' + BAKIM_T.length + ')' },
+    { key:'yakit', label:'Yakıt', sayac:YAKIT.length,
+      ipucu:'DB.fuelLogs · bu araca ait dolum kaydı (defterde toplam ' + YAKIT_T.length + ')' },
+    { key:'ceza', label:'Ceza', sayac:CEZA.length,
+      ipucu:'DB.fines · bu araca kesilen trafik cezası (defterde toplam ' + CEZA_T.length + ')' },
+    { key:'muayene', label:'Muayene', sayac:MUAYENE.length,
+      ipucu:'DB.inspections · bu aracın muayene kaydı (defterde toplam ' + MUAYENE_T.length + ')' },
+    { key:'kaza', label:'Kaza', sayac:KAZA.length,
+      ipucu:'DB.accidents · bu aracın kaza/hasar dosyası (defterde toplam ' + KAZA_T.length + ')' },
+    { key:'gider', label:'Gider', sayac:GIDER.length,
+      ipucu:'DB.vehicleExpenses · bu araca yazılan gider (defterde toplam ' + GIDER_T.length + ')' }
+  ];
+
+  var sekmeHtml = SEKME.map(function(s){
+    return '<button type="button" class="gv-tab" role="tab" data-tab="' + s.key + '" ' +
+      'aria-selected="false" title="' + esc(s.ipucu) + '">' + esc(s.label) +
+      '<span class="gv-tab-cnt">' + s.sayac + '</span></button>';
+  }).join('');
+
+  var panelHtml = SEKME.map(function(s){
+    return '<div class="gv-tabpanel u-mt-4" role="tabpanel" data-panel="' + s.key + '" ' +
+      'aria-label="' + esc(s.label) + '" hidden></div>';
+  }).join('');
+
+  /* ===================================================================
+     7. SEKME 1 — ÖZET
+     =================================================================== */
+  function cizOzet(el){
+    el.innerHTML =
+      kpiSerit(kpiListesi()) +
+      '<div class="gv-grid gv-grid-main">' +
+        '<div class="u-col">' +
+          kunyeKarti() + mulkiyetKarti() + kmBakimKarti() + policeKarti() + aktiviteKarti() +
+        '</div>' +
+        '<aside class="u-col">' +
+          durumKarti() + tuketimKarti() + surucuKarti() + defterKarti() +
+        '</aside>' +
+      '</div>' +
+      backendKarti();
+  }
+
+  /* ---- 7.0 KPI şeridi — beşi de TÜRETİLİR, kaynağı altta yazılır --- */
+  function kpiListesi(){
+    var k = [];
+
+    k.push({
+      ikon:'i-wrench', etiket:'Bakımı yaklaşan',
+      tone:BAKIM_KPI ? (BAKIM_KPI.gun < 0 ? 'danger' : BAKIM_KPI.gun <= 30 ? 'warn' : 'ok') : null,
+      deger:BAKIM_KPI ? esc(F.num(BAKIM_KPI.gun)) + '<small>gün</small>' : '—',
+      meta:BAKIM_KPI ? esc(F.date(BAKIM_KPI.tarih)) : 'plan tarihi kayıtlı değil',
+      metaTon:BAKIM_KPI && BAKIM_KPI.gun < 0 ? 'danger' : null
+    });
+
+    k.push({
+      ikon:'i-wallet', etiket:'Toplam gider',
+      maskeli:!canFinans,
+      deger:canFinans ? esc(F.moneyK(GIDER_TOPLAM)) : '••••••',
+      meta:canFinans
+        ? GIDER.length + ' gider satırı · ' + GIDER_TUR.length + ' tür'
+        : 'finans yetkisi ister'
+    });
+
+    k.push({
+      ikon:'i-receipt', etiket:'Ödenmemiş ceza',
+      tone:CEZA_ODENMEMIS.length ? 'danger' : 'ok',
+      deger:esc(F.num(CEZA_ODENMEMIS.length)),
+      meta:CEZA_ODENMEMIS.length
+        ? (canFinans ? esc(F.money(CEZA_BORC)) + ' borç' : '•••••• borç')
+        : CEZA.length + ' cezanın tamamı ödenmiş',
+      metaTon:CEZA_ODENMEMIS.length ? 'danger' : null
+    });
+
+    var mgun = MUAYENE_ACIK && MUAYENE_ACIK.sonrakiTarih ? F.days(MUAYENE_ACIK.sonrakiTarih) : null;
+    k.push({
+      ikon:'i-clipboard-check', etiket:'Muayene son tarihi',
+      tone:mgun == null ? null : mgun < 0 ? 'danger' : mgun <= 60 ? 'warn' : 'ok',
+      deger:MUAYENE_ACIK && MUAYENE_ACIK.sonrakiTarih ? esc(F.date(MUAYENE_ACIK.sonrakiTarih)) : '—',
+      meta:mgun == null
+        ? 'muayene defterinde bu araca ait kayıt yok'
+        : (mgun < 0 ? esc(F.num(-mgun)) + ' gün geçti' : esc(F.num(mgun)) + ' gün kaldı'),
+      metaTon:mgun != null && mgun < 0 ? 'danger' : null
+    });
+
+    k.push({
+      ikon:'i-fuel', etiket:'İki dolum arası tüketim',
+      tone:TUKETIM.ok ? 'info' : null,
+      deger:TUKETIM.ok ? esc(F.num(TUKETIM.deger, 2)) + '<small>L/100km</small>' : '—',
+      meta:TUKETIM.ok
+        ? esc(F.num(TUKETIM.km)) + ' km · ' + esc(F.num(TUKETIM.litre, 1)) + ' L'
+        : 'türetilemedi — gerekçe yanda',
+      metaTon:TUKETIM.ok ? null : 'warn'
+    });
+
+    return k;
+  }
+
+  /* ---- 7.1 Künye ---------------------------------------------------- */
+  function kunyeKarti(){
+    return kart('i-car', 'Künye', kodEt(arac.kod),
+      GV.dl([
+        ['Araç kodu', kodEt(arac.kod)],
+        ['Plaka', bos(arac.plaka) ? '<span class="cell-main">' + esc(arac.plaka) + '</span>' : faint('plaka kayıtlı değil')],
+        ['Marka / Model', esc([arac.marka, arac.model].filter(Boolean).join(' ')) || faint('marka/model kayıtlı değil')],
+        ['Model yılı', arac.modelYili == null ? faint('model yılı kayıtlı değil') : GV.cell.num(arac.modelYili)],
+        ['Tip', sozluksuz(arac.tip, 'sözlüğü YOK — defterdeki ' + FILO.length + ' araçtan türetildi (' +
+          benzersiz(FILO, 'tip').join(' · ') + ')')],
+        ['Yakıt', sozluksuz(arac.yakit, 'sözlüğü YOK — defterden türetildi (' +
+          benzersiz(FILO, 'yakit').join(' · ') + ')')],
+        ['Vites', sozluksuz(arac.vites, 'sözlüğü YOK — defterden türetildi (' +
+          benzersiz(FILO, 'vites').join(' · ') + ')')],
+        ['Renk', sozluksuz(arac.renk, 'sözlüğü YOK — defterden türetildi')],
+        ['Motor hacmi', arac.motorHacmi == null ? faint('motor hacmi kayıtlı değil')
+          : GV.cell.num(arac.motorHacmi) + ' cc'],
+        ['Motor no', bos(arac.motorNo) ? kodEt(arac.motorNo) : faint('motor no kayıtlı değil')],
+        ['Şasi no', bos(arac.sasi) ? kodEt(arac.sasi) : faint('şasi no kayıtlı değil')],
+        ['Kullanım', sozluksuz(arac.kullanim, 'sözlüğü YOK — defterden türetildi (' +
+          benzersiz(FILO, 'kullanim').join(' · ') + ')')],
+        ['Departman', arac.dep
+          ? esc(depAd(arac.dep)) + GV.cell.sub(esc(arac.dep))
+          : faint('departman bağı yok')],
+        /* ⚠️ ÖLÇÜLDÜ: `proje` alanı 4/4 araçta BOŞ (§22.12). Alan boş
+           bırakılıyor ve SEBEBİ yazılıyor — "0 proje" demek, ölçülmemişi
+           ölçülmüş göstermek olurdu (§10.1). */
+        ['Proje bağı', arac.proje
+          ? kodEt(arac.proje)
+          : faint('—') + GV.cell.sub('bugün filodaki ' + FILO.length + ' aracın ' +
+              FILO.filter(function(x){ return !!x.proje; }).length +
+              ' tanesinde proje bağı var; bu alan şemada VAR, veride boş')]
+      ], { skipEmpty:false }));
+  }
+
+  /* ---- 7.2 Mülkiyet ve kiralama ------------------------------------
+     MÜLKİYET EKSENİ İKİYE AYRILIR (§22.12): `Satın alınan` bloğu
+     (`alisTarihi · alisBedeli · satici · siparis`) ile `Kiralık` bloğu
+     (`kiralamaFirmasi · sozlesmeBas · sozlesmeBit · aylikKira · kmSiniri ·
+     depozito`) aynı kayıtta BİRLİKTE DOLMAZ — ölçüldü: 3 satın alınan,
+     1 kiralık (`ARC-002`). Ekran hangi blokta olduğunu YAZAR ve öbür
+     bloğu boş satırlarla basmaz. */
+  function mulkiyetKarti(){
+    var kiralik = arac.mulkiyet === 'Kiralık';
+    var sat = [];
+
+    sat.push(['Mülkiyet', sozluksuz(arac.mulkiyet,
+      'sözlüğü YOK — defterdeki ' + FILO.length + ' araçtan türetildi: ' +
+      benzersiz(FILO, 'mulkiyet').map(function(m){
+        return m + ' ' + FILO.filter(function(x){ return x.mulkiyet === m; }).length;
+      }).join(' · '))]);
+
+    if(kiralik){
+      var basG = arac.sozlesmeBas ? F.days(arac.sozlesmeBas) : null;
+      var bitG = arac.sozlesmeBit ? F.days(arac.sozlesmeBit) : null;
+      sat = sat.concat([
+        ['Kiralama firması', bos(arac.kiralamaFirmasi) ? esc(arac.kiralamaFirmasi) : faint('firma kayıtlı değil')],
+        ['Sözleşme başlangıcı', tarihEt(arac.sozlesmeBas) || faint('başlangıç kayıtlı değil')],
+        ['Sözleşme bitişi', arac.sozlesmeBit
+          ? tarihEt(arac.sozlesmeBit) + GV.cell.sub(bitG < 0
+              ? esc(F.num(-bitG)) + ' gün önce bitti'
+              : esc(F.num(bitG)) + ' gün kaldı')
+          : faint('bitiş kayıtlı değil')],
+        ['Aylık kira', paraEt(arac.aylikKira, 'sözleşmede yazılı aylık bedel') ||
+          faint('aylık kira kayıtlı değil')],
+        ['Km sınırı', arac.kmSiniri == null
+          ? faint('km sınırı kayıtlı değil')
+          : GV.cell.num(arac.kmSiniri) + ' km' +
+            GV.cell.sub('sözleşme km sınırı · aracın güncel kilometresi ' +
+              (arac.guncelKm == null ? 'kayıtlı değil' : F.num(arac.guncelKm) + ' km') +
+              '. ⚠️ Sınırın DÖNEMİ (yıllık mı, sözleşme boyu mu) kayıtta ' +
+              'yazılı DEĞİL — aşım hesabı bu yüzden türetilmedi')],
+        ['Depozito', paraEt(arac.depozito, 'iade edilebilir teminat') ||
+          faint('depozito kayıtlı değil')]
+      ]);
+    } else {
+      sat = sat.concat([
+        ['Alış tarihi', tarihEt(arac.alisTarihi) || faint('alış tarihi kayıtlı değil')],
+        ['Alış bedeli', paraEt(arac.alisBedeli, 'kayıtta yazılı alış bedeli') ||
+          faint('alış bedeli kayıtlı değil')],
+        ['Satıcı', bos(arac.satici) ? esc(arac.satici) : faint('satıcı kayıtlı değil')],
+        ['Sipariş', arac.siparis
+          ? (function(){
+              var s = (DB.orders || []).filter(function(o){ return o.kod === arac.siparis; })[0];
+              return s
+                ? kodEt(s.kod) + GV.cell.sub('tarih: ' + esc(F.date(s.tarih)) +
+                    ' · durum: ' + esc(s.durum) +
+                    (canFinans ? ' · net ' + esc(F.money(s.tutar)) + ' · brüt ' + esc(F.money(s.toplam)) : ''))
+                : kodEt(arac.siparis) + GV.cell.sub('bu kod sipariş defterindeki ' +
+                    (DB.orders || []).length + ' kayıtla eşleşmedi');
+            })()
+          : faint('—') + GV.cell.sub('bu alım modellenmiş bir siparişten türetilmedi (' +
+              FILO.filter(function(x){ return !!x.siparis; }).length + ' / ' + FILO.length +
+              ' araçta sipariş bağı var); satıcı adı bağ yerine GEÇMEZ')]
+      ]);
+    }
+
+    return kart(kiralik ? 'i-key' : 'i-cart',
+      kiralik ? 'Kiralama sözleşmesi' : 'Satın alma',
+      esc(arac.mulkiyet || '—'),
+      GV.dl(sat, { skipEmpty:false }) +
+      not(kiralik
+        ? 'Kiralık araçta satın alma ekseni (alış tarihi · alış bedeli · satıcı · sipariş) HİÇ ' +
+          'DOLMAZ ve boş satır olarak da basılmaz: eksik değil, GEÇERSİZ alanlardır. ' +
+          'Ölçüldü: kiralama bloğunun altı alanı filodaki ' + FILO.length + ' aracın ' +
+          FILO.filter(function(x){ return x.mulkiyet === 'Kiralık'; }).length + ' tanesinde dolu.'
+        : 'Satın alınan araçta kiralama ekseni (firma · sözleşme tarihleri · aylık kira · km ' +
+          'sınırı · depozito) HİÇ DOLMAZ ve boş satır olarak da basılmaz: eksik değil, ' +
+          'GEÇERSİZ alanlardır.'));
+  }
+
+  /* ---- 7.3 Kilometre ve bakım planı -------------------------------- */
+  function kmBakimKarti(){
+    var sonBakim = BAKIM.filter(function(m){ return m.gercekTarihi; })
+      .sort(function(a, b){ return String(b.gercekTarihi).localeCompare(String(a.gercekTarihi)); })[0] || null;
+
+    /* Künyedeki plan ile bakım defterindeki plan AYNI ŞEY OLMAK ZORUNDA
+       DEĞİL; ikisi ayrı defterdir ve çelişki GİZLENMEZ, ölçülür. */
+    var planCelisir = !!(BAKIM_ACIK.length && arac.sonrakiBakimTarihi &&
+                         BAKIM_ACIK[0].planTarihi !== arac.sonrakiBakimTarihi);
+
+    return kart('i-gauge', 'Kilometre ve bakım planı',
+      arac.guncelKm == null ? 'km kayıtlı değil' : esc(F.num(arac.guncelKm)) + ' km',
+      GV.dl([
+        ['Güncel kilometre', arac.guncelKm == null
+          ? faint('güncel km kayıtlı değil')
+          : kmEt(arac.guncelKm) + GV.cell.sub('kayıtta yazılı değer · bir sayaç DEĞİLDİR, ' +
+              'kilometreyi güncelleyen ortak yordam yok')],
+        ['Son bakım (künye)', arac.sonBakimTarihi
+          ? tarihEt(arac.sonBakimTarihi) +
+            GV.cell.sub(arac.sonBakimKm != null ? esc(F.num(arac.sonBakimKm)) + ' km\'de' : 'km yazılmamış')
+          : faint('son bakım tarihi kayıtlı değil')],
+        ['Son bakım (defter)', sonBakim
+          ? kodEt(sonBakim.kod) + GV.cell.sub(esc(F.date(sonBakim.gercekTarihi)) + ' · ' +
+              esc(sonBakim.servis || 'servis yazılmamış') + ' · ' + esc(sonBakim.tur))
+          : faint('—') + GV.cell.sub('bakım defterinde bu araca ait GERÇEKLEŞMİŞ ' +
+              '(gercekTarihi dolu) kayıt yok; ' + BAKIM.length + ' kaydın hepsi plan')],
+        ['Sonraki bakım (künye)', arac.sonrakiBakimTarihi
+          ? tarihEt(arac.sonrakiBakimTarihi) +
+            GV.cell.sub((arac.sonrakiBakimKm != null ? esc(F.num(arac.sonrakiBakimKm)) + ' km\'de · ' : '') +
+              (F.days(arac.sonrakiBakimTarihi) < 0
+                ? esc(F.num(-F.days(arac.sonrakiBakimTarihi))) + ' gün geçti'
+                : esc(F.num(F.days(arac.sonrakiBakimTarihi))) + ' gün kaldı'))
+          : faint('sonraki bakım tarihi kayıtlı değil')],
+        ['Sonraki bakım (defter)', BAKIM_ACIK.length
+          ? kodEt(BAKIM_ACIK[0].kod) + GV.cell.sub(esc(F.date(BAKIM_ACIK[0].planTarihi)) + ' · ' +
+              esc(BAKIM_ACIK[0].durum) + ' · ' + esc(BAKIM_ACIK[0].servis || 'servis yazılmamış'))
+          : faint('—') + GV.cell.sub('bakım defterinde bugünden sonraya planlanmış kayıt yok; ' +
+              'KPI aracın künyesindeki plana düştü')],
+        ['Kalan km', (arac.sonrakiBakimKm != null && arac.guncelKm != null)
+          ? GV.cell.num(arac.sonrakiBakimKm - arac.guncelKm, { tone:(arac.sonrakiBakimKm - arac.guncelKm) < 0 ? 'danger' : null }) + ' km' +
+            GV.cell.sub('sonrakiBakimKm − guncelKm · TÜRETİLDİ, kayıtta yazılı bir alan değil')
+          : faint('—') + GV.cell.sub('iki km alanından biri boş; fark türetilemez')]
+      ], { skipEmpty:false }) +
+      (planCelisir
+        ? GV.notice({ tone:'warn', icon:'i-alert',
+            title:'Künyedeki plan ile bakım defterindeki plan aynı tarihi göstermiyor',
+            text:'Aracın künyesi ' + F.date(arac.sonrakiBakimTarihi) + ', bakım defteri ise ' +
+                 F.date(BAKIM_ACIK[0].planTarihi) + ' (' + BAKIM_ACIK[0].kod + ') diyor. ' +
+                 'İki defter arasındaki bu farkı senkronlayan bir yordam YOKTUR; ekran ' +
+                 'farkı düzeltmez, GÖSTERİR. KPI defteri otorite sayar.' })
+        : '') +
+      not('⚠️ Bakım planını ilerleten, kilometreyi güncelleyen ya da bakım defterine SATIR ' +
+          'EKLEYEN bir ortak yordam YOKTUR (§22.16 madde 7). Bu blokta "bakım planla" ya da ' +
+          '"km güncelle" düğmesi bu yüzden BASILMADI — devre dışı bir düğme bile vaattir.'));
+  }
+
+  /* ---- 7.4 Sigorta ve poliçe (AYRI SEKME DEĞİL — §22.13) ------------ */
+  function policeKarti(){
+    if(!POLICE.length){
+      return kart('i-shield', 'Sigorta ve poliçe', '0 poliçe',
+        GV.empty({ icon:'i-shield',
+          title:'Bu araç için poliçe defterinde kayıt yok',
+          desc:'Sigorta ve kasko defterinde (DB.policies) ' + POLICE_T.length + ' poliçe var ve ' +
+               'hiçbiri bu araca ait değil. Bu, "sigortasız" demek DEĞİLDİR — defterde bu araç ' +
+               'için bir kayıt bulunmadığı anlamına gelir.' }));
+    }
+
+    var govde = POLICE_SIRA.map(function(p){
+      var gun = p.bitis ? F.days(p.bitis) : null;
+      var kasko = p.kaskoBedeli != null || p.muafiyet != null || p.hasarsizlik != null;
+      var sat = [
+        ['Poliçe kaydı', kodEt(p.kod)],
+        ['Tür', sozluksuz(p.tur, 'policyTypes sözlüğü YOK — defterden türetildi (' +
+          benzersiz(POLICE_T, 'tur').join(' · ') + ')')],
+        ['Sigorta şirketi', bos(p.sirket) ? esc(p.sirket) : faint('şirket kayıtlı değil')],
+        ['Poliçe no', kodEt(p.police)],
+        ['Acente', bos(p.acente) ? esc(p.acente) : faint('acente kayıtlı değil')],
+        ['Dönem', (tarihEt(p.baslangic) || faint('—')) + ' → ' + (tarihEt(p.bitis) || faint('—')) +
+          GV.cell.sub(gun == null
+            ? 'bitiş tarihi kayıtlı değil, kalan gün türetilemez'
+            : (gun < 0 ? esc(F.num(-gun)) + ' gün önce bitti' : esc(F.num(gun)) + ' gün kaldı') +
+              ' · kayıttaki kalanGun ' + esc(String(p.kalanGun)) +
+              (p.kalanGun === gun ? ' (türetilenle birebir tutuyor, bayat değil)' : ' ⚠️ SAPMA VAR'))],
+        ['Prim', paraEt(p.prim, p.prim === 0
+          ? 'ölçülmüş sıfırdır: prim kiralama sözleşmesine dahil, ayrı bir bedel yok'
+          : 'poliçe primi') || faint('prim kayıtlı değil')],
+        ['Teminat', bos(p.teminat) ? esc(p.teminat) : faint('teminat yazılmamış')],
+        ['Ödeme', rozet(p.odeme, 'sözlüğü YOK — defterden türetildi (' +
+          benzersiz(POLICE_T, 'odeme').join(' · ') + ')')],
+        ['Yenileme', p.yenileme === '—' || !bos(p.yenileme)
+          ? faint('—') + GV.cell.sub('yenileme süreci başlamamış · defterdeki değerler: ' +
+              benzersiz(POLICE_T, 'yenileme').join(' · '))
+          : rozet(p.yenileme, 'sözlüğü YOK — defterden türetildi')]
+      ];
+      if(kasko){
+        sat = sat.concat([
+          ['Kasko bedeli', paraEt(p.kaskoBedeli, p.kaskoBedeli === 0
+            ? 'ölçülmüş sıfırdır: teminat kiralama sözleşmesine dahil'
+            : 'poliçede yazılı araç bedeli')],
+          ['Muafiyet', bos(p.muafiyet) ? esc(p.muafiyet) : faint('—')],
+          ['Hasarsızlık', bos(p.hasarsizlik) ? esc(p.hasarsizlik) : faint('—')],
+          ['İkame araç', p.ikameArac === true ? '<span class="u-ok u-sm">Var</span>'
+            : p.ikameArac === false ? '<span class="u-sm">Yok</span>'
+            : faint('—') + GV.cell.sub('boolean alan kayıtta yok')],
+          ['Mini onarım', p.miniOnarim === true ? '<span class="u-ok u-sm">Var</span>'
+            : p.miniOnarim === false ? '<span class="u-sm">Yok</span>'
+            : faint('—') + GV.cell.sub('boolean alan kayıtta yok')]
+        ]);
+      }
+      return '<div class="u-mt-4">' + GV.dl(sat, { skipEmpty:false }) + '</div>';
+    }).join('');
+
+    return kart('i-shield', 'Sigorta ve poliçe',
+      POLICE.length + ' poliçe',
+      (POLICE_YAKIN.length
+        ? GV.notice({ tone:'warn', icon:'i-alert',
+            title:POLICE_YAKIN.length + ' poliçenin bitişine ' + YENILEME_ESIK + ' günden az kaldı',
+            text:POLICE_YAKIN.map(function(p){
+                   return p.kod + ' (' + p.tur + ') · ' + F.date(p.bitis) + ' · ' +
+                          F.days(p.bitis) + ' gün · yenileme: ' + (p.yenileme || '—');
+                 }).join(' | ') +
+                 '. ⚠️ 60 günlük eşik BU EKRANIN kararıdır: ortak katmanda bir yenileme eşiği ' +
+                 'yordamı, DB tarafında da bir eşik alanı yoktur. Eşik yazılmadan basılan bir ' +
+                 'uyarı, uydurulmuş bir kuraldır.' })
+        : GV.notice({ tone:'neutral', icon:'i-info',
+            title:'Bu araçta ' + YENILEME_ESIK + ' gün içinde biten poliçe yok',
+            text:'En yakın bitiş ' + (POLICE_SIRA[0].bitis ? F.date(POLICE_SIRA[0].bitis) : 'kayıtlı değil') +
+                 ' (' + POLICE_SIRA[0].kod + '). Eşik bu ekranın kendi kararıdır ve ortak ' +
+                 'katmanda karşılığı yoktur.' })) +
+      govde +
+      not('⚠️ POLİÇE AYRI BİR SEKME DEĞİLDİR (brief §22.13): altı defter birer OLAY kaydıdır ' +
+          '(bir bakım yapıldı, bir ceza kesildi), poliçe ise bir MÜLKİYET NİTELİĞİDİR — süresi ' +
+          'olan bir sözleşme, olan bir olay değil. Yedinci bir olay sekmesi açmak "ayrı ekran ' +
+          'ailesi açma" ilkesini sekme düzeyinde delerdi. ' +
+          'Poliçe defterinde `durum` alanı YOKTUR (ölçüldü, 14 alanlık şema); yenileme ekseni ' +
+          '`yenileme` alanıdır ve bir tarih hesabı yapmaz. Poliçe yenileyen, ekleyen ya da ' +
+          'iptal eden yordam da YOK (§22.16 madde 7) — düğme basılmadı.'));
+  }
+
+  /* ---- 7.5 Aktivite ------------------------------------------------- */
+  function aktiviteKarti(){
+    return kart('i-activity', 'Aktivite', IZLER.length + ' hareket',
+      GV.activity(IZLER) +
+      not('Zaman çizelgesi olay defteri (DB.activities) ile sistem günlüğünü (DB.logs) ' +
+          'GV.audit.oku ile birleştirir ve YENİDEN ESKİYE sıralıdır. Filodaki ' + FILO.length +
+          ' aracın toplam ' +
+          (DB.activities || []).filter(function(x){ return /^ARC-/.test(String(x.kayit || '')); }).length +
+          ' hareketi ölçüldü. Bu izler kalıcı DEĞİLDİR (BE-S5): sayfa yenilenince kaynak ' +
+          'veriye döner.'));
+  }
+
+  /* ---- 7.6 Durum — DÜZ ALAN olduğu YAZILIR ------------------------- */
+  function durumKarti(){
+    return kart('i-info', 'Durum', rozet(arac.durum),
+      GV.dl([
+        ['Durum', rozet(arac.durum, 'vehicleStatuses sözlüğü YOKTUR (V2-43) — değerler ' +
+          'defterden türetildi: ' + benzersiz(FILO, 'durum').map(function(d){
+            return d + ' ' + FILO.filter(function(x){ return x.durum === d; }).length;
+          }).join(' · '))],
+        ['Geçiş tablosu', faint('yok') +
+          GV.cell.sub('DB.transitions.vehicle TANIMLI DEĞİLDİR; araç bir GV.flow varlığı değil')],
+        ['Arşiv ekseni', (ARAC_ARSIVLI ? '<span class="u-warn u-sm">arşivli</span>' : '<span class="u-sm">etkin</span>') +
+          GV.cell.sub('GV.arsivli(arac) · araç kaydı `durum` taşır, o yüzden arşiv sorusu ' +
+            'durumdan geçer ve tuzaklı `aktif` alanı OKUNMAZ')]
+      ], { skipEmpty:false }) +
+      GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Bu ekran durum yazmaz — ve yazan bir yordam da yok',
+        text:'Araç için geçiş tablosu tanımlı değil; durum düz alan olarak düzenlenir ve bir ' +
+             'geçiş kaydı üretmez. GV.flow.gec(\'vehicle\', …) ÇAĞRILMAZ — olmayan bir varlık ' +
+             'için çağırmak sessizce null dönerdi. Durum değişikliği araç formunda yapılır. ' +
+             'Beyanı BE-P4.',
+        actions:canDuzen
+          ? [{ label:'Araç formunda düzenle', cls:'btn-line',
+               href:'app-arac-form.html?id=' + encodeURIComponent(arac.kod) }]
+          : [] }), 'u-col');
+  }
+
+  /* ---- 7.7 İki dolum arası tüketim --------------------------------- */
+  function tuketimKarti(){
+    var govde;
+    if(TUKETIM.ok){
+      govde = GV.dl([
+        ['Tüketim', '<span class="u-num">' + esc(F.num(TUKETIM.deger, 2)) + ' L/100 km</span>' +
+          GV.cell.sub('TÜRETİLDİ · kayıtta böyle bir alan yok')],
+        ['Dayanak — önceki dolum', kodEt(TUKETIM.onceki.kod) +
+          GV.cell.sub(esc(F.date(TUKETIM.onceki.tarih)) + ' · ' + esc(F.num(TUKETIM.onceki.km)) + ' km · ' +
+            esc(F.num(TUKETIM.onceki.litre, 1)) + ' L · ' + esc(TUKETIM.onceki.istasyon || ''))],
+        ['Dayanak — sonraki dolum', kodEt(TUKETIM.sonraki.kod) +
+          GV.cell.sub(esc(F.date(TUKETIM.sonraki.tarih)) + ' · ' + esc(F.num(TUKETIM.sonraki.km)) + ' km · ' +
+            esc(F.num(TUKETIM.sonraki.litre, 1)) + ' L · ' + esc(TUKETIM.sonraki.istasyon || ''))],
+        ['Katedilen yol', GV.cell.num(TUKETIM.km) + ' km' +
+          GV.cell.sub('sonraki.km − önceki.km')],
+        ['Hesap', '<span class="u-sm">' + esc(F.num(TUKETIM.litre, 1)) + ' L ÷ ' +
+          esc(F.num(TUKETIM.km)) + ' km × 100</span>']
+      ], { skipEmpty:false }) +
+      GV.notice({ tone:'warn', icon:'i-alert',
+        title:'Bu sayının bir VARSAYIMI var ve veri onu doğrulamıyor',
+        text:'Tüketim ancak her iki dolumun da depoyu DOLDURDUĞU varsayımıyla anlamlıdır. ' +
+             'DB.fuelLogs bunu söyleyen bir alan TAŞIMAZ (kod · arac · tarih · istasyon · litre · ' +
+             'birimFiyat · tutar · km · surucu · aktif). Varsayımı yazmadan basılan sayı, ölçüm ' +
+             'değil iddiadır.' }) +
+      not('Bu KPI\'ın adı bilerek "ortalama tüketim" DEĞİLDİR: elde tek bir aralık var ' +
+          '(' + YAKIT.length + ' dolum kaydı → ' + (YAKIT.length - 1) + ' aralık). Tek aralığa ' +
+          '"ortalama" demek, bir ölçümü bir eğilim gibi göstermek olurdu.');
+    } else {
+      govde = GV.dl([
+        ['Tüketim', BOS + GV.cell.sub(esc(TUKETIM.neden))],
+        ['Dolum kaydı', GV.cell.num(YAKIT.length) + ' kayıt' +
+          GV.cell.sub('yakıt defterindeki ' + YAKIT_T.length + ' kaydın bu araca düşeni')]
+      ], { skipEmpty:false }) +
+      not('Basılan işaret "veri yok" değil, HANGİ VERİNİN NEDEN YETMEDİĞİDİR (§10.1): ' +
+          esc(TUKETIM.neden) + '. Tüketim iki dolum arasındaki kilometre farkından türer; ' +
+          'tek bir dolumdan türetilemez ve sıfır yazmak ölçülmemişi ölçülmüş göstermek olurdu.');
+    }
+    return kart('i-fuel', 'İki dolum arası tüketim',
+      TUKETIM.ok ? esc(F.num(TUKETIM.deger, 2)) + ' L/100km' : 'türetilemedi',
+      govde, 'u-col');
+  }
+
+  /* ---- 7.8 Sürücüler ------------------------------------------------ */
+  function surucuKarti(){
+    return kart('i-user-check', 'Sürücüler',
+      [arac.anaSurucu, arac.yedekSurucu].filter(Boolean).length + ' / 2',
+      GV.dl([
+        ['Ana sürücü', kisiLink(arac.anaSurucu) ||
+          (faint('—') + GV.cell.sub('bu araca ana sürücü atanmamış · filodaki ' + FILO.length +
+            ' aracın ' + FILO.filter(function(x){ return !!x.anaSurucu; }).length +
+            ' tanesinde ana sürücü var'))],
+        ['Yedek sürücü', kisiLink(arac.yedekSurucu) ||
+          (faint('—') + GV.cell.sub('yedek sürücü atanmamış'))],
+        ['Defterlerde geçen sürücüler', (function(){
+          /* Sürücü bağı KÜNYEDE DEĞİL, alt defterlerde de yaşıyor: yakıt,
+             ceza ve kaza kayıtları kendi `surucu` alanını taşır ve bu alan
+             künyedeki ana/yedek sürücüyle AYNI OLMAK ZORUNDA DEĞİLDİR.
+             İkisini karıştırmamak için ayrı satır. */
+          var k = [];
+          YAKIT.concat(CEZA, KAZA).forEach(function(r){
+            if(r.surucu && k.indexOf(r.surucu) === -1) k.push(r.surucu);
+          });
+          if(!k.length) return faint('—') + GV.cell.sub('yakıt/ceza/kaza defterlerinde bu araç ' +
+            'için sürücü yazılı bir kayıt yok');
+          return k.map(function(x){ return kisiLink(x); }).join(' ') +
+            GV.cell.sub('yakıt · ceza · kaza defterlerinin kendi `surucu` alanından türetildi; ' +
+              'künyedeki ana/yedek sürücüyle aynı olmak zorunda değildir');
+        })()]
+      ], { skipEmpty:false }), 'u-col');
+  }
+
+  /* ---- 7.9 Defter ölçümü ------------------------------------------- */
+  function defterKarti(){
+    return kart('i-layers', 'Defter ölçümü', KAYIT_TOPLAM + ' kayıt taranmıştır',
+      '<ul class="gv-checklist">' + DEFTER.map(function(d){
+        return '<li><span class="cell-main">' + esc(d.ad) +
+          '<span class="cell-sub">defterde ' + d.n + ' kayıt · bu araca düşen ' + d.bu + '</span></span>' +
+          '<span class="u-num">' + d.bu + '</span></li>';
+      }).join('') + '</ul>' +
+      not('Arşiv ekseni: yedi defterin ' + KAYIT_TOPLAM + ' kaydının <b>' + ARSIV_TOPLAM +
+          '</b> tanesi <code>GV.arsivli</code> gözüyle arşivli — yani süzgeç bugün hiçbir kaydı ' +
+          'düşürmüyor. Dal yazıldı ama ATEŞLENMEDİ; ölçülmemiş dal ölçülmüş sayılmaz. ' +
+          '<code>DB.fuelLogs</code> · <code>DB.vehicleExpenses</code> · <code>DB.policies</code> ' +
+          '<code>durum</code> taşımadığı için orada kanon <code>aktif</code>tir ve tuzak KURULU ' +
+          'DEĞİLDİR; kalan dört defter <code>durum</code> taşır ve orada <code>aktif</code> ' +
+          'TUZAKLIDIR. Ekran ikisini de aynı yordamla sorar, alanı hiçbir yerde okumaz.' +
+          (KALANGUN_SAPMA.length
+            ? ' ⚠️ <b>kalanGun sapması:</b> ' + esc(KALANGUN_SAPMA.join(' · '))
+            : ' Kayıtlarda yazılı <code>kalanGun</code> alanları türetilenle birebir tutuyor — ' +
+              'bu defterlerde bayat alan yok.') +
+          (YUKSUZ.length
+            ? ' ⚠️ Yüklenmemiş defter: ' + esc(YUKSUZ.map(function(d){ return d.ad; }).join(' · '))
+            : '')) +
+      '<div class="u-mt-4">' + not('Filo dağılımı (yedi defterin toplamı): ' +
+        DAGILIM.map(function(d){
+          return (d.kod === arac.kod ? '<b>' + esc(d.kod) + ' ' + d.toplam + '</b>' : esc(d.kod) + ' ' + d.toplam);
+        }).join(' · ') + '.') + '</div>', 'u-col');
+  }
+
+  /* ---- 7.10 Backend payı — brief tablosundan KOPYALANDI ------------- */
+  function backendKarti(){
+    return '<section class="gv-card u-mt-4">' +
+      kartBasi('i-shield', 'Backend payı', BE.length + ' madde') +
+      '<ul class="gv-checklist">' + BE.map(function(g){
+        return '<li><span><b>' + esc(g[0]) + '</b> — ' + esc(g[1]) + '</span>' +
+          '<span class="cell-sub">' + esc(g[2]) + '</span></li>';
+      }).join('') + '</ul>' +
+      '<div class="gc-body u-faint u-sm">Bu maddeler prototipte <b>uygulanmadı</b> ve ' +
+        '<b>taklit edilmedi</b>. Canlıya çıkmadan önce karşılanması zorunludur. ' +
+        'Ortak katman borçları ayrıca: yedi alt defterin hiçbirine kayıt EKLEYEN yordam yok ' +
+        '(§22.16 madde 7) · araç ekseninde bir <code>GV.*</code> ad alanı yok (kayıt araması ' +
+        'bu ekranda kuruldu) · tek kayıt ekseninde KPI basan ortak yordam yok · ton sözlüğünde ' +
+        '"anahtar var mı" sorusunun yordamı yok (<code>GV.tone</code> yokluğu ile bilerek ' +
+        'nötrü ayırt edemiyor) · kayıt bazlı düzenleme kapsamı yordamı yok (V2-85).</div>' +
+    '</section>';
+  }
+
+  /* ===================================================================
+     8. SEKME 2 — BAKIM (DB.maintenance)
+     =================================================================== */
+  function cizBakim(el){
+    if(!BAKIM.length){
+      el.innerHTML = bosKart('i-wrench', 'Bakım',
+        'Bu araç için bakım defterinde kayıt yok',
+        'Bakım defterinde (DB.maintenance) ' + BAKIM_T.length + ' kayıt var ve hiçbiri bu araca ' +
+        'ait değil. Bu, "hiç bakım yapılmadı" demek DEĞİLDİR — defterde bu araç için bir satır ' +
+        'bulunmadığı anlamına gelir. Aracın künyesindeki son/sonraki bakım alanları özet ' +
+        'sekmesinde ayrıca basılır.') + salt('bakım');
+      return;
+    }
+
+    el.innerHTML = listeKabuk('bakim', 'i-wrench', 'Bakım defteri',
+      'Kayıt alanları: <code>kod · arac · tur · planTarihi · planKm · gercekTarihi · servis · ' +
+      'maliyet · durum · kalanGun · islemler</code>. <code>maintenanceStatuses</code> sözlüğü ' +
+      '<b>YOKTUR</b>; durum ve tür değerleri defterden türetildi (' +
+      esc(benzersiz(BAKIM_T, 'durum').join(' · ')) + ' / ' +
+      esc(benzersiz(BAKIM_T, 'tur').join(' · ')) + '). ' +
+      '<code>gercekTarihi</code> ve <code>maliyet</code> yalnız GERÇEKLEŞMİŞ bakımda dolar; ' +
+      'planlı kayıtta <code>null</code>dur ve bu bir eksik değil, henüz OLMAMIŞ bir olaydır. ' +
+      '<code>kalanGun</code> kayıtta yazılı ama ekran onu <code>planTarihi</code>den TÜRETİR.',
+      BAKIM.length) + salt('bakım');
+
+    liste({
+      mount:'#adListe-bakim', id:'adBakim', key:'kod',
+      source:function(){ return BAKIM; },
+      countTarget:'#adSay-bakim',
+      exportName:'bakim-' + arac.kod, exportTitle:'Bakım kayıtları — ' + arac.plaka,
+      defaultSort:'planTarihi', defaultDir:'desc',
+      views:['table','card'],
+      search:{ placeholder:'Kod, servis ya da tür ara', fields:['kod','servis','tur','durum'] },
+      columns:[
+        GV.cols.kod('kod', 'Kayıt', { sub:function(m){ return m.tur || ''; } }),
+        { key:'tur', label:'Tür', sortable:true,
+          render:function(m){ return sozluksuz(m.tur, 'sözlüğü yok — defterden türetildi'); } },
+        GV.cols.date('planTarihi', 'Plan tarihi', { plain:true, bosMetin:'planlanmadı',
+          sub:function(m){
+            var g = m.planTarihi ? F.days(m.planTarihi) : null;
+            return g == null ? '' : (g < 0 ? F.num(-g) + ' gün geçti' : F.num(g) + ' gün kaldı') +
+              ' · türetildi'; } }),
+        GV.cols.num('planKm', 'Plan km'),
+        GV.cols.date('gercekTarihi', 'Gerçekleşen', { plain:true, bosMetin:'gerçekleşmedi',
+          bosSub:function(){ return 'bakım henüz yapılmadı — eksik alan değil'; } }),
+        { key:'servis', label:'Servis', cellClass:'cell-wrap',
+          render:function(m){ return bos(m.servis) ? esc(m.servis) : faint('servis yazılmamış'); } },
+        GV.cols.money('maliyet', 'Maliyet', { perm:'finans', cur:'₺',
+          sub:function(m){ return m.maliyet == null ? 'planlı kayıtta maliyet oluşmadı' : ''; } }),
+        { key:'durum', label:'Durum', cellClass:'center',
+          render:function(m){ return rozet(m.durum, null); } },
+        { key:'kalanGun', label:'Kalan gün', cellClass:'num', visible:false,
+          exportValue:function(m){ return m.planTarihi == null ? '' : F.days(m.planTarihi); },
+          render:function(m){
+            if(!m.planTarihi) return GV.cell.faint('—');
+            var t = F.days(m.planTarihi);
+            return GV.cell.gun(t, t < 0 ? 'danger' : t <= 30 ? 'warn' : null) +
+              GV.cell.sub('kayıtta ' + m.kalanGun + (t === m.kalanGun ? ' · türetilenle tutuyor' : ' ⚠️ SAPMA')); } },
+        { key:'islemler', label:'İşlemler', cellClass:'cell-wrap', visible:false,
+          exportValue:function(m){ return (m.islemler || []).join(' · '); },
+          render:function(m){
+            return (m.islemler || []).length
+              ? '<span class="u-sm">' + esc(m.islemler.join(' · ')) + '</span>' +
+                GV.cell.sub(m.islemler.length + ' işlem · dizi alanı')
+              : faint('işlem yazılmamış'); } }
+      ],
+      filters:[
+        { key:'durum', label:'Durum', type:'multi', options:benzersiz(BAKIM_T, 'durum') },
+        { key:'tur', label:'Tür', type:'multi', options:benzersiz(BAKIM_T, 'tur') }
+      ],
+      mobile:function(m){
+        return GV.cell.mrow('<span class="cell-main">' + esc(m.tur) + '</span>', m.kod,
+          [esc(m.servis || ''), F.date(m.planTarihi)], rozet(m.durum));
+      },
+      emptyState:{ icon:'i-wrench', title:'Süzgeç bu araçta hiçbir bakım kaydı bırakmadı',
+        desc:'Bu araca ait ' + BAKIM.length + ' bakım kaydı var; süzgeci genişletin.' }
+    });
+  }
+
+  /* ===================================================================
+     9. SEKME 3 — YAKIT (DB.fuelLogs)
+     =================================================================== */
+  function cizYakit(el){
+    var basi = tuketimSeridi();
+    if(!YAKIT.length){
+      el.innerHTML = bosKart('i-fuel', 'Yakıt',
+        'Bu araç için yakıt defterinde kayıt yok',
+        'Yakıt defterinde (DB.fuelLogs) ' + YAKIT_T.length + ' dolum kaydı var ve hiçbiri bu ' +
+        'araca ait değil. Bu, "hiç yakıt alınmadı" demek DEĞİLDİR.') + basi + salt('yakıt');
+      return;
+    }
+
+    el.innerHTML = listeKabuk('yakit', 'i-fuel', 'Yakıt defteri',
+      'Kayıt alanları: <code>kod · arac · tarih · istasyon · litre · birimFiyat · tutar · km · ' +
+      'surucu · aktif</code>. ⚠️ Bu defterde <code>durum</code> alanı <b>YOKTUR</b>, yani ' +
+      '<code>aktif</code> alanı burada TUZAKSIZDIR — buna rağmen OKUNMAZ: pasiflik sorusu her ' +
+      'zaman <code>GV.arsivli(r)</code> yordamından geçer (§22.5). Ölçüldü: defterin ' +
+      YAKIT_T.length + ' kaydının ' + arsivSay(YAKIT_T) + ' tanesi arşivli, yani süzgeç bugün ' +
+      'hiçbir kaydı düşürmüyor. ⚠️ Defterde dolumun depoyu DOLDURUP DOLDURMADIĞINI söyleyen ' +
+      'bir alan yok — tüketim türetimi bu varsayıma dayanır ve varsayım yanda yazılıdır.',
+      YAKIT.length) + basi + salt('yakıt');
+
+    liste({
+      mount:'#adListe-yakit', id:'adYakit', key:'kod',
+      source:function(){ return YAKIT; },
+      countTarget:'#adSay-yakit',
+      exportName:'yakit-' + arac.kod, exportTitle:'Yakıt kayıtları — ' + arac.plaka,
+      defaultSort:'tarih', defaultDir:'desc',
+      views:['table','card'],
+      search:{ placeholder:'Kod ya da istasyon ara', fields:['kod','istasyon'] },
+      columns:[
+        GV.cols.kod('kod', 'Kayıt'),
+        GV.cols.date('tarih', 'Tarih', { plain:true }),
+        { key:'istasyon', label:'İstasyon', cellClass:'cell-wrap',
+          render:function(y){ return bos(y.istasyon) ? esc(y.istasyon) : faint('istasyon yazılmamış'); } },
+        GV.cols.num('litre', 'Litre', { basamak:1 }),
+        GV.cols.money('birimFiyat', 'Birim fiyat', { perm:'finans', cur:'₺' }),
+        GV.cols.money('tutar', 'Tutar', { perm:'finans', cur:'₺' }),
+        GV.cols.num('km', 'Kilometre'),
+        /* Aralık kolonu TÜRETİLMİŞTİR: bir önceki dolumla arasındaki km
+           farkı. Kayıtta böyle bir alan YOKTUR ve türetildiği yazılır. */
+        { key:'_aralik', label:'Önceki dolumdan', cellClass:'num', sortable:false,
+          exportValue:function(y){
+            var i = YAKIT.indexOf(y);
+            return (i > 0 && y.km != null && YAKIT[i-1].km != null) ? (y.km - YAKIT[i-1].km) : ''; },
+          render:function(y){
+            var i = YAKIT.indexOf(y);
+            if(i <= 0) return GV.cell.faint('—') + GV.cell.sub('bu araçtaki ilk dolum kaydı');
+            if(y.km == null || YAKIT[i-1].km == null)
+              return GV.cell.faint('—') + GV.cell.sub('iki kayıttan birinde km alanı boş');
+            return GV.cell.num(y.km - YAKIT[i-1].km) + ' km' +
+              GV.cell.sub('TÜRETİLDİ · ' + YAKIT[i-1].kod + ' → ' + y.kod); } },
+        GV.cols.kisi('surucu', 'Sürücü', { bosMetin:'sürücü yazılmamış' })
+      ],
+      mobile:function(y){
+        return GV.cell.mrow('<span class="cell-main">' + esc(y.istasyon || '—') + '</span>', y.kod,
+          [F.date(y.tarih), F.num(y.litre, 1) + ' L', F.num(y.km) + ' km'],
+          canFinans ? GV.cell.mny(y.tutar) : MASK);
+      },
+      emptyState:{ icon:'i-fuel', title:'Süzgeç bu araçta hiçbir dolum kaydı bırakmadı',
+        desc:'Bu araca ait ' + YAKIT.length + ' dolum kaydı var; süzgeci genişletin.' }
+    });
+  }
+
+  /* Tüketim özeti yakıt sekmesinde de basılır — sayı sekmede türetiliyor,
+     dayanağı başka sekmede kalırsa okuyan onu bulamaz. */
+  function tuketimSeridi(){
+    return '<div class="u-mt-4">' + (TUKETIM.ok
+      ? GV.notice({ tone:'info', icon:'i-fuel',
+          title:'İki dolum arası tüketim: ' + F.num(TUKETIM.deger, 2) + ' L/100 km',
+          text:'Dayanak: ' + TUKETIM.onceki.kod + ' (' + F.date(TUKETIM.onceki.tarih) + ', ' +
+               F.num(TUKETIM.onceki.km) + ' km) → ' + TUKETIM.sonraki.kod + ' (' +
+               F.date(TUKETIM.sonraki.tarih) + ', ' + F.num(TUKETIM.sonraki.km) + ' km) · ' +
+               F.num(TUKETIM.km) + ' km · sonraki dolum ' + F.num(TUKETIM.litre, 1) + ' L. ' +
+               'VARSAYIM: her iki dolum da depoyu doldurmuştur — DB.fuelLogs bunu söyleyen bir ' +
+               'alan taşımaz. Adı bilerek "ortalama" değildir: elde tek bir aralık var.' })
+      : GV.notice({ tone:'warn', icon:'i-alert',
+          title:'İki dolum arası tüketim türetilemedi',
+          text:TUKETIM.neden + '. Bu, "veri yok" demek değildir; hangi verinin neden ' +
+               'yetmediğidir. Sıfır ya da tahmini bir sayı basmak, ölçülmemişi ölçülmüş ' +
+               'göstermek olurdu.' })) + '</div>';
+  }
+
+  /* ===================================================================
+     10. SEKME 4 — CEZA (DB.fines)
+     =================================================================== */
+  function cizCeza(el){
+    if(!CEZA.length){
+      el.innerHTML = bosKart('i-receipt', 'Ceza',
+        'Bu araç için ceza defterinde kayıt yok',
+        'Ceza defterinde (DB.fines) ' + CEZA_T.length + ' kayıt var ve hiçbiri bu araca ait ' +
+        'değil. Bu, "hiç ceza yazılmadı" demek DEĞİLDİR — defterde bu araç için bir satır ' +
+        'bulunmadığı anlamına gelir.') + salt('ceza');
+      return;
+    }
+
+    el.innerHTML = listeKabuk('ceza', 'i-receipt', 'Ceza defteri',
+      'Kayıt alanları: <code>kod · arac · tarih · surucu · tur · tutar · sonOdeme · durum · ' +
+      'belge</code>. <code>fineStatuses</code> sözlüğü <b>YOKTUR</b>; ölçülen iki değer ' +
+      '<code>Ödendi</code> ve <code>Ödenmedi</code>dir. ' +
+      '<code>belge</code> yalnız bir DOSYA ADIDIR — gerçek bir depoya yazılmaz ve indirilemez ' +
+      '(BE-S4). Ödeme yapan, cezayı sürücüye yansıtan ya da itiraz açan yordam YOKTUR; bu ' +
+      'yüzden satır düğmesi basılmadı.',
+      CEZA.length) +
+      (CEZA_ODENMEMIS.length
+        ? '<div class="u-mt-4">' + GV.notice({ tone:'danger', icon:'i-alert',
+            title:CEZA_ODENMEMIS.length + ' ceza ödenmemiş',
+            text:CEZA_ODENMEMIS.map(function(c){
+                   var g = c.sonOdeme ? F.days(c.sonOdeme) : null;
+                   return c.kod + ' · ' + (canFinans ? F.money(c.tutar) : '••••••') +
+                     ' · son ödeme ' + (c.sonOdeme ? F.date(c.sonOdeme) : 'yazılmamış') +
+                     (g == null ? '' : (g < 0 ? ' (' + (-g) + ' gün geçti)' : ' (' + g + ' gün kaldı)'));
+                 }).join(' | ') + '. Ödeme bu ekrandan yapılamaz — yordamı yazılmamıştır.' }) + '</div>'
+        : '') + salt('ceza');
+
+    liste({
+      mount:'#adListe-ceza', id:'adCeza', key:'kod',
+      source:function(){ return CEZA; },
+      countTarget:'#adSay-ceza',
+      exportName:'ceza-' + arac.kod, exportTitle:'Ceza kayıtları — ' + arac.plaka,
+      defaultSort:'tarih', defaultDir:'desc',
+      views:['table','card'],
+      search:{ placeholder:'Kod, tür ya da belge ara', fields:['kod','tur','belge'] },
+      columns:[
+        GV.cols.kod('kod', 'Kayıt'),
+        GV.cols.date('tarih', 'Ceza tarihi', { plain:true }),
+        { key:'tur', label:'Tür', cellClass:'cell-wrap',
+          render:function(c){ return sozluksuz(c.tur, 'sözlüğü yok — defterden türetildi'); } },
+        GV.cols.kisi('surucu', 'Sürücü', { bosMetin:'sürücü yazılmamış',
+          sub:function(c){
+            return (c.surucu && c.surucu === arac.anaSurucu) ? 'aracın ana sürücüsü' : ''; } }),
+        GV.cols.money('tutar', 'Tutar', { perm:'finans', cur:'₺' }),
+        GV.cols.date('sonOdeme', 'Son ödeme', { plain:true, bosMetin:'yazılmamış',
+          sub:function(c){
+            if(!c.sonOdeme || c.durum === 'Ödendi') return '';
+            var g = F.days(c.sonOdeme);
+            return g < 0 ? F.num(-g) + ' gün geçti' : F.num(g) + ' gün kaldı'; } }),
+        { key:'durum', label:'Durum', cellClass:'center',
+          render:function(c){ return rozet(c.durum, null); } },
+        { key:'belge', label:'Belge', visible:false, cellClass:'cell-wrap',
+          exportValue:function(c){ return c.belge || ''; },
+          render:function(c){
+            return bos(c.belge)
+              ? '<span class="u-sm">' + esc(c.belge) + '</span>' +
+                GV.cell.sub('yalnız dosya adı · gerçek depoya yazılmaz, indirilemez (BE-S4)')
+              : faint('belge yazılmamış'); } }
+      ],
+      filters:[{ key:'durum', label:'Durum', type:'multi', options:benzersiz(CEZA_T, 'durum') }],
+      mobile:function(c){
+        return GV.cell.mrow('<span class="cell-main">' + esc(c.tur) + '</span>', c.kod,
+          [F.date(c.tarih), DB.empName ? (DB.empName(c.surucu) || '') : ''],
+          rozet(c.durum) + (canFinans ? ' ' + GV.cell.mny(c.tutar) : ''));
+      },
+      emptyState:{ icon:'i-receipt', title:'Süzgeç bu araçta hiçbir ceza kaydı bırakmadı',
+        desc:'Bu araca ait ' + CEZA.length + ' ceza kaydı var; süzgeci genişletin.' }
+    });
+  }
+
+  /* ===================================================================
+     11. SEKME 5 — MUAYENE (DB.inspections)
+     =================================================================== */
+  function cizMuayene(el){
+    var uyari = '<div class="u-mt-4">' + GV.notice({ tone:'warn', icon:'i-alert',
+      title:'sonTarih BİR SON TARİH DEĞİL, SON MUAYENE TARİHİDİR',
+      text:'Bu alan adı bir kez yanlış okundu ve ölçümle düzeltildi: muayene defterindeki ' +
+           MUAYENE_T.length + ' kaydın sonTarih değerlerinin tamamı GEÇMİŞTE (2024-08-28 … ' +
+           '2026-03-02) ve okuyan "dört muayene de geçmiş" sanıyor. VADE sonrakiTarih ' +
+           'alanıdır; gecerlilik ise muayenenin geçerlilik bitişidir. Kayıtlarda yazılı ' +
+           'kalanGun, sonrakiTarih\'ten türetilenle birebir tutuyor — bu defterde bayat alan ' +
+           'YOKTUR.' }) + '</div>';
+
+    if(!MUAYENE.length){
+      el.innerHTML = bosKart('i-clipboard-check', 'Muayene',
+        'Bu araç için muayene defterinde kayıt yok',
+        'Muayene defterinde (DB.inspections) ' + MUAYENE_T.length + ' kayıt var ve hiçbiri bu ' +
+        'araca ait değil. Bu, "araç muayenesiz" demek DEĞİLDİR — defterde bu araç için bir ' +
+        'satır bulunmadığı anlamına gelir.') + uyari + salt('muayene');
+      return;
+    }
+
+    el.innerHTML = listeKabuk('muayene', 'i-clipboard-check', 'Muayene defteri',
+      'Kayıt alanları: <code>kod · arac · sonTarih · gecerlilik · sonrakiTarih · sonuc · kusur · ' +
+      'istasyon · kalanGun · durum</code>. <code>inspectionStatuses</code> sözlüğü <b>YOKTUR</b>; ' +
+      'ölçülen değerler: durum ' + esc(benzersiz(MUAYENE_T, 'durum').join(' · ')) + ' · sonuç ' +
+      esc(benzersiz(MUAYENE_T, 'sonuc').join(' · ')) + '. ' +
+      '<code>kusur</code> yalnız kusur bulunan muayenede dolar; boş olması "kusur bulunamadı" ' +
+      'demektir, "ölçülmedi" değil.',
+      MUAYENE.length) + uyari + salt('muayene');
+
+    liste({
+      mount:'#adListe-muayene', id:'adMuayene', key:'kod',
+      source:function(){ return MUAYENE; },
+      countTarget:'#adSay-muayene',
+      exportName:'muayene-' + arac.kod, exportTitle:'Muayene kayıtları — ' + arac.plaka,
+      defaultSort:'sonrakiTarih', defaultDir:'asc',
+      views:['table','card'],
+      search:{ placeholder:'Kod ya da istasyon ara', fields:['kod','istasyon','sonuc'] },
+      columns:[
+        GV.cols.kod('kod', 'Kayıt'),
+        GV.cols.date('sonTarih', 'Son muayene', { plain:true, bosMetin:'yazılmamış',
+          sub:function(){ return 'SON MUAYENENİN tarihi — bir vade değildir'; } }),
+        GV.cols.date('gecerlilik', 'Geçerlilik', { plain:true, bosMetin:'yazılmamış' }),
+        GV.cols.date('sonrakiTarih', 'Vade (sonraki)', { plain:true, bosMetin:'planlanmadı',
+          sub:function(m){
+            if(!m.sonrakiTarih) return '';
+            var g = F.days(m.sonrakiTarih);
+            return (g < 0 ? F.num(-g) + ' gün geçti' : F.num(g) + ' gün kaldı') +
+              ' · kayıttaki kalanGun ' + m.kalanGun +
+              (g === m.kalanGun ? ' (tutuyor)' : ' ⚠️ SAPMA'); } }),
+        { key:'sonuc', label:'Sonuç', cellClass:'center',
+          render:function(m){ return rozet(m.sonuc, null); } },
+        { key:'kusur', label:'Kusur', cellClass:'cell-wrap',
+          render:function(m){
+            return bos(m.kusur)
+              ? '<span class="u-warn u-sm">' + esc(m.kusur) + '</span>'
+              : '<span class="u-sm">Kusur yok</span>' +
+                GV.cell.sub('alan boş — "kusur bulunamadı" demektir, "ölçülmedi" değil'); } },
+        { key:'istasyon', label:'İstasyon', visible:false, cellClass:'cell-wrap',
+          render:function(m){ return bos(m.istasyon) ? esc(m.istasyon) : faint('istasyon yazılmamış'); } },
+        { key:'durum', label:'Durum', cellClass:'center',
+          render:function(m){ return rozet(m.durum, null); } }
+      ],
+      filters:[
+        { key:'durum', label:'Durum', type:'multi', options:benzersiz(MUAYENE_T, 'durum') },
+        { key:'sonuc', label:'Sonuç', type:'multi', options:benzersiz(MUAYENE_T, 'sonuc') }
+      ],
+      mobile:function(m){
+        return GV.cell.mrow('<span class="cell-main">' + esc(m.istasyon || '—') + '</span>', m.kod,
+          ['vade: ' + F.date(m.sonrakiTarih), 'son: ' + F.date(m.sonTarih)],
+          rozet(m.durum) + ' ' + rozet(m.sonuc));
+      },
+      emptyState:{ icon:'i-clipboard-check', title:'Süzgeç bu araçta hiçbir muayene kaydı bırakmadı',
+        desc:'Bu araca ait ' + MUAYENE.length + ' muayene kaydı var; süzgeci genişletin.' }
+    });
+  }
+
+  /* ===================================================================
+     12. SEKME 6 — KAZA (DB.accidents)
+     -------------------------------------------------------------------
+     ⚠️ ÖLÇÜLDÜ: kaza defterinde TOPLAM 1 kayıt var ve o da ARC-003'e ait —
+     kalan üç araçta bu sekme BOŞ çıkar. Doğru cümle "bu araç için kaza
+     defterinde kayıt yok"tur, "kaza olmadı" DEĞİL (§10.1 · §22.13).
+     =================================================================== */
+  function cizKaza(el){
+    if(!KAZA.length){
+      el.innerHTML = bosKart('i-alert', 'Kaza',
+        'Bu araç için kaza defterinde kayıt yok',
+        'Kaza defterinde (DB.accidents) ' + KAZA_T.length + ' kayıt var ve hiçbiri bu araca ' +
+        'ait değil. Bu cümle "bu araç kaza yapmadı" DEMEK DEĞİLDİR — defterde bu araç için ' +
+        'bir dosya bulunmadığı anlamına gelir. İkisini karıştırmak, ölçülmemiş bir iddiayı ' +
+        'ölçülmüş göstermek olurdu.') + salt('kaza');
+      return;
+    }
+
+    el.innerHTML = listeKabuk('kaza', 'i-alert', 'Kaza ve hasar dosyası',
+      'Kayıt alanları: <code>kod · arac · tarih · konum · surucu · karsiArac · kusurOrani · ' +
+      'tutanak · ekspertiz · sigortaDosya · onarimServis · onarimMaliyet · durum · aciklama</code>. ' +
+      '⚠️ <code>kusurOrani</code> ve <code>onarimMaliyet</code> alanlarındaki <b>0</b> ÖLÇÜLMÜŞ ' +
+      'DEĞERDİR, eksik veri değil: karşı taraf tam kusurlu ve hasar sigortadan karşılanmış. ' +
+      'Bu yüzden <code>—</code> değil <code>0</code> basılır ve sebebi yazılır. ' +
+      '<code>tutanak</code> ile <code>sigortaDosya</code> yalnız dosya adıdır (BE-S4).',
+      KAZA.length) +
+      KAZA.map(kazaDosyasi).join('') + salt('kaza');
+
+    liste({
+      mount:'#adListe-kaza', id:'adKaza', key:'kod',
+      source:function(){ return KAZA; },
+      countTarget:'#adSay-kaza',
+      exportName:'kaza-' + arac.kod, exportTitle:'Kaza kayıtları — ' + arac.plaka,
+      defaultSort:'tarih', defaultDir:'desc',
+      views:['table','card'],
+      search:{ placeholder:'Kod, konum ya da dosya ara', fields:['kod','konum','sigortaDosya'] },
+      columns:[
+        GV.cols.kod('kod', 'Kayıt'),
+        GV.cols.date('tarih', 'Tarih', { plain:true }),
+        { key:'konum', label:'Konum', cellClass:'cell-wrap',
+          render:function(k){ return bos(k.konum) ? esc(k.konum) : faint('konum yazılmamış'); } },
+        GV.cols.kisi('surucu', 'Sürücü', { bosMetin:'sürücü yazılmamış' }),
+        { key:'karsiArac', label:'Karşı araç',
+          render:function(k){ return bos(k.karsiArac) ? kodEt(k.karsiArac) : faint('karşı araç yok'); } },
+        { key:'kusurOrani', label:'Kusur oranı', cellClass:'num',
+          exportValue:function(k){ return k.kusurOrani == null ? '' : k.kusurOrani; },
+          render:function(k){
+            if(k.kusurOrani == null)
+              return GV.cell.faint('—') + GV.cell.sub('kusur oranı ölçülmemiş');
+            return '<span class="u-num">%' + esc(F.num(k.kusurOrani)) + '</span>' +
+              GV.cell.sub(k.kusurOrani === 0
+                ? 'ÖLÇÜLMÜŞ sıfır: bizim aracımız kusursuz'
+                : 'kayıtta yazılı oran'); } },
+        GV.cols.money('onarimMaliyet', 'Onarım maliyeti', { perm:'finans', cur:'₺',
+          sub:function(k){
+            return k.onarimMaliyet === 0
+              ? 'ÖLÇÜLMÜŞ sıfır: hasar sigortadan karşılandı, firmaya maliyeti olmadı'
+              : ''; } }),
+        { key:'durum', label:'Durum', cellClass:'center',
+          render:function(k){ return rozet(k.durum, null); } }
+      ],
+      mobile:function(k){
+        return GV.cell.mrow('<span class="cell-main">' + esc(k.konum || '—') + '</span>', k.kod,
+          [F.date(k.tarih), esc(k.karsiArac || '')], rozet(k.durum));
+      },
+      emptyState:{ icon:'i-alert', title:'Süzgeç bu araçta hiçbir kaza kaydı bırakmadı',
+        desc:'Bu araca ait ' + KAZA.length + ' kaza kaydı var; süzgeci genişletin.' }
+    });
+  }
+
+  /* Kaza dosyası 14 alan taşır ve liste kolonları onu tam anlatmaz —
+     dosyanın tamamı ayrı bir kartta basılır. */
+  function kazaDosyasi(k){
+    return '<div class="u-mt-4">' + kart('i-file', 'Kaza dosyası ' + k.kod, rozet(k.durum),
+      GV.dl([
+        ['Kaza tarihi', tarihEt(k.tarih) || faint('tarih yazılmamış')],
+        ['Konum', bos(k.konum) ? esc(k.konum) : faint('konum yazılmamış')],
+        ['Sürücü', kisiLink(k.surucu) || faint('sürücü yazılmamış')],
+        ['Karşı araç', bos(k.karsiArac) ? kodEt(k.karsiArac) : faint('karşı araç kaydı yok')],
+        ['Kusur oranı', k.kusurOrani == null
+          ? faint('—') + GV.cell.sub('kusur oranı ölçülmemiş')
+          : '<span class="u-num">%' + esc(F.num(k.kusurOrani)) + '</span>' +
+            GV.cell.sub(k.kusurOrani === 0
+              ? 'ÖLÇÜLMÜŞ SIFIRDIR, boş alan değil: karşı taraf tam kusurlu'
+              : 'kayıtta yazılı oran')],
+        ['Tutanak', bos(k.tutanak)
+          ? '<span class="u-sm">' + esc(k.tutanak) + '</span>' +
+            GV.cell.sub('yalnız dosya adı · gerçek depoya yazılmaz, indirilemez (BE-S4)')
+          : faint('tutanak yazılmamış')],
+        ['Ekspertiz', sozluksuz(k.ekspertiz, 'sözlüğü yok — defterden türetildi')],
+        ['Sigorta dosyası', bos(k.sigortaDosya) ? kodEt(k.sigortaDosya) : faint('sigorta dosyası yok')],
+        ['Onarım servisi', bos(k.onarimServis) ? esc(k.onarimServis) : faint('servis yazılmamış')],
+        ['Onarım maliyeti', k.onarimMaliyet == null
+          ? faint('—') + GV.cell.sub('onarım maliyeti ölçülmemiş')
+          : paraEt(k.onarimMaliyet, k.onarimMaliyet === 0
+              ? 'ÖLÇÜLMÜŞ SIFIRDIR, boş alan değil: hasar sigortadan karşılandı'
+              : 'firmaya düşen onarım bedeli')],
+        ['Durum', rozet(k.durum, 'sözlüğü yok — defterdeki tek değer: ' +
+          benzersiz(KAZA_T, 'durum').join(' · '))],
+        ['Açıklama', bos(k.aciklama) ? esc(k.aciklama) : faint('açıklama yazılmamış')]
+      ], { skipEmpty:false }) +
+      not('Kaza dosyasını kapatan, ekspertiz açan ya da sigorta dosyası yürüten bir ortak ' +
+          'yordam YOKTUR (§22.16 madde 7); dosya salt okunurdur.')) + '</div>';
+  }
+
+  /* ===================================================================
+     13. SEKME 7 — GİDER (DB.vehicleExpenses)
+     =================================================================== */
+  function cizGider(el){
+    if(!GIDER.length){
+      el.innerHTML = bosKart('i-wallet', 'Gider',
+        'Bu araç için gider defterinde kayıt yok',
+        'Araç gider defterinde (DB.vehicleExpenses) ' + GIDER_T.length + ' kayıt var ve hiçbiri ' +
+        'bu araca ait değil. Bu, "bu araç hiç masraf çıkarmadı" demek DEĞİLDİR — bakım, yakıt ' +
+        've ceza defterlerindeki tutarlar kendi defterlerinde yaşar ve buraya otomatik ' +
+        'AKTARILMAZ.') + salt('gider');
+      return;
+    }
+
+    var turDagilim = GIDER_TUR.map(function(t){
+      var l = GIDER.filter(function(g){ return g.tur === t; });
+      return t + ' ' + l.length + (canFinans ? ' (' + F.money(toplam(l, 'tutar')) + ')' : '');
+    }).join(' · ');
+
+    el.innerHTML = listeKabuk('gider', 'i-wallet', 'Gider defteri',
+      'Kayıt alanları: <code>kod · arac · tur · tarih · tutar · aciklama · belge · aktif</code>. ' +
+      '⚠️ Bu defterde <code>durum</code> alanı <b>YOKTUR</b>, yani <code>aktif</code> burada ' +
+      'TUZAKSIZDIR — buna rağmen OKUNMAZ (§22.5). ' +
+      '<code>expenseTypes</code> sözlüğü <b>YOKTUR</b>; ölçülen ' + GIDER_TUR.length +
+      ' tür bu araçtan türetildi (defterin tamamında ' + benzersiz(GIDER_T, 'tur').length +
+      ' tür var, her türden 1 kayıt). Bu araçta: ' + esc(turDagilim) + '. ' +
+      '⚠️ Gider defteri bakım/yakıt/ceza defterlerinin AYNASI DEĞİLDİR: aynı olayın iki ' +
+      'defterde birden yazılı olması mümkündür ve toplamları TOPLAMAK çift sayım olurdu. ' +
+      'Bu ekranın "toplam gider" KPI\'ı yalnız <code>DB.vehicleExpenses</code> defterini sayar.',
+      GIDER.length) +
+      '<div class="u-mt-4">' + GV.notice({ tone:'neutral', icon:'i-wallet',
+        title:'Toplam gider: ' + (canFinans ? F.money(GIDER_TOPLAM) : '••••••'),
+        text:GIDER.length + ' gider satırı · ' + GIDER_TUR.length + ' tür. Bu toplam ' +
+             'DB.vehicleExpenses defterinin tutar alanının toplamıdır; bakım maliyetleri, yakıt ' +
+             'tutarları ve ceza bedelleri kendi defterlerinde ayrıca yaşar ve bu sayıya ikinci ' +
+             'kez eklenmez.' }) + '</div>' + salt('gider');
+
+    liste({
+      mount:'#adListe-gider', id:'adGider', key:'kod',
+      source:function(){ return GIDER; },
+      countTarget:'#adSay-gider',
+      exportName:'gider-' + arac.kod, exportTitle:'Gider kayıtları — ' + arac.plaka,
+      defaultSort:'tarih', defaultDir:'desc',
+      views:['table','card'],
+      search:{ placeholder:'Kod, tür, açıklama ya da belge ara',
+               fields:['kod','tur','aciklama','belge'] },
+      columns:[
+        GV.cols.kod('kod', 'Kayıt'),
+        { key:'tur', label:'Tür', sortable:true,
+          render:function(g){ return sozluksuz(g.tur, 'expenseTypes sözlüğü YOK — defterden türetildi'); } },
+        GV.cols.date('tarih', 'Tarih', { plain:true }),
+        GV.cols.money('tutar', 'Tutar', { perm:'finans', cur:'₺' }),
+        { key:'aciklama', label:'Açıklama', cellClass:'cell-wrap',
+          render:function(g){ return bos(g.aciklama) ? esc(g.aciklama) : faint('açıklama yazılmamış'); } },
+        { key:'belge', label:'Belge', visible:false, cellClass:'cell-wrap',
+          exportValue:function(g){ return g.belge || ''; },
+          render:function(g){
+            return bos(g.belge)
+              ? '<span class="u-sm">' + esc(g.belge) + '</span>' +
+                GV.cell.sub('yalnız dosya/belge adı · gerçek depoya yazılmaz (BE-S4)')
+              : faint('belge yazılmamış'); } }
+      ],
+      filters:[{ key:'tur', label:'Tür', type:'multi', options:benzersiz(GIDER_T, 'tur') }],
+      mobile:function(g){
+        return GV.cell.mrow('<span class="cell-main">' + esc(g.tur) + '</span>', g.kod,
+          [F.date(g.tarih), esc(g.aciklama || '')],
+          canFinans ? GV.cell.mny(g.tutar) : MASK);
+      },
+      emptyState:{ icon:'i-wallet', title:'Süzgeç bu araçta hiçbir gider kaydı bırakmadı',
+        desc:'Bu araca ait ' + GIDER.length + ' gider kaydı var; süzgeci genişletin.' }
+    });
+  }
+
+  /* SALT OKUNUR BEYANI — her alt defterin altında. Yapılamayan iş DÜĞME
+     OLARAK VAAT EDİLMEZ (§14.6 · §22.16 madde 7): yedi defterin hiçbirine
+     kayıt ekleyen, güncelleyen ya da silen yordam yazılmamıştır. Devre
+     dışı bir düğme bile vaat sayıldığı için beyan cümle olarak basılır. */
+  function salt(defterAdi){
+    return '<div class="u-mt-4">' + GV.notice({ tone:'neutral', icon:'i-lock',
+      title:'Bu defter SALT OKUNURDUR',
+      text:'Alt defterlere (bakım · yakıt · ceza · muayene · kaza · gider · poliçe) kayıt ' +
+           'EKLEYEN ortak yordam YAZILMAMIŞTIR. Bu yüzden "yeni ' + defterAdi + ' ekle" düğmesi ' +
+           'basılmadı: yapılamayan bir iş, devre dışı bir düğmeyle bile vaat edilmez. ' +
+           'Defterlere doğrudan satır yazmak (push) yasaktır.' }) + '</div>';
+  }
+
+  /* ===================================================================
+     14. SAYFA BAŞLIĞI VE GÖVDE
+     =================================================================== */
+  GV.pageHead({
+    eyebrow:EYEBROW,
+    title:arac.plaka || arac.kod,
+    sub:arac.kod + ' · ' + [arac.marka, arac.model].filter(Boolean).join(' ') +
+        ' · ' + (arac.mulkiyet || 'mülkiyet yazılmamış') +
+        ' · durum "' + (arac.durum || '—') + '" (düz alan, geçiş tablosu yok)' +
+        (ARAC_ARSIVLI ? ' · arşivli kayıt' : ''),
+    actions:[
+      { label:'Filo listesine dön', icon:'i-arrow-left', href:LISTE },
+      { label:'Düzenle', icon:'i-edit', cls:'btn-acc',
+        href:'app-arac-form.html?id=' + encodeURIComponent(arac.kod) }
+    ]
+  });
+
+  mount.innerHTML =
+    (YUKSUZ.length
+      ? '<div class="u-mb-4">' + GV.notice({ tone:'warn', icon:'i-alert',
+          title:'Bir ya da daha çok alt defter bu ekranda yüklü değil',
+          text:'Yüklenmemiş defter(ler): ' + YUKSUZ.map(function(d){ return d.ad; }).join(' · ') +
+               '. İlgili sekmede sıfır YAZILMADI; ölçülemeyen bir şeye 0 yazmak, ölçülmüşü ' +
+               'ölçülmemiş göstermenin en pahalı hâlidir.' }) + '</div>'
+      : '') +
+    '<div class="gv-card">' +
+      '<div class="gv-tabs" id="aracSekme" role="tablist" ' +
+        'aria-label="Araç detay sekmeleri">' + sekmeHtml + '</div>' +
+    '</div>' +
+    panelHtml;
+
+  /* ---- Tembel çizim: her panel yalnız BİR KEZ çizilir --------------- */
+  var PANEL = {
+    ozet:cizOzet, bakim:cizBakim, yakit:cizYakit, ceza:cizCeza,
+    muayene:cizMuayene, kaza:cizKaza, gider:cizGider
+  };
+  var cizildi = {};
+  function cizPanel(key){
+    if(cizildi[key] || !PANEL[key]) return;
+    var el = mount.querySelector('[data-panel="' + key + '"]');
+    if(!el) return;
+    cizildi[key] = true;
+    PANEL[key](el);
+  }
+
+  /* `document` KALICI düğümdür — `GV.on` tekil anahtarı ikinci çizimde
+     öncekini söker, dinleyici birikmez (brief §2.6 · L-16). */
+  GV.on(document, 'gv:tab', function(ev){ cizPanel(ev.detail.key); }, 'aracDetay-tab');
+
+  /* `GV.tabs` ÇİZİMDEN SONRA çağrılır; açılışta `location.hash`i okur ve
+     `gv:tab` atar — yani `app-arac-detay.html?id=ARC-001#yakit` doğrudan o
+     sekmeyi açar. Bu adres biçimi SÖZLEŞMEDİR (brief §22.13).
+     ⚠️ `GV.tabs` panelleri BELGE GENELİNDE arar (`ui.js:2088`); bu sayfada
+     ikinci bir sekme kümesi kurulmadı. */
+  GV.tabs('#aracSekme');
+});
+</script>
+</body>
+</html>

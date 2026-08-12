@@ -203,17 +203,16 @@ const EKRANLAR = [
   { dosya: 'app-demirbas-detay.html?id=DMB-2023-011',   ad: 'Demirbaş · Hurda',   oturum: true },
   { dosya: 'app-arac-form.html',                        ad: 'Araç Formu',         oturum: true },
   { dosya: 'app-arac-form.html?id=ARC-002',             ad: 'Araç · Kiralık',     oturum: true },
-  /* ⚠️ `app-arac-detay.html` (rota 99) BU TURDA YAZILMADI ve girdileri
-     bilerek KAPALI. Var olmayan bir dosyayı ölçmek 404 ölçmektir ve
-     "403 veya boş kabuk ölçen koşum geçersizdir" kuralının aynı sınıfı:
-     koşum yeşil yanar ama ekranı hiç çizmemiştir. Ekran yazıldığında bu üç
-     satır açılır — kayıt seçimi ölçümden geldi: ARC-001 en kalabalık araç
+  /* ⚠️ ÜÇ GİRDİ AÇILDI — `app-arac-detay.html` (rota 99) yazıldı. Kapalı
+     durdukları sürece gerekçe şuydu: var olmayan bir dosyayı ölçmek 404
+     ölçmektir ve "403 veya boş kabuk ölçen koşum geçersizdir" kuralının
+     aynı sınıfıdır. Kayıt seçimi ölçümden geldi: ARC-001 en kalabalık araç
      (2 bakım · 2 yakıt · 1 ceza · 4 gider · 2 poliçe), ARC-003 kaza kaydı
-     OLAN tek araç ve `Serviste` durumunda.
+     OLAN tek araç ve `Serviste` durumunda. Üçüncü girdi `#kaza` derin
+     bağlantısını da ölçer (sekme sözleşmesi). */
   { dosya: 'app-arac-detay.html?id=ARC-001',            ad: 'Araç Detayı',        oturum: true },
   { dosya: 'app-arac-detay.html?id=ARC-001#yakit',      ad: 'Araç · Yakıt',       oturum: true },
   { dosya: 'app-arac-detay.html?id=ARC-003#kaza',       ad: 'Araç · Kaza',        oturum: true }
-  */
 ];
 
 const MIME = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8',
