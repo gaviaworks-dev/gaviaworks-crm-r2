@@ -966,3 +966,104 @@ olamaz — iki defter de `unshift` ile büyür ve indeks her yazmada kayar, seç
 satır başka bir kayda kayardı. Kimlik, tekilleştirmenin zaten kullandığı
 **içerik anahtarıdır**; benzersizliğini tekilleştirmenin kendisi garanti eder
 (ölçüldü: **214/214 benzersiz**, defter büyüdüğünde eski kimlik değişmiyor).
+
+---
+
+## ADR-R2-36 · Menü kapısı ile adres kapısı TEK yordamdan beslenir
+
+**Karar (K-36).** Bir ekranın menüde görünmesi ile adresle açılabilmesi **aynı
+yordamın** iki sonucudur. `dosyaIzinli()` artık menü kaydını bulur ve
+`Perm.item()` çağırır — menü çizimi de aynı yordamı çağırdığı için iki kapı
+tek kaynaktan beslenir.
+
+> **Bu bir DEFTER–KOD AYRIŞMASIDIR ve kaydı bu yüzden tutuluyor.**
+> Değişmez `shell.js`in **kendi yorumunda** yazılıydı:
+> *"Ekran düzeyinde yasak — menü gizlemesi ile doğrudan adres kapısı TEK
+> kaynaktan beslenir (R1 REVİZE 13 dersi: biri kapanıp diğeri açık kalamaz)."*
+> Yorum doğruydu. Kod onu **iki yerde birden** ihlal ediyordu ve hiçbir eksen
+> ölçmüyordu. Doğru yazılmış bir defter, kendini uygulamaz.
+
+### İki kusur
+
+| # | Kusur | Yer | Neden görünmedi |
+|---|---|---|---|
+| **A** | Menü kaydının `roles:` listesi doğrudan adrese **hiç uygulanmıyordu**. `guard()` yalnız `Perm.sec()` (alan) ve `SCREEN_DENY` (ekran) bakıyordu; girdi düzeyindeki `roles:` kapısı yalnız **menü çiziminde** yaşıyordu | `shell.js` · `dosyaIzinli()` | `roles:` taşıyan tek girdi kümesi üç **yönetim ayar girdisiydi** ve o üç ekranın dosyası bu dilime kadar **yoktu**. Kapı, arkasında bir şey olmadığı için hiç sınanmamıştı |
+| **B** | `SCREEN_DENY[f]` — `f` bir **dosya adı** (`app-operasyon.html`), `SCREEN_DENY` ise **ekran adıyla** anahtarlı (`operasyon`). Arama hiçbir zaman tutmuyordu; yordam üç yasağın **hiçbirini** uygulamıyordu | `shell.js` · `dosyaIzinli()` | `guard()` `SCREEN_DENY`i **ayrıca ve doğru anahtarla** kontrol ediyordu, o yüzden 403 doğru basılıyordu. Kusur yalnız `dosyaIzinli`nin **öteki iki çağıranında** görünürdü: `GV.shell.ekranAcilabilir()` ve üst çubuğun "Yeni" listesi süzgeci |
+
+### Etki alanı — ölçüldü, tahmin edilmedi
+
+Gerçek Chromium'da, gerçek `guard()` ile, **27 rol × 20 menü hedefi** matrisi
+düzeltmeden önce ve sonra koşuldu (`guard`ın ikinci bir kopyası yazılmadı —
+kopya yazsaydım kusuru kopyaya da taşırdım).
+
+| Ölçüm | ÖNCE | SONRA |
+|---|---:|---:|
+| Menüde **gizli** olup adresle **açılabilen** ekran-rol çifti (403 kapısı) | **69** | **0** |
+| Etkilenen ekran | **3** | 0 |
+| `ekranAcilabilir()` yanlış `true` dönen çift (bağlantı/"Yeni" süzgeci) | **254** | 0 |
+| Menüde görünür olup adres kapısı reddeden çift (ölü menü girdisi) | 0 | 0 |
+
+**39 ekranın hepsini DEĞİL, üçünü etkiliyordu — ve bu bir şans eseriydi.**
+403 kapısı yalnız `roles:` taşıyan girdilerde delikti; `roles:` taşıyan tek
+girdi kümesi üç yönetim ayar girdisidir:
+
+| Ekran | Menüde gizli olduğu rol | Adresle açılabiliyordu |
+|---|---:|---:|
+| `app-ayar-sirket.html` | 24 | **24** |
+| `app-ayar-entegrasyon.html` | 23 | **23** |
+| `app-ayar-log.html` | 22 | **22** |
+
+Kalan 17 menü hedefi **alan** (`Perm.sec`) kapısıyla korunuyordu ve o kapı
+sağlamdı. Yani kusur "yalnız ayarları etkiliyordu" ama **sebebi** ayarlara
+özgü değildi: girdi düzeyinde kapı kuran ilk özellik ayarlar olduğu için ilk
+orada göründü. `roles:` taşıyan **ikinci** bir girdi eklenseydi aynı delik
+sessizce onunla birlikte doğardı.
+
+Kusur **B**'nin yarıçapı daha genişti ama sonucu daha sessizdi: `403`
+bozulmadığı için kullanıcı hiçbir şey görmüyordu; bozulan, ekranların
+"bu ekrana bağlantı verebilir miyim" sorusuna aldığı cevaptı (254 çift).
+Müşteri rolünde `app-operasyon.html` · `app-satis-akisi.html` ·
+`app-odeme-linki.html` **açılabilir** görünüyordu; açılmıyordu, ama bir ekran
+ona bağlantı basmayı seçebilirdi.
+
+### Neden hiçbir eksen yakalamadı
+
+Ölçüldü: on dört eksenin **hiçbiri** bu değişmezi ölçmüyordu.
+
+- `kontrol.js` [5] menü sayımını ölçüyordu — **yalnız görünürlüğü**. "17 girdi
+  görünüyor" doğruydu; görünmeyen 3'ün açılıp açılmadığı sorulmuyordu.
+- `kapi-yonu.js` kapı ölçüyordu ama **durum geçişi** kapılarını (`GV.flow`),
+  navigasyon kapısını değil. Ad benzerliği bir kapsam garantisi değildir.
+- `tarayici.js` her ekranı **yalnız `sahip` rolüyle** açıyordu — yetkisiz rolde
+  ne olduğu hiç ölçülmüyordu. (Bu turda `rol` alanı eklendi.)
+
+Boşluğun ortak sebebi: eksenler **bir tarafı** ölçüyordu (menü ya da geçiş),
+değişmez ise **iki taraf arasındaki eşitliktir**. Bir eşitliği ölçmek için iki
+tarafı da aynı anda okumak gerekir.
+
+### Eklenen kontrol — `tasks/qa/ayar-ekseni.js` [A8]
+
+Her rol × her menü hedefi için `menüde görünür ⟺ adresle açılabilir`
+eşitliğini ölçer (**540 çift**). İki taraf da kabuğun kendi dışa verdiği
+yordamlarından okunur (`GV.shell.visibleItems` · `GV.shell.ekranAcilabilir`);
+guard'ın ikinci bir kopyası **yazılmaz**. Üçüncü kontrol kapının **ölü
+olmadığını** ölçer: en az bir çiftte gerçekten reddetmesi gerekir (254 çiftte
+reddediyor), yoksa "her şey herkese açık" da bu eksenden yeşil geçerdi.
+
+**Bozulmuş kopyada sınandı — bir olumlu, iki olumsuz vaka:**
+
+| Vaka | Enjekte edilen | Sonuç |
+|---|---|---|
+| 1 (olumlu) | yok — temiz kopya | **GEÇTİ** · 540 çift, bulgu 0 |
+| 2 (olumsuz) | Kusur **A**: `Perm.item()` çağrısı söküldü | **YAKALADI** · 70 çift, üç ayar ekranı adıyla listelendi |
+| 3 (olumsuz) | Kusur **B**: `dosyaIzinli` eski hâline döndürüldü | **YAKALADI** · 254 çift + "kapı ölü olabilir" mandalı da ateşledi |
+
+### Hedef listesi kaynaktan değil kabuktan okunur
+
+⚠️ Eksenin ilk yazımı menü hedeflerini `shell.js` metninden regex ile
+(`href:'…'`) çıkarıyordu ve üst çubuğun **"Yeni" hızlı oluşturma listesini**
+(beş form ekranı) menü girdisi sandı. O beş hedef hiçbir rolde menüde
+görünmez ama adresle açılmaları **doğrudur** — bir form, girdisi olan listenin
+çocuğudur. Eksen **135 sahte çift** bildirdi. Hedefler artık
+`GV.shell.sections` kaydından okunur. Ölçüm aracı, ölçtüğü şeyin şemasını
+tahmin etmez (L-26).

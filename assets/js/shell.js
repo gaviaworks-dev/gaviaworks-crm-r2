@@ -859,11 +859,49 @@
     return sc.modul || null;
   }
 
+  /* Dosya adından menü kaydını bulur. Kapıyı TEK kaynaktan beslemenin yolu
+     budur: kaydın kendisi `screen` · `roles` · `modul` alanlarını taşır ve
+     `Perm.item` üçünü birden uygular. */
+  function menuKaydiDosya(dosya){
+    var f = String(dosya || '').split('?')[0].split('#')[0];
+    if(!f) return null;
+    var bulunan = null;
+    RAIL_ORDER.forEach(function(key){
+      ((SECTIONS[key] || {}).menu || []).forEach(function(it){
+        if(!bulunan && it.href && it.href.split('?')[0] === f) bulunan = { alan:key, it:it };
+      });
+    });
+    return bulunan;
+  }
+
+  /* ⚠️ İKİ KUSUR BURADAYDI ve ikisi de bu dosyanın kendi yazdığı sözü
+     bozuyordu (bkz. SCREEN_DENY başlığı: "menü gizlemesi ile doğrudan adres
+     kapısı TEK kaynaktan beslenir — biri kapanıp diğeri açık kalamaz").
+
+     1. `SCREEN_DENY[f]` — `f` bir DOSYA adı (`app-operasyon.html`),
+        `SCREEN_DENY` ise EKRAN adıyla anahtarlı (`operasyon`). Arama hiçbir
+        zaman tutmuyordu; yordam üç yasağın hiçbirini uygulamıyordu.
+     2. Menü kaydının `roles:` listesi doğrudan adrese HİÇ uygulanmıyordu.
+        Ölçüldü: `app-ayar-sirket.html?role=operasyon` 403 basmıyor, sayfa
+        açılıyordu. Menü girdisi gizliydi ama adres açıktı — yani kapı
+        yalnız görünürlükteydi.
+
+     Çözüm ikinci bir liste değil, VAR OLAN kaydı okumaktır: `Perm.item(it)`
+     zaten `SCREEN_DENY` + `modul` + `roles` üçünü birden uygular ve menü
+     çizimi de aynı yordamı çağırır. Böylece iki kapı tek yordamdan besleniyor. */
   function dosyaIzinli(dosya, sec, screen){
     if(!dosya) return false;
-    var f = String(dosya).split('?')[0];
-    if(SCREEN_DENY[f] && SCREEN_DENY[f].indexOf(Perm.role()) !== -1) return false;
-    if(!Perm.modul(modulOf(sec || (document.body.dataset.sec || 'gundem'), screen))) return false;
+    var kayit = menuKaydiDosya(dosya);
+    if(kayit){
+      if(!Perm.sec(kayit.alan)) return false;
+      if(!Perm.item(kayit.it)) return false;
+      return true;
+    }
+    /* Menüde girdisi olmayan ekran (detay · form · dış ödeme): kaydı yok,
+       o yüzden ekran adı ve modül gövdeden/çağrıdan okunur. */
+    var ekran = screen || (document.body && document.body.dataset ? document.body.dataset.screen : '') || '';
+    if(SCREEN_DENY[ekran] && SCREEN_DENY[ekran].indexOf(Perm.role()) !== -1) return false;
+    if(!Perm.modul(modulOf(sec || ((document.body && document.body.dataset && document.body.dataset.sec) || 'gundem'), ekran))) return false;
     return true;
   }
 
