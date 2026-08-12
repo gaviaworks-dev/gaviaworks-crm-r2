@@ -833,6 +833,11 @@
     'app-odeme.html',
     'app-odeme-sonuc.html',
     'app-rapor.html',
+    /* Dilim 6 — rota defterinin son dokuz KARŞILIĞI VAR satırı. Liste ekran
+       dosya diske düştükçe büyür; `ayar-ekseni` bu listeyi diskle BİREBİR
+       karşılaştırıyor (iki yönde de), yani yayına giren ekranın burada
+       olmaması da, burada olup diskte olmaması da kırmızı yanar. */
+    'app-proje-form.html',
     /* Dilim 5 — Ayarlar. Dört ekranın dördü de şartname §3.3'ün AYNI ayar
        kabuğudur; sekmeler `GV.shell.ayarSekmeleri()` ile yetkiden üretilir. */
     'app-ayar-profil.html',
