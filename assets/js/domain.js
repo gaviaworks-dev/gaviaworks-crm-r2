@@ -3225,8 +3225,26 @@
         a.zimmetli = null;
         a.durum = 'Zimmet bekliyor';
       }
+      /* ⚠️ ŞEKİL NORMALİZASYONU BİR DEĞİŞİKLİK DEĞİLDİR (K-43 · ADR-R2-43).
+         Ölçülen kusur: `degisti` iki ekseni birleştiriyordu — durumun
+         TÜRETİLMESİ ile eksik bir anahtarın `null`a çekilmesi. `zimmetli`
+         alanı kayıtta HİÇ YOKSA `eskiK` `undefined` olur, yordam onu `null`
+         yapar ve `undefined !== null` olduğu için kayıt "değişti" sayılırdı —
+         hiçbir şey türetilmediği hâlde (`Depoda → Depoda`).
+
+         Bedeli K-30'un ÖLÇÜM KAPISINA biniyordu: "bir onarımın her seferinde
+         tekrar koşması, onarılmamış demektir" ve ölçüt
+         `sonTazeleme.degisen.length === 0`ın ÖYLE KALMASI. Demirbaş formunun
+         doğurduğu her yeni kayıt, ekran `zimmetli:null` yazmayı hatırlamazsa
+         o ölçütü kalıcı olarak kırıyordu. Ölçüldü: alan yoksa `degisen:1`,
+         `null` şekliyle varsa `degisen:0`.
+
+         Değişmezi ekranın disiplinine bağlamak yanlıştı — yordam artık
+         `undefined` ile `null`u AYNI sayıyor. Gerçek değer değişimi
+         (`undefined → 'EMP-005'`) hâlâ değişikliktir. */
+      var norm = function(x){ return x == null ? null : x; };
       return { demirbas:a, zimmet:z,
-               degisti:(eskiK !== a.zimmetli || eskiD !== a.durum),
+               degisti:(norm(eskiK) !== norm(a.zimmetli) || norm(eskiD) !== norm(a.durum)),
                eskiZimmetli:eskiK, eskiDurum:eskiD };
     },
 
