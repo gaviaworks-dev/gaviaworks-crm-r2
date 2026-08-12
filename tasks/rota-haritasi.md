@@ -39,8 +39,8 @@
 | KARAR BEKLİYOR | **0** | %0,0 | 0 |
 | **Toplam** | **148** | %100 | 148 |
 | YENİ yazılacak | **8** — altısı (Y1–Y6) **yayında**, ikisi kaldı | — | 8 |
-| **Bugün R2'de yayında** | **117** | %79,1 | 97 |
-| **Kalan** | **31** | %20,9 | 51 |
+| **Bugün R2'de yayında** | **125** | %84,5 | 97 |
+| **Kalan** | **23** | %15,5 | 51 |
 
 > **12 Ağustos · Dilim 6 — iki satır karar DEĞİŞTİRDİ, dokuzu yazılıyor.**
 > `KARŞILIĞI VAR` 43 → 41: rota **123** ve **124** (`app-dokuman.html` ve
@@ -167,8 +167,8 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | 24 | `app-referans.html` | **GÖMÜLÜYOR** ✔ ✅ | → müşteri detayı › Özet (yönlendiren alanı) — **çalışıyor**, `DB.referrers` okunuyor |
 | 25 | `app-referans-detay.html` | **GÖMÜLÜYOR** ✔ ✅ | → müşteri detayı › Özet (yönlendiren alanı) |
 | 26 | `app-referans-form.html` | **GÖMÜLÜYOR** ✔ ✅ | → aynı alan; ayrı form açılmadı |
-| 27 | `app-komisyon.html` | **GÖMÜLÜYOR** ✔ | **ADR-R2-04:** komisyon Finans raporunda **satır** olur. Finans'ın dört girdisi dolu; beşinci girdi 18 sınırını zorlardı. |
-| 28 | `app-komisyon-detay.html` | **GÖMÜLÜYOR** ✔ | → Nakit ve Tahsilat raporu drill-down |
+| 27 | `app-komisyon.html` | **GÖMÜLÜYOR** ✔ | **ADR-R2-04:** komisyon Finans raporunda **satır** olur. Finans'ın dört girdisi dolu; beşinci girdi 18 sınırını zorlardı. | ✅ **GÖMÜLDÜ** → `app-rapor.html` › Nakit ve Tahsilat raporunun TEK tablosuna iki kolon (`Komisyon` · `Komisyon durumu`). Tavan korundu: KPI 4/4 ve tablo 1/1 doluydu, yeni yuva AÇILMADI. Gerçek Chromium'da ölçüldü.
+| 28 | `app-komisyon-detay.html` | **GÖMÜLÜYOR** ✔ | → Nakit ve Tahsilat raporu drill-down | ✅ **GÖMÜLDÜ** → aynı tablonun `Komisyon` hücresi içinde `<details>` derinleşmesi (`kod · kisi · ciro · oran · tutar · durum · kazanç tarihi`). `GV.rapor` satır derinleşmesi TAŞIMIYOR, ortak katmana dokunulmadı. Finans kapısı iki yönlü ölçüldü: `muhasebe` 4 `<details>` · `analist` 24 maskeli hücre ve **0** `<details>` (veri DOM'a bile girmiyor).
 | 29 | `app-komisyon-form.html` | **GÖMÜLÜYOR** ✔ | → drawer | · ⛔ **BLOKE — yazma yordamı yok.** `DB.commissions` defterine kayıt EKLEYEN yordam ortak katmanda YOK (13 Ağustos, ajan açılmadan ÖNCE ölçüldü; iki yönlü sınandı). Kaydetmesi olmayan drawer basmak §14.6 "sahte buton" yasağının form ölçeğidir. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-99**
 
 ---
@@ -221,8 +221,8 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
-| 51 | `app-istalebi.html` | **GÖMÜLÜYOR** | → `/operasyon?tip=istalebi`. §6.2 kuyruk tipleri arasında adı geçmiyor ama "ortak tipte gösterilebilir" hükmüne düşer. **Çıkarım** — şartnamede birebir yazmıyor. |
-| 52 | `app-istalebi-detay.html` | **GÖMÜLÜYOR** | Operasyon sağ paneli + tam kayıt |
+| 51 | `app-istalebi.html` | **GÖMÜLÜYOR** | → `/operasyon?tip=istalebi`. §6.2 kuyruk tipleri arasında adı geçmiyor ama "ortak tipte gösterilebilir" hükmüne düşer. **Çıkarım** — şartnamede birebir yazmıyor. | ✅ **GÖMÜLDÜ** → `app-operasyon.html` kuyruğunun **altıncı tipi** `istalebi` (ADR-R2-14). Çip şeridinde `Departman talebi 4` ölçüldü. ⚠️ Satır modelinde `iliski` alanı olmayan iki alanı okuyordu (`hedefDep`·`dep`), altı talebin altısında boş kalıyordu — düzeltildi, 3/4 dolu.
+| 52 | `app-istalebi-detay.html` | **GÖMÜLÜYOR** | Operasyon sağ paneli + tam kayıt | ✅ **GÖMÜLDÜ** → tam kayıt Operasyon **sağ panelinin kendisidir** (`tam:null` + `tamNot`); ayrı ekran açılmadı. Gerçek Chromium: `TLP-2026-040` panelinde özet · geçmiş · dört eylem ve `İlişki MUS-2025-003` basılıyor.
 | 53 | `app-istalebi-form.html` | **GÖMÜLÜYOR** | drawer | · ⛔ **BLOKE — yazma yordamı yok.** `DB.deptRequests` defterine kayıt EKLEYEN yordam ortak katmanda YOK (13 Ağustos, ajan açılmadan ÖNCE ölçüldü; iki yönlü sınandı). Kaydetmesi olmayan drawer basmak §14.6 "sahte buton" yasağının form ölçeğidir. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-99**
 
 ### 4.5 Destek
@@ -235,7 +235,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | 57 | `app-destek-sla.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — destek listesinin "SLA riskli/ihlal" kayıtlı görünümü (3 satır). SLA bir SÜRE taahhüdüdür, tarihe çevrilmedi |
 | 58 | `app-destek-paket.html` | **GÖMÜLÜYOR** ✅ | → müşteri detayı › Destek sekmesi — **çalışıyor** (ADR-R2-13) |
 | 59 | `app-destek-paket-form.html` | **GÖMÜLÜYOR** ✅ | → aynı sekmede paket kartı |
-| 60 | `app-destek-memnuniyet.html` | **GÖMÜLÜYOR** | "Hizmet ve Destek" raporu (§7.1: memnuniyet o şablonun ölçütü) |
+| 60 | `app-destek-memnuniyet.html` | **GÖMÜLÜYOR** | "Hizmet ve Destek" raporu (§7.1: memnuniyet o şablonun ölçütü) | ✅ **GÖMÜLDÜ** → `app-rapor.html` › Hizmet ve Destek raporu. `DB.surveys` boş **ikinci grafik yuvasına** girdi (`Anket defteri — tavsiye skoru kırılımı`) + tabloya `Anket` kolonu. ⚠️ Var olan `Memnuniyet` KPI'ı (`DB.tickets.memnuniyet`) SİLİNMEDİ — anket onun YERİNE değil YANINA geldi, aynı kolonda toplanmadı.
 
 ### 4.6 Toplantı ve ajanda
 
@@ -248,7 +248,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | 62 | `app-toplanti.html` | **GÖMÜLÜYOR** | panel takvimi + müşteri/proje detayı aktivitesi |
 | 63 | `app-toplanti-detay.html` | **GÖMÜLÜYOR** | bağlamsal aktivite kaydı |
 | 64 | `app-toplanti-form.html` | **GÖMÜLÜYOR** | drawer | · ⛔ **BLOKE — yazma yordamı yok.** `DB.meetings` defterine kayıt EKLEYEN yordam ortak katmanda YOK (13 Ağustos, ajan açılmadan ÖNCE ölçüldü; iki yönlü sınandı). Kaydetmesi olmayan drawer basmak §14.6 "sahte buton" yasağının form ölçeğidir. Satır KAPATILMADI. Borç: `v2-borc.md` **V2-99**
-| 65 | `app-toplanti-karar.html` | **GÖMÜLÜYOR** | kararlar göreve bağlanır (`app-gorev.html` kayıtlı görünümü) |
+| 65 | `app-toplanti-karar.html` | **GÖMÜLÜYOR** | kararlar göreve bağlanır (`app-gorev.html` kayıtlı görünümü) | ✅ **GÖMÜLDÜ** → `app-gorev.html`in **onuncu kayıtlı görünümü** "Toplantı kararı" (`DB.decisions[].gorev` kenarı). Yeni kayıt tipi eklenmedi, tek liste korundu. Ölçüldü: 12 kararın **3'ü** görev bağı taşıyor (GRV-2026-104·106·108) ve kalan 9'un görünmemesi ekranda yordamdan türetilerek yazılı.
 
 ### 4.7 Sohbet
 
@@ -280,7 +280,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | 76 | `app-odemeplani.html` | **GÖMÜLÜYOR** ✅ | → müşteri detayı › Finans sekmesi (taksitler bağlı sözleşmeden okunuyor) |
 | 77 | `app-odemeplani-detay.html` | **GÖMÜLÜYOR** ✅ | → aynı sekme |
 | 78 | `app-odemeplani-form.html` | **GÖMÜLÜYOR** ✅ | → aynı sekme |
-| 79 | `app-butce.html` | **GÖMÜLÜYOR** | proje detayı › Bütçe sekmesi (`GV.proje.maliyet` orada zaten okunuyor). Şartname anmıyor; §2'den **çıkarım** |
+| 79 | `app-butce.html` | **GÖMÜLÜYOR** | proje detayı › Bütçe sekmesi (`GV.proje.maliyet` orada zaten okunuyor). Şartname anmıyor; §2'den **çıkarım** | ✅ **GÖMÜLDÜ** → `app-proje-detay.html` › **Bütçe** sekmesi (onuncu sekme, Özet'ten sonra, şeritte ikon yok). K-21: maliyet kartı ve künyedeki bütçe satırı Özet'ten TAŞINDI, yerine tek satırlık bağ bırakıldı. Altı genişlikte taşma yok.
 
 ### 5.1 YENİ — Ödeme Linkleri
 
@@ -389,7 +389,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 |---|---|---|---|
 | 123 | `app-dokuman.html` | **GÖMÜLÜYOR** ✔ ✅ | **ADR-R2-06 REVİZE (V2-68).** Ayrı girdi kararı GERİ ALINDI: `app-ayar-log.html › arsiv` sekmesi (rota 145) aynı yüzeyi kapsadı — belge arama, sürüm defteri, süresi dolanlar ve onay zinciri orada. İki yüzey aynı defteri göstermez (K-21) ve beşinci ayar girdisi menüyü 17'den çıkarırdı. **Çalışıyor.** |
 | 124 | `app-dokuman-detay.html` | **GÖMÜLÜYOR** ✔ ✅ | **ADR-R2-06 REVİZE (V2-68).** Arşiv kayıt görünümü → `app-ayar-log.html › arsiv` sekmesinin sürüm ve onay defteri. **Çalışıyor.** |
-| 125 | `app-dokuman-sure.html` | **GÖMÜLÜYOR** | `app-dokuman.html` › Süresi Dolanlar kayıtlı görünümü |
+| 125 | `app-dokuman-sure.html` | **GÖMÜLÜYOR** | `app-dokuman.html` › Süresi Dolanlar kayıtlı görünümü | ✅ **GÖMÜLDÜ** → `app-ayar-log.html` › Belge Arşivi › **`Süresi dolanlar` kayıtlı görünümü** (Beyar kararı 1 ile onaylanan hedef). ⚠️ İlk ölçüm "yüzey zaten var" demişti ve YARIMDI: "süresi geçmiş" yalnız bir KPI sayacı ve süzgeç seçeneğiydi, listede `tabs:` HİÇ YOKTU. Dört görünüm eklendi (11 · 2 · 3 · 5).
 | — | *(günlük belge ekleme)* | **GÖMÜLÜYOR** ✔ | **ADR-R2-06:** ilgili kaydın Belgeler sekmesine düşer — müşteri, proje ve destek detaylarında |
 
 ---

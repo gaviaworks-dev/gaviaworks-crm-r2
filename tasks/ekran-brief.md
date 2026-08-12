@@ -4141,6 +4141,14 @@ hücrenin İÇİNDE `<details>` ile verilir — ortak katmana dokunulmaz.
 Her `<details>` o müşterinin komisyon kayıtlarını (`kod` · `kisi` · `ciro` ·
 `oran` · `tutar` · `durum`) basar.
 
+⚠️ **`DB.commissions[].aktif` HAKKINDA:** ajan raporu "6/6 `undefined`"
+dedi, **bağımsız ölçüm bunu ÇÜRÜTTÜ** — altı kaydın altısında `aktif`
+anahtarı VAR ve altısı da `true`. Bir kayıtta (`KOM-2025-006`) ayrıca
+`arsiv:true` var. Rapor ekranı arşiv sorusunu hiçbir defterde sormuyor
+(altı raporun hiçbiri `GV.arsivli` çağırmıyor), bu yüzden komisyonda da
+sorulmadı — tutarlılık korundu. Ajan raporu bu noktada YANLIŞTI ve
+ölçüm seçildi.
+
 ⚠️ `DB.commissions[].oran` bir kayıtta **0** ve `ciro` bir kayıtta **0**;
 `tutar` yine de dolu. Oran × ciro ile `tutar` TÜRETİLMEZ — kayıttaki `tutar`
 okunur ve tutarsızlık ekranda beyan edilir.
@@ -4159,8 +4167,15 @@ okuyor (7 talebin **3'ünde** dolu). Rota 60'ın kaynağı
 
 **Sözleşme:** anket defteri **talep memnuniyetinin yerine geçmez**, yanına
 gelir; ikisi farklı şeydir ve aynı kolonda toplanmaz.
-`ui.js:278` NPS gruplamasını (`9-10 / 7-8 / 0-6`) zaten tanımlıyor —
-yeniden yazılmaz, o kırılım kullanılır.
+⚠️ **BU SATIR YANLIŞTI ve ajan ölçüp bildirdi, brief düzeltildi.** Önce
+*"`ui.js:278` NPS gruplamasını zaten tanımlıyor — yeniden yazılmaz"* diyordu.
+Ölçüldü: `ui.js:277-279` yalnız bir **rozet TON sözlüğüdür**
+(`Destekleyici → ok` · `Nötr → warn` · `Kötüleyici → danger`) ve üstündeki
+yorum satırıdır. **`9-10 / 7-8 / 0-6` eşiklerini HESAPLAYAN yordam ortak
+katmanda YOKTUR** (`grep nps|tavsiye` → yalnız bu iki satır).
+Doğru sözleşme: etiket ve tonlar ortak sözlükten (`GV.tone`) okunur,
+eşikler ekranda hesaplanır ve **eşikler ekranda yazılır**. Bir yorum
+satırındaki sayıyı "yordam var" diye okumak, hayalet API'nin en ince hâlidir.
 KPI tavanı bu raporda da ölçülmeli; **dolu ise yeni KPI EKLENMEZ**, anket
 ikinci grafik yuvasına ve/veya tablo kolonuna düşer.
 
@@ -4213,10 +4228,10 @@ değil, o kaydın kendi aktivite/geçmiş yüzeyinde satır.
 
 | rota | yüzey | nerede ölçüldü |
 |---|---|---|
-| 2 | panel rol özet kartları (`OZET_BY_ROLE` · dört özet yordamı) | `app-panel.html` |
+| ~~2~~ | ⚠️ **ÖLÇÜM DÜZELTİLDİ — yüzey YARIM ÇIKTI, bkz. §23.13** | `app-panel.html` |
 | 51 | Operasyon kuyruğunun **altıncı** tipi `istalebi` (ADR-R2-14) | `kuyruk.js:36` |
 | 52 | departman talebinin tam kaydı sağ panelin KENDİSİ (`tam:null` + `tamNot`) | `kuyruk.js:166` |
-| 125 | Ayarlar › Sistem Kayıtları › **Belge Arşivi** › `Süresi geçmiş` kayıtlı görünümü (`kalanGun < 0`) | `app-ayar-log.html:437` |
+| ~~125~~ | ⚠️ **ÖLÇÜM DÜZELTİLDİ — yüzey YARIM ÇIKTI, bkz. §23.12** | `app-ayar-log.html:437` |
 
 ⚠️ **Rota 51-52'de ÖLÇÜLEN KUSUR:** kuyruk satırının `iliski` alanı
 `d.hedefDep || d.dep` okuyordu; **`DB.deptRequests` bu iki alanı TAŞIMIYOR**
@@ -4286,3 +4301,57 @@ KENDİSİNDEN türetilmeli.**
 ⚠️ `GV.notice` `text` alanını **kaçırır** (`esc`) — içine işaretleme konmaz.
 Ölçüldü: `<span>` konsa kullanıcıya harf harf basılırdı. `aria-describedby`
 hedefi bu yüzden notice'in DIŞINDAKİ sarmalayıcıya kondu.
+
+### 23.12 Rota 125 — ilk ölçüm YARIMDI, ikinci ölçüm satırı açtı
+
+§23.8'e önce "yüzey zaten yayında" diye yazıldı ve **yanlıştı**. İkinci
+ölçüm: `app-ayar-log.html` arşiv listesinde "süresi geçmiş"
+
+* bir **KPI sayacı** olarak vardı (`kalanGun < 0`), ve
+* gelişmiş süzgeç çekmecesinde bir **seçenek** (`sure` süzgeci) olarak vardı,
+* ama listede **`tabs:` hiç yoktu** — yani **kayıtlı görünüm YOKTU.**
+
+Rota satırının istediği tam olarak *kayıtlı görünümdü*. Bir sayaç kaç
+belgenin süresinin geçtiğini söyler ama HANGİLERİ olduğunu göstermez;
+süzgeç gösterir ama iki tıklama ve bir çekmece arkasındadır.
+
+**DERS: "yüzey var mı" sorusu, yüzeyin ADIYLA sorulmalı.** "Süresi geçmiş
+bir yerde geçiyor mu" diye bakmak üç farklı yüzeyi aynı sayar. Dokuz satır
+geçen turda bu yöntemle kapatıldı — onlar sekme şeridinde `role="tab"`
+düğümü olarak ölçüldüğü için doğruydu; burada ölçütün adı `tabs:`ti ve
+aranmamıştı.
+
+**Uygulandı:** arşiv listesine dört kayıtlı görünüm eklendi —
+`Tüm belgeler` · `Süresi dolanlar` (2 belge) · `30 günde dolacak` (3) ·
+`Son kullanma tarihi yok` (5). Dördü örtüşmez ve `kalanGun > 30` olan
+1 belgeyle birlikte 11'i tamamlar.
+30 günlük eşik var olan `sure` süzgecinin eşiğiyle **birebir aynıdır** —
+aynı soru iki farklı eşikle iki yerde sorulmuyor (L-40).
+`kalanGun == null` olan 5 belge AYRI basılır: **"süresiz" ile "süresi
+dolmamış" aynı cümle değildir**, birine gizlice katılmadı.
+
+### 23.13 Rota 2 — R1 karşılığı okundu, iki blok R2'de YOK
+
+§23.8'e önce "yüzey zaten yayında" diye yazıldı. §23.12'nin dersi burada
+ikinci kez uygulandı: soru yüzeyin ADIYLA soruldu. Dondurulmuş R1 deposundaki
+`app-panel-ozet.html` (565 satır) blok blok okundu ve R2 paneliyle
+karşılaştırıldı:
+
+| R1 `app-panel-ozet.html` bloğu | R2 `app-panel.html` karşılığı |
+|---|---|
+| Bugünün Ajandası | ✅ "Günün ajandası" (`DB.meetings`) |
+| Bana Düşenler | ✅ "Öncelikli iş kuyruğu" (`GV.kuyruk`) |
+| Onayımı Bekleyenler | ✅ aynı kuyruğun `onay` tipi |
+| Günlük Özet | ✅ KPI şeridi + rol özet kartları (`OZET_BY_ROLE`) |
+| Duyurular | ❌ **YOK** — bu zaten ayrı bir rota satırı (5) |
+| **Dikkat Gerektirenler** | ❌ **YOK** — vadesi yaklaşan/geçen muayene · poliçe · fatura |
+| **Dünden Bugüne** | ❌ **YOK** — son iki günün hareketi (`DB.activities` · `DB.logs`) |
+
+R1 ekranının okuduğu defterler: `DB.activities` · `DB.announcements` ·
+`DB.approvals` · `DB.customers` · `DB.inspections` · `DB.invoices` ·
+`DB.leads` · `DB.leaves` · `DB.logs` · `DB.meetings` · `DB.notifications` ·
+`DB.policies` · `DB.projects` · `DB.purchases` · `DB.tasks` · `DB.tickets` ·
+`DB.timelogs` · `DB.vehicles`.
+
+**Sonuç: rota 2 ve rota 5 AYNI EKRANA yazar (GRUP 6) ve TEK ajanla ele
+alınır.** İkisi de salt okunur; yazma yordamı gerekmiyor.
