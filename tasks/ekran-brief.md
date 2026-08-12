@@ -2115,3 +2115,559 @@ sayının nereden geldiği yazılır.
 
 **KPI'lar ölçümdür, süs değildir.** Her KPI'ın altında hangi kayıttan
 türediği yazılır; türetilemeyen KPI **basılmaz** (§10.1 — boş ≠ sıfır).
+
+---
+
+## 21. Dilim 5 — AYARLAR (dört ekran)
+
+§1–§20 aynen geçerlidir. Bu bölüm yalnız **farkları** yazar. Her sayı
+`node tasks/qa/ayar-ekseni.js` ile ölçüldü; hiçbiri elle yazılmadı.
+
+### 21.0 Ekranlar, kabuk öznitelikleri ve veri dosyaları
+
+| Dosya | `data-sec` | `data-screen` | mount | menü kapısı (`shell.js`) |
+|---|---|---|---|---|
+| `app-ayar-profil.html` | `ayarlar` | `profil` | `rec` | **yok** — her role açık |
+| `app-ayar-sirket.html` | `ayarlar` | `sirket` | `rec` | `sahip · genelmudur · sistem` |
+| `app-ayar-entegrasyon.html` | `ayarlar` | `entegrasyon` | `rec` | `sahip · genelmudur · sistem · devops` |
+| `app-ayar-log.html` | `ayarlar` | `log` | `rec` | `sahip · genelmudur · sistem · operasyon · devops` |
+
+⚠️ **Ekran menü kapısını KENDİ KONTROL ETMEZ.** `roles:` kaydı `shell.js`
+`SECTIONS.ayarlar` içindedir ve yetkisiz rol ekrana hiç giremez — kabuk 403
+basar (`shell.js` `guard`). Ekran içinde ikinci bir rol listesi yazmak
+kuralı iki yerde tanımlamak olurdu (§14.11).
+
+**Yüklenecek veri dosyaları — ekran başına, kullanılmayan YÜKLENMEZ (§1.2):**
+
+| Ekran | Veri dosyaları |
+|---|---|
+| `app-ayar-profil.html` | `org.js` · `crm.js` · `work.js` · `misc.js` · `ops.js` · `hr.js` · `lifecycle.js` |
+| `app-ayar-sirket.html` | `org.js` · `crm.js` · `work.js` · `misc.js` · `ops.js` · `hr.js` · `lifecycle.js` |
+| `app-ayar-entegrasyon.html` | `org.js` · `crm.js` · `work.js` · `misc.js` · `ops.js` · `lifecycle.js` · **`odeme.js`** |
+| `app-ayar-log.html` | `org.js` · `crm.js` · `work.js` · `misc.js` · `ops.js` · `hr.js` · `lifecycle.js` · **`odeme.js`** |
+
+`odeme.js` iki ekranda zorunludur: entegrasyonda `DB.paymentLinkDefaults` ve
+`DB.paymentBackendGaps`, sistem kayıtlarında veri kalitesi sekmesi
+`DB.paymentLinks` sayımını okur. `firsat.js` hiçbirinde yüklenmez.
+`crm.js` profil ekranında **zorunludur**: müşteri oturumunda `DB.contacts`
+okunur (bkz. §21.3).
+
+### 21.1 AYAR KABUĞU — sekmeler YETKİDEN üretilir (şartname §3.3)
+
+§3.3 birebir: "`app-ayar-*.html` → `/ayarlar/:sekme` · Aynı ayar kabuğunda
+sekmeli yönetim; **yetkiye göre sekme üret**."
+
+Sekme kümesi **`shell.js`te TEK yerde** tanımlıdır. Ekran kendi sekme
+listesini **YAZMAZ**; yordamı çağırır ve ne gelirse onu basar — `GV.flow`
+düğme üretiminin (§7.1) aynı ilkesidir.
+
+```js
+GV.shell.ayarSekmeleri('sirket')
+// → [{ key:'sirket', lbl:'Şirket', ic:'i-building', rota:136 }, …]
+//   yetkiden SÜZÜLMÜŞ kümedir; `roles:` ve `perm:` kapıları uygulanmıştır
+GV.shell.ayarSekmeHam                 // süzülmemiş ham kayıt — YALNIZ ölçüm içindir
+```
+
+Ölçülen sekme sayıları (rol → sekme):
+
+| Ekran | rol | sekme |
+|---|---|---|
+| `profil` | her rol (27/27) | `hesap` · `bildirim` |
+| `sirket` | `sahip` · `genelmudur` · `sistem` | `sirket` · `departman` · `kullanici` · `rol` · `yetki` · `onay` |
+| `entegrasyon` | `sahip` · `genelmudur` · `sistem` | `saglayici` · `odeme` · `otomasyon` · `hata` |
+| `entegrasyon` | **`devops`** | `saglayici` · `otomasyon` · `hata` — **`odeme` YOK** (`perm:'finans'`, devops'ta `finans:false`) |
+| `log` | beş rolün hepsi | `kayit` · `arsiv` · `kalite` |
+
+**Kabuk iskeleti — dört ekranda da birebir aynı.** `GV.tabs` işaretleme
+sözleşmesi §6.1'dir; derin bağlantı `app-ayar-sirket.html#departman`
+biçimindedir ve **sözleşmedir**.
+
+```js
+var SEKME = GV.shell.ayarSekmeleri('sirket');
+if(!SEKME.length){
+  mount.innerHTML = GV.empty({ icon:'i-lock', title:'Görebileceğiniz ayar sekmesi yok',
+    desc:'Bu ekrana girebiliyorsunuz ama rolünüz hiçbir sekmeyi açmıyor. …' });
+  return;                                   /* ölü sekme şeridi basma */
+}
+mount.innerHTML =
+  '<div class="gv-tabs" role="tablist" id="ayarSekme">' +
+    SEKME.map(function(t){
+      return '<button type="button" class="gv-tab" role="tab" data-tab="' + t.key + '"' +
+             ' aria-selected="false">' + GV.ico(t.ic,'ic-sm') + GV.esc(t.lbl) + '</button>';
+    }).join('') +
+  '</div>' +
+  SEKME.map(function(t){
+    return '<div role="tabpanel" data-panel="' + t.key + '" id="panel-' + t.key + '" hidden></div>';
+  }).join('') +
+  '<div id="ayarBackend" class="u-mt-8"></div>';
+
+/* ⚠️ SIRA: dinleyici GV.tabs'ten ÖNCE bağlanır — GV.tabs kurulurken ilk
+   sekmeyi hemen etkinleştirir ve `gv:tab` atar (ui.js). Sonra bağlarsan
+   AÇILIŞTAKİ sekme hiç çizilmez. */
+var cizildi = {};
+GV.on(document, 'gv:tab', function(e){ ciz(e.detail.key); }, 'ayarSirket-tab');
+GV.tabs('#ayarSekme');
+
+function ciz(key){
+  if(cizildi[key]) return;                  /* tembel çizim — bir kez */
+  cizildi[key] = true;
+  var p = document.getElementById('panel-' + key);
+  if(!p) return;
+  …
+}
+```
+
+⚠️ `GV.tabs` panelleri **belge genelinde** arar (§6.1) — sayfada **ikinci
+sekme kümesi kurma**.
+
+⚠️ **Sekme panelindeki her `GV.list` `urlSync:false` bildirir** (§18.9,
+iki yönlüdür). Bu ekranlarda `urlSync:true` tutan liste **yoktur**: sekme
+anahtarı `#hash`tedir, listenin sorgu anahtarları onunla çakışmaz ama iki
+liste birbiriyle çakışır.
+
+### 21.2 Menü sayımı — DEĞİŞMEZ, ölçüm kapısı
+
+Bu dilimde `shell.js` `SECTIONS` **değişmedi**: dört ayar girdisi zaten
+kayıtlıydı, yalnız dosyaları yoktu. Ölçülen (kaynağı `tasks/qa/kontrol.js`
+[5] ve `GV.shell.visibleItems()`):
+
+- standart kullanıcının **görünür günlük menü girdisi en fazla 17** —
+  kabul kriteri ≤18 (§12), `pm` ve `operasyon` rollerinde 17.
+- üç yönetim girdisi (`Şirket ve Erişim` · `Entegrasyonlar` ·
+  `Sistem Kayıtları`) `yonetim:true` taşır, **ayrı ve soluk blokta** basılır
+  (`.gv-menu-admin` · `.gv-menu-item.is-admin`) ve **günlük sayıya girmez**.
+- `Profil` girdisi `yonetim` **değildir** — herkes kendi profilini yönetir,
+  o yüzden 17'nin içindedir.
+
+**Ajan bu sayıyı değiştirecek hiçbir şey yapmaz**: menüye girdi eklemez,
+`shell.js`e dokunmaz. Ekranın içinden başka bir ayar ekranına bağlantı
+vermek serbesttir (kabuk `markWip` ile korur).
+
+### 21.3 `app-ayar-profil.html` — HESABIM · BİLDİRİM (rota 134 · 135)
+
+**İki oturum biçimi vardır ve ikisi ayrı kayıt okur (§2.2):**
+
+```js
+var me = GV.session.emp;            // 'EMP-001' → personel oturumu
+                                    // null      → müşteri oturumu
+```
+
+- **Personel oturumu** → kayıt `DB.emp(me)` (16 kayıt).
+- **Müşteri oturumu** (`emp === null`) → kayıt
+  `DB.contacts.filter(c => c.kod === GV.session.kontak)[0]` (14 kayıt) ve
+  bağlı hesap `GV.session.musteri` / `GV.session.musteriAd`.
+  **Özlük ve maaş blokları müşteri oturumunda HİÇ BASILMAZ** — personel
+  kaydı yoktur, maskelenecek bir alan da yoktur. `GV.hr.*` çağrılmaz.
+
+**Kişisel veri kapısı — §20.1 aynen geçerlidir, gevşetilmez:**
+
+```js
+GV.hr.ozlukGorebilir(e)   // kendi kaydı → her zaman true
+GV.hr.maasGorebilir()     // permMatrix.maas — YALNIZ 4 rol: sahip · genelmudur · ik · muhasebe
+GV.hr.ozluk(e, 'kanGrubu')// yetkisizde '••••••' döner, BOŞ DEĞİL
+```
+
+⚠️ **Kendi profilinde bile maaş kapısı `maasGorebilir()`tir.** Ölçüldü:
+`frontend` rolü kendi kaydını açtığında `maas` alanını **göremez** ve
+`••••••` görür. Bu bir kusur değil, kanonun bilinen sonucudur — ekran
+kapıyı kendi lehine gevşetmez, maskenin **altına sebebini yazar**
+("maaş alanı `permMatrix.maas` kapısındadır; kendi kaydınız bu kapıyı
+açmaz"). Kapıyı değiştirmek ana oturumun kararıdır (V2-47).
+
+**`hesap` sekmesinde basılacaklar** (hepsi `GV.dl` + `skipEmpty:true`):
+
+| Blok | Alanlar | Kapı |
+|---|---|---|
+| Kimlik | `ad · ini · kod · pozisyon · rol`(→`DB.roleName`) · `dep`/`depAd` · `yonetici`(→`GV.user`) · `lokasyon` · `girisTarihi` · `durum`(→`GV.badge`) | yok |
+| Yetkinlik | `uzmanlik · yetkinlik[] · teknoloji[] · sertifika[]` | yok |
+| İletişim ve özlük | `tel · eposta · dogum · kanGrubu · acilKisi · egitim · sozlesme · calismaTuru` | **`GV.hr.ozlukGorebilir(e)`** |
+| Ücret | `maas` **ya da** `saatlikUcret` (XOR — ikisi birden dolu değildir) | **`GV.hr.maasGorebilir()`** |
+| Oturum | `GV.session.rolAd` · `GV.perm.role()` · `GV.perm.scope('gor')` · görünür menü girdisi sayısı (`GV.shell.visibleItems().length`) | yok |
+
+`izinBakiye` ve `doluluk` **basılabilir** (genel alanlardır, §20.1
+tablosunda özlük sınıfında değildir).
+
+**Rol listesi:** `e.roller` bir DİZİDİR (`['sahip','genelmudur']`) ve
+`e.rol` etkin roldür. İkisi de basılır; ad `DB.roleName(key)` ile çözülür,
+elle yazılmaz. **Uydurma rol adı yasaktır** — 27 rolün tamamı
+`DB.roles` içindedir.
+
+**`bildirim` sekmesi — DÜRÜST BOŞLUK (rota 135).**
+
+Ölçüldü: `DB.employees` kaydında **bildirim tercihi alanı YOKTUR**.
+`DB.notificationChannels` yedi kanal adı taşıyan bir SÖZLÜKTÜR, kişiye
+bağlı bir tercih kaydı değildir. Dolayısıyla:
+
+- Yedi kanal **listelenir** (sözlükten, elle yazılmaz).
+- Her kanalın anahtarı **devre dışı** basılır ve sebebi yazılır — çalışmayan
+  bir anahtar kullanıcıya tutulmayacak bir söz verir (§14.6).
+  `GV.form` `type:'switch'` alanı KULLANILMAZ; devre dışı gösterim
+  `GV.dl` satırı + `GV.badge('Pasif')` ile kurulur.
+- Kullanıcının GERÇEKTEN ölçülebilir bildirim yüzeyi **otomasyon
+  kurallarıdır**: `DB.automations` (22 kayıt, 22'si `Aktif`) `kanal[]`
+  alanı taşır. Ölçüldü: bu 22 kuralın kullandığı kanallar yalnız
+  **`Sistem içi`** ve **`E-posta`** — kalan beş kanalı kullanan kural
+  YOKTUR ve ekran bunu **yazar**.
+- Okunmamış bildirim sayısı `GV.counters.bildirim`ten okunur; ikinci sayaç
+  yazılmaz.
+
+### 21.4 `app-ayar-sirket.html` — ŞİRKET VE ERİŞİM (rota 136–141)
+
+| Sekme | Kaynak | Ölçülen adet |
+|---|---|---|
+| `sirket` | `DB.company` | 16 alan · `aktifModuller` 8 anahtar |
+| `departman` | `DB.departments` | **21** (18 aktif · 3 pasif) · `ustDepartman` 19/21 · `DB.departmentGroups` 8 grup |
+| `kullanici` | `DB.employees` | **16** · `durum`: `Aktif` 15 · `Offboarding` 1 |
+| `rol` | `DB.roles` | **27** · `DB.permMatrix` 27 — birebir eşleşiyor, yetim yok |
+| `yetki` | `DB.permMatrix` | 27 rol × **11 anahtar** |
+| `onay` | `DB.approvalFlows` (**3**) + `DB.approvalTypes` (**8**) | — |
+
+**`sirket` sekmesi.** `DB.company` alanları `GV.dl` ile basılır. İki nokta
+zorunludur:
+
+1. **İç maliyet sabitleri görünür olmalıdır**: `isverenMaliyetKatsayisi`
+   (1.225) ve `aylikCalismaSaati` (176). Bunlar proje maliyetinin
+   girdisidir ve `org.js` "hesabın girdisi koda gömülürse maliyet sessizce
+   değişir" diye yazıyor — ayar ekranı onları görünür kılan yerdir.
+   `perm:'finans'` kapısı uygulanır.
+2. **Modül anahtarları — bu dilimin TEK gerçek mutasyonu.**
+
+```js
+GV.ayar.modulAnahtarlari()          // ['satis','proje','destek','personel',
+                                    //  'finans','satinalma','demirbas','filo']  (8)
+GV.ayar.modulAcik('filo')           // boolean
+GV.ayar.modulYetkisi()              // boolean — sahip · genelmudur · sistem
+GV.ayar.modulAyarla(anahtar, acik, gerekce)
+//  → { ok:true,  anahtar, eski, yeni, gerekce }
+//  → { ok:false, why:'yetki'|'gerekce'|'kayit'|'degisiklikyok', mesaj }
+```
+
+⚠️ **KAPI İKİ YÖNDE DE AYNIDIR ve bu ölçüldü.** Açmak ile kapatmak aynı
+yetki kümesini ister (`sahip · genelmudur · sistem`) ve aynı gerekçe
+koşulunu taşır (≥8 karakter). Geri almak, yapmaktan ağır değildir. Ekran
+bu simetriyi **bozmaz**: iki yön için ayrı düğme koşulu yazma, ikisini de
+`GV.ayar.modulYetkisi()` ile göster ve reddi `r.mesaj` ile bas.
+
+Mutasyondan sonra **`GV.refresh()`** çağrılır — menü o anda yeniden çizilir
+ve kapatılan modülün girdisi düşer. `location.reload()` yasaktır (§14.1).
+Denetim izini `GV.ayar.modulAyarla` **kendi yazar**; ekran ikinci kez
+`GV.audit.yaz` çağırmaz (§9.1).
+
+**`departman` · `kullanici` · `rol` sekmeleri `GV.list`tir** (`urlSync:false`).
+
+- `departman`: `DB.departments` `durum` ekseni **yoktur** → `aktif` orada
+  **KANONDUR ve okunması doğrudur** (§20.2, `GV.arsivli` üç istisnadan
+  biri). `GV.arsivli(d)` kullan; `d.aktif`i elle süzme.
+  Yönetici alanı `GV.user(d.yonetici)`, `personel` sayısı sayıdır.
+  `ustDepartman` 2 kayıtta boştur → `—` (§10.1).
+- `kullanici`: `DB.employees`. **`aktif` alanı TUZAKTIR — okuma** (§20.2);
+  pasiflik `GV.hr.durum(e)` / `GV.arsivli(e)` üzerinden sorulur.
+  Kolonlar: `kod · ad · rol`(`DB.roleName`) · `dep` · `pozisyon` ·
+  `durum`(badge) · `girisTarihi`. **Maaş kolonu YOKTUR** — kullanıcı
+  yönetimi bir bordro yüzeyi değildir; maaş `app-personel-detay.html`
+  yetkisine aittir. `eposta` özlük sınıfındadır → `GV.hr.ozluk(e,'eposta')`
+  ile bas.
+- `rol`: `DB.roles` (27) — `key · ad · kademe · dash`. Rolün kaç kişide
+  etkin olduğu `DB.employees` `rol`/`roller` alanından **türetilir**;
+  türetilemeyen sayı basılmaz.
+
+**`yetki` sekmesi — YETKİ MATRİSİ.** 27 rol × 11 anahtar bir tablodur ve
+`GV.list` kolon yöneticisiyle taşınamaz (kolonlar veri, satır da veri).
+`GV.cols.tbl` rapor tablosu iskeletidir; burada **`GV.list`** kullanılır ve
+11 anahtar 11 kolondur:
+`gor · ekle · duzenle · sil` (kapsam dizesi: `tum|departman|proje|kendi|musteri|yok`) ·
+`onay · finans · maas · log · disaAktar` (boolean) ·
+`rapor · personel` (kapsam dizesi).
+Boolean hücre `GV.badge` ile, kapsam hücresi düz metinle basılır; `'yok'`
+değeri `GV.cell.faint` ile soluklaştırılır — **`0` basılmaz**.
+
+**`onay` sekmesi.** `DB.approvalFlows` üç zincir taşır; her zincirin
+`adimlar[]` dizisi `{ sira, rol, ad, kosul, esik, sla }` alanlıdır.
+`GV.chain([...])` bileşeni bir onay zincirini basmak içindir (§6.2) ama
+alan adları farklıdır (`{ rol, kisi, durum, tarih, not }`) — bu bir
+**tanım**dır, bir **koşum** değildir. Bu yüzden `GV.chain` KULLANILMAZ;
+adımlar `GV.dl` ile basılır ve `kosul:'tutar'` olan adımın eşiği
+(`esik`) `GV.cell.mny` ile gösterilir. `esik:null` olan adım "her zaman
+çalışır" diye yazılır — `0` yazmak eşik varmış gibi olurdu.
+`DB.approvalTypes` 8 tipin **ikisinde `entity:null`** (`Komisyon kazancı`
+ve timesheet onayı) — bu bir eksik değil, "kaynak kaydın durum makinesi
+yok" beyanıdır ve ekran bunu **aynen yazar**.
+
+### 21.5 `app-ayar-entegrasyon.html` — ENTEGRASYONLAR (rota 142 · 143)
+
+> ⚠️ **BU EKRANDA GERÇEK ANAHTAR ALANI AÇILMAZ.** `<input>` bile yok.
+> Şartname §8.7: "Canlı anahtarlar kodda veya istemci paketinde
+> bulunmamalıdır." Bir anahtar kutusu basmak, anahtarın istemcide
+> toplanabileceğini ima ederdi.
+
+**SAHTE BAĞLANTI DURUMU BASILMAZ — bu bir veri çelişkisidir ve ölçüldü.**
+
+`DB.integrations` 10 kayıt taşır ve **dördü `durum:'Bağlı'` der**
+(`ENT-001` GitHub · `ENT-003` Google Calendar · `ENT-007` Paraşüt ·
+`ENT-009` OpenAI API). Aynı veri dosyası bunun 60 satır altında şunu yazar:
+"Bu prototipte GERÇEK BİR ENTEGRASYON KOŞUMU YOK — `DB.integrations`
+yalnız bağlantı tanımlarını taşıyor, hiçbiri çalışmıyor."
+
+İkisi aynı anda doğru olamaz. Karar **K-34**: kayıt silinmez, **iddia ile
+ölçüm ayrıştırılır** (K-30'daki tutanaksız zimmet iddiasının aynı çözümü).
+Yordam ortak katmandadır; ekran kuralı yeniden tanımlamaz:
+
+```js
+GV.entegrasyon.liste()             // DB.integrations (10)
+GV.entegrasyon.kayit(kod)          // tek kayıt ya da null
+GV.entegrasyon.kanit()             // { kosumDefteri:null, hataKuyrugu:0,
+                                   //   webhookOlayi:0, odemeSaglayici:'TEST-MOCK' }
+GV.entegrasyon.kosumVar()          // false — üç kanıt da boş
+GV.entegrasyon.olculenDurum()      // 'Bağlanmadı'  (koşum varsa null döner)
+GV.entegrasyon.olculemedi()        // true — koşum defteri koleksiyonu HİÇ YOK
+GV.entegrasyon.katalogIddiasi(e)   // e.durum — KATALOGUN İDDİASI, ölçüm DEĞİL
+GV.entegrasyon.celisir(e)          // iddia 'Bağlı' ama koşum yok
+GV.entegrasyon.celisenler()        // 4 kayıt
+GV.entegrasyon.kategoriler()       // 6: Doküman · Kaynak kod · Muhasebe ·
+                                   //    Takvim · Yapay zekâ · İletişim
+GV.entegrasyon.odemeAdaptoru()     // §8.7 — aşağıda
+```
+
+**`saglayici` sekmesinin sözleşmesi:**
+
+1. Sayfa üstünde **`GV.notice({tone:'warn'})`** ile tek cümlelik beyan:
+   hiçbir sağlayıcı bağlı değildir, koşum defteri yoktur, aşağıdaki
+   "katalog iddiası" sütunu bir ölçüm değildir.
+2. Listede **ölçülen durum** kolonu `GV.entegrasyon.olculenDurum()`
+   değerini basar — 10 kaydın **10'unda** `Bağlanmadı`.
+3. **Katalog iddiası ayrı bir kolondur** ve `GV.badge` ile **yeşil
+   basılmaz**; düz metin + `GV.cell.faint` açıklamasıyla basılır.
+   Çelişen 4 kayıtta `GV.cell.sub('ölçümle çelişiyor')` eklenir.
+4. **Bağlan / Bağlantıyı kes düğmesi YOKTUR.** Yapılamayan iş düğme olarak
+   vaat edilmez (§14.6). Bir düğme koyacaksan `run` yaz; yazamıyorsan
+   aksiyonu hiç ekleme.
+
+**`odeme` sekmesi (perm:`finans`).** Kart formu, anahtar kutusu, "test
+kartı" YOKTUR. Basılacaklar:
+
+```js
+var a = GV.entegrasyon.odemeAdaptoru();
+// a.saglayici  → 'TEST-MOCK'
+// a.etiket     → 'TEST — sağlayıcı seçilmedi'
+// a.secildi    → false
+// a.yordamlar  → 5 ad: createCheckoutSession · verifyWebhook ·
+//                getPaymentStatus · refundPayment · cancelSession   (§8.7)
+// a.acikMadde  → DB.paymentBackendGaps'ten §8.5/§8.6/§8.7 maddeleri
+```
+
+Beş yordam **şartnameden alınmıştır**, uydurulmadı; hiçbiri uygulanmadı ve
+ekran bunu madde madde yazar. `DB.paymentLinkDefaults.gecerlilikGun` (14) ve
+`paraBirimi` (`'TRY'`) şirket varsayılanı olarak **okunur**, düzenlenmez.
+
+**`otomasyon` sekmesi (rota 143).** `DB.automations` 22 kayıt, 22'si
+`Aktif`. `GV.list` (`urlSync:false`), kolonlar:
+`kod · ad · tetikleyici · islem · kullanici · kanal[]` (dizi — `join(' · ')`)
+· `durum`. **Aç/kapa anahtarı YOKTUR** — otomasyon motoru yoktur, kural
+kayıtları bir katalogdur ve ekran bunu yazar. Ölçüldü: 22 kuralın kullandığı
+kanal kümesi yalnız `Sistem içi` ve `E-posta`.
+
+**`hata` sekmesi.** `DB.integrationErrors` **boştur (0 kayıt)** ve bu
+BİLEREK böyledir. Ekran **"hata yok" DEMEZ** — "koşum kaydı yok, kontrol
+yapılamadı" der (§10.1: boş ≠ sıfır ≠ ölçülemedi). `GV.empty` kullanılır ve
+şema alanları (`kod · entegrasyon · olayTipi · kayit · deneme · sonMesaj ·
+payloadOzet · onerilenCozum · durum · ilkGorulme · sonGorulme · replaySonuc`)
+"kayıt yazıldığında" beklenen biçim olarak listelenir.
+
+### 21.6 `app-ayar-log.html` — SİSTEM KAYITLARI (rota 144 · 145 · 146)
+
+> ⚠️ **BU EKRAN İKİNCİ BİR DEFTER ÜRETMEZ.** `DB.logs`a doğrudan yazmak,
+> `DB.activities`e `unshift` etmek, ya da kendi olay dizisini kurmak
+> YASAKTIR. Tek yüzey `GV.audit`tir (§9.1) ve o iki defteri zaten
+> birleştirir, **tekilleştirir** ve tek zaman çizelgesi döndürür.
+
+```js
+GV.audit.oku(null, 0)   // kayıt kodu null → TÜM defter; limit 0/atlanırsa hepsi
+GV.audit.denetle()      // { olay:207, sistem:7, toplam:214, kayitKodsuz:0, aktorsuz:0 }
+```
+
+**Ölçüldü:** `DB.activities` 207 · `DB.logs` 7 · birleşik ve tekilleştirilmiş
+`GV.audit.oku(null,0)` → **214 satır**, kimlikler **214/214 benzersiz**.
+
+Dönen satırın alanları — **bunlar dışında alan yoktur**:
+
+| Alan | Not |
+|---|---|
+| `id` | **satır kimliği** — `GV.list` `key:'id'` bunu kullanır |
+| `kod` | sistem defterinde `LOG-*` (7 satır), olay defterinde **`null`** |
+| `tarih` · `kisi` · `metin` · `eski` · `yeni` · `tone` · `icon` · `kayit` | — |
+| `modul` · `ip` | **yalnız sistem defterinden gelen 7 satırda dolu** |
+| `defter` | `'olay'` (207) ya da `'sistem'` (7) |
+
+⚠️ `id` bir dizi indeksi DEĞİLDİR (iki defter de `unshift` ile büyür, indeks
+kayar); içerikten türetilmiş kaçışlı bir anahtardır. Ekran onu **basmaz**,
+yalnız `key` olarak verir.
+
+**`kayit` sekmesi (perm:`log`).** Tek `GV.list` (`urlSync:false`,
+`key:'id'`, `pageSize:20`). Kolonlar: `tarih` · `kisi`(`GV.user`) ·
+`metin` · `kayit` · `modul` · `defter`. Filtreler **sözlükten değil,
+satırlardan türetilir** (modül sözlüğü YOKTUR) ve ekran "seçenekler mevcut
+214 satırdan türetildi" diye **yazar** (§10.1). `eski`/`yeni` değişimi
+`GV.cell.sub` ile alt satıra basılır; ikisi de boşsa satır atlanmaz —
+"değer değişimi kaydedilmemiş" yazılır.
+`modul` **7/214 satırda doludur**; kalan 207'de `—` basılır ve sebebi
+yazılır (olay defteri modül taşımaz).
+
+**`arsiv` sekmesi (rota 145).** `DB.documents` **11 kayıt** ·
+`DB.documentVersions` 16 · `DB.documentApprovals` 15.
+`DB.documents` `durum` ekseni **yoktur** → `aktif` orada **KANONDUR**
+(`GV.arsivli(d)` — §20.2 üç istisnadan biri). Kolonlar:
+`kod · ad · tur · klasor · versiyon · yukleyen`(`GV.user`) · `tarih` ·
+`sonKullanma` · `kalanGun` · `gizlilik` · `onay`.
+`kalanGun` negatifse `GV.cell.gun(n,'danger')`. **İndirme düğmesi YOKTUR** —
+`BE-S4` gereği dosya gerçek depoda değildir; `boyut` ve `format` alanları
+basılır ve indirilemezliği yazılır.
+10 belge türü **kayıtlardan türetilir** (`contractTypes` sözlüğü yoktur).
+
+**`kalite` sekmesi (rota 146).** ⚠️ **BU SEKME YENİ ÖLÇÜM ÜRETMEZ** — ortak
+katmanın kendi nöbetçilerini **okur ve basar**. Hepsi yayındaki gerçek
+yordamlardır:
+
+| Kontrol | Kaynak | Bugünkü değer |
+|---|---|---|
+| Denetim izi bütünlüğü | `GV.audit.denetle()` | 207 + 7 = 214 · kayıt kodsuz 0 · aktörsüz 0 |
+| Bayat `aktif` okuması | `DB.bayatAktif` | `sayac` **0** · 38 koleksiyon tuzaklı · 15 koleksiyonda `aktif` kanon |
+| Bayat İK alanı | `DB.ikBayat.sayac` | **0** |
+| Envanter türetimi | `GV.varlik.sonTazeleme` | `olculen` 15 · `degisen` **0** (K-30: sıfır KALMALIDIR) |
+| Düşen zimmet iddiası | `DB.assetClaimDrops` | **3** kayıt — tutanak değil, düşme kaydıdır |
+| Fatura durumu sapması | `GV.fin.sonSapma` | **0** |
+| Onay sayacı sapması | `GV.approval.sonSapma` | **0** |
+| Entegrasyon koşumu | `GV.entegrasyon.kanit()` | koşum defteri **YOK** → "ölçülemedi", "hata yok" DEĞİL |
+| Ödeme sağlayıcısı | `DB.paymentLinkDefaults.saglayici` | `TEST-MOCK` — seçilmedi |
+
+Her satır üç şeyi birden söyler: **ne ölçüldü · değer · ölçülemediyse
+neden**. Sıfır değer `0` olarak basılır (kayıt var, değer sıfır);
+ölçülemeyen `—` + sebep olarak basılır (§10.1).
+
+### 21.7 Bu dilimde beyan edilecek backend payı
+
+Ajan **yalnız kendi ekranıyla ilgili maddeleri** basar; ilgisiz madde
+beyanı gürültüye çevirir. Biçim §10.2(b).
+
+| Kod | Madde | Hangi ekran |
+|---|---|---|
+| `BE-A1` | Bildirim kanalı tercihi kullanıcı bazında saklanmaz; kaynak veride kişiye bağlı tercih kaydı yoktur | profil |
+| `BE-A2` | Profil düzenleme sunucuya yazmaz; kişisel veri değişikliği bir onay/denetim akışına bağlanmalıdır | profil |
+| `BE-K1` | Kişisel veri kapısı yalnız arayüzdedir; özlük ve maaş alanları **sunucuda** filtrelenmeli, maskelenmiş alan istemciye hiç gitmemelidir | profil · sirket |
+| `BE-A3` | Rol ve yetki matrisi salt okunurdur; yetki değişikliği sunucuda sürüm ve yürürlük tarihi ile saklanmalıdır | sirket |
+| `BE-A4` | Modül anahtarı bellekte tutulur; sayfa yenilenince şirket varsayılanına döner | sirket |
+| `BE-A5` | Onay zincirleri bir tanımdır, koşum motoru değildir; eşik ve SLA sunucuda uygulanmalıdır | sirket |
+| `BE-A6` | Hiçbir entegrasyon adaptörü uygulanmadı; katalog bir niyet kaydıdır, koşum defteri yoktur | entegrasyon |
+| `BE-A7` | Otomasyon kuralları çalışmaz; tetikleyici ve kanal alanları bir katalogdur | entegrasyon |
+| `BE-A8` | Denetim izi **değişmez (append-only)** değildir ve kalıcı değildir; §8.6 append-only defter ister | log |
+| `BE-S4` | Belge yükleme gerçek depoya yazmaz; dosya adı ve boyutu bellekte tutulur, indirilemez | log |
+| `BE-S5` | Aktivite/denetim izi kalıcı değildir; sayfa yenilenince sıfırlanır | profil · sirket · entegrasyon · log |
+| `B-08` | Gerçek sağlayıcı adaptörü — bugün TEST/mock (`DB.paymentBackendGaps`) | entegrasyon |
+
+### 21.8 Bu dilimde ortak katmana EKLENEN imzalar (ajan bunları ÇAĞIRIR, yazmaz)
+
+| İmza | Nerede | Ne yapar |
+|---|---|---|
+| `GV.shell.ayarSekmeleri(ekran)` | `shell.js` | Ayar sekmelerini yetkiden süzerek üretir (§3.3) |
+| `GV.shell.ayarSekmeHam` | `shell.js` | Süzülmemiş ham kayıt — yalnız ölçüm |
+| `GV.audit.oku()[].id` · `[].kod` | `domain.js` | Birleşik defter satırına **kararlı kimlik** — `GV.list` `key:` için |
+| `GV.entegrasyon.*` (11 yordam) | `domain.js` | K-34 — bağlantı durumu türetilir, katalogdan okunmaz |
+| `GV.ayar.modulAnahtarlari/Acik/Yetkisi/Ayarla` | `domain.js` | Modül anahtarı — kapı iki yönde de aynı |
+
+### 21.9 Yasaklar — bu dilime özel (§14'e EK)
+
+1. `assets/` altında **hiçbir dosya** değiştirilmez — `.js` · `.css` · `.js` veri.
+2. `shell.js` `SECTIONS`'a menü girdisi eklenmez; ekran menü sayımını değiştirmez.
+3. Sekme listesi ekranda **yazılmaz** — `GV.shell.ayarSekmeleri()` çağrılır.
+4. **Anahtar/parola/token `<input>`u açılmaz** (§8.7).
+5. **Sahte bağlantı durumu basılmaz**; `e.durum` doğrudan `GV.badge`'e verilmez.
+6. `DB.logs` / `DB.activities` üstüne **doğrudan yazılmaz**; tek kapı `GV.audit`.
+7. Çalışmayan bir anahtar/`switch` basılmaz — devre dışı bas ve **sebebini yaz**.
+8. `DB.company` alanları doğrudan atanmaz; tek mutasyon `GV.ayar.modulAyarla`.
+9. `e.aktif` okunmaz (tuzak) — `departments` · `contacts` · `documents` **istisnadır**,
+   orada `aktif` kanondur ve `GV.arsivli(r)` üzerinden sorulur.
+10. Aynı sayfada ikinci `GV.tabs` kümesi kurulmaz.
+
+### 21.10 Ajan raporunda ZORUNLU olanlar
+
+Ekran dosyası ve satır sayısı · basılan sekmeler ve hangi rolde kaçı
+göründüğü · çağırdığın her `GV.*` yordamı · türettiğin her sayının kaynağı ·
+**boş bıraktığın alan ve sebebi** · beyan ettiğin backend maddeleri ·
+eksik bulduğun bileşen (yazmadın, rapor ettin) · ölçemediğin şey.
+
+### 21.11 Dört ajanın brief'te BULAMADIĞI imzalar (bu turda eklendi)
+
+Bu bölüm ölçümdür, süs değildir: dilim 5'te dört ajanın **dördü de** aşağıdaki
+imzalardan en az birini brief'te bulamadı ve ortak katmanı kazarak buldu.
+Kazı pahalıdır ve keşif yasağını fiilen deler. Aşağıdakiler bundan sonra
+**brief'ten okunur.**
+
+**`GV.fmt` — biçimlendirici (`ui.js`). `GV.cell` HTML üretir, `GV.fmt` METİN.**
+
+```js
+GV.fmt.num(1234)          // '1.234'      · basamak seçeneği: GV.fmt.num(1.5, 1)
+GV.fmt.date('2026-08-03') // '03.08.2026' · boş/None → '—'
+GV.fmt.dt('2026-08-03T09:12')  // '03.08.2026 09:12'
+GV.fmt.money(1500) · GV.fmt.moneyK(1500000)   // '1,5 Mn' — KPI için
+GV.fmt.pct(72) · GV.fmt.hours(7.5) · GV.fmt.days(3)
+```
+⚠️ `GV.fmt.mny` **YOKTUR** (§4.3). Para HTML'i `GV.cell.mny`dir.
+
+**`GV.list` — brief'te yazılı olmayan üç bayrak (üçü de gerçek):**
+
+| Bayrak | Ne yapar |
+|---|---|
+| `passive:['Hurda']` | Bu durumlar arşiv toggle'ı açılmadan listede görünmez (§20.7) |
+| `urlKeep:['t']` | Sayfanın KENDİ url anahtarını `GV.list` ne okur ne siler (§20.7) |
+| `rowOpen(kayit, render)` | Satıra tıklayınca çağrılır; satır içi `a/button/input` tıklaması tetiklemez (§18.9) |
+
+**`GV.drawer(cfg)` — çekmece (`ui.js`).** Sözleşme:
+`{ title, body, actions, side, onMount, onOpen }`. **`sub` alanı YOKTUR** —
+alt başlık gövdenin ilk satırına basılır. Dönen nesnede `close()` vardır.
+Desteklenmeyen anahtar **sessizce yutulur** (`shell.js` bu tuzağa düştü).
+
+```js
+var d = GV.drawer({ title:'Demirbaş DMB-2025-004', body:'',
+  onMount:function(govde){ govde.innerHTML = html; bagla(govde); } });
+d.close();
+```
+
+**`GV.chipbar(root)` · `GV.tabs(root)` — ikisi de ÇİZİMDEN SONRA çağrılır.**
+⚠️ K-37: ikisi de artık şeridin `scrollLeft`ini ayarlar, `scrollIntoView`
+**çağırmaz**. Bir ekran çizim anında `scrollIntoView` çağırırsa aynı kusuru
+kendi eliyle geri getirir — **yasaktır** (§21.9'a ek).
+
+**`GV.guardRecord(cfg)`** (`ui.js`) — müşteri oturumuna karşı kayıt kapısı.
+`false` dönerse ekran yetkisiz durumunu **bastı**, çağıran hemen `return` eder.
+
+**Sayaçlar ve oturum — ikinci sayaç yazma:**
+```js
+GV.counters.bildirim · .onay · .bana · .teklif · .destek · .izin · .tahsilat · .satinalma
+GV.shell.visibleItems()   // [{ alan, lbl, href, yonetim }] — görünür menü girdisi
+GV.shell.ekranAcilabilir(href)  // isBuilt + yetki kapısı (K-36 sonrası menü kaydını okur)
+```
+⚠️ **Müşteri oturumunda `GV.counters` kapsamlıdır**: `bildirim` · `onay` · `izin`
+dalları `0` **sabiti** döner (`shell.js` müşteri dalı). O `0` bir ölçüm
+DEĞİLDİR — ekran onu ölçüm gibi basmaz, `—` + sebep basar (§10.1).
+
+**Dizi alanı olan kayıtlar** — `join(' · ')` ile basılır, tekil sanılmaz:
+`DB.employees[].roller · .yetkinlik · .teknoloji · .sertifika` ·
+`DB.automations[].kanal` · `DB.trainings[].katilimci` ·
+`DB.approvalFlows[].adimlar` · `DB.maintenance[].islemler`.
+
+**Sözlüğü OLMAYAN alanlar — değerleri kayıtlardan türet ve NEREDEN
+türettiğini ekranda yaz** (§10.1). Ölçüldü, bu liste tamdır:
+`vehicleStatuses` · `contractTypes` · `performanceStatuses` ·
+`trainingStatuses` · `timelogStatuses` · `timesheetStatuses` ·
+`integrationCategories` · `documentTypes` · `gizlilikSeviyeleri` ·
+**`modulAdlari`** (modül anahtarının insan-okur adı yoktur — anahtar HAM basılır).
+
+**`ui.js` ton sözlüğünde karşılığı OLMAYAN değerler** — `GV.badge` çağırma,
+düz metin bas (rozet uydurmak, sözlükte olmayanı varmış gibi göstermektir):
+`Gizli` · `İç kullanım` · `Kişisel veri` (belge gizliliği).
+
+### 21.12 Ajan kazısını önleyen kural
+
+Bir ekranın ihtiyacı olan imza **brief'te yoksa ajan açılmaz** — imza önce
+buraya yazılır. Dilim 5'te bu kural bir kez çiğnendi ve dört ajanın dördü de
+ortak katmanı kazdı. Kazının maliyeti ölçüldü: ajan başına ortalama **80
+araç çağrısı**. Brief'e bir imza yazmanın maliyeti bir satırdır.

@@ -1,147 +1,142 @@
-# Handoff — 11 Ağustos 2026 · Dilim 4 (Ekip ve Kaynaklar) **YARIDA**
+# Handoff — 12 Ağustos 2026 · Dilim 5 (AYARLAR) **BİTTİ**
 
-> `claude --continue` sonrası **ilk iş** bunu okumaktır. Hafıza context değil, diskteki defterlerdir.
+> `claude --continue` sonrası **ilk iş** bunu okumaktır. Hafıza context değil,
+> diskteki defterlerdir.
 >
-> Repo: `gaviaworks-dev/gaviaworks-crm-r2` · `main` · HEAD `769e408` + 1 commit
-> Yerel: `~/Developer/Projects/gaviaworks-crm-r2` · çalışma ağacı **temiz**
-> Eski repo `gaviaworks-crm` **dondurulmuştur**.
+> Repo: `gaviaworks-dev/gaviaworks-crm-r2` · `main`
+> Yerel: `~/Developer/Projects/gaviaworks-crm-r2` · Eski repo `gaviaworks-crm` **DONDURULMUŞTUR**.
+>
+> ⚠️ Bir önceki handoff (11.08) **altı commit geride kalmıştı** ve dört sayısı
+> yanlıştı: kuyruk 37/6 diyordu (gerçek 39/4), 33 ekran diyordu (gerçek 35),
+> rota 79 diyordu (gerçek 84), 12 eksen diyordu (gerçek 14). Bu dosya bir
+> ÖZET değil ÖLÇÜMDÜR; sayı yazmadan önce ölç.
 
 ---
 
-## 0. Neden yarıda — ve yarım kalan dosya YOK
+## 0. Bu dilimde ne bitti
 
-Dilim 4'ün üç menü girdisinden **ikisi yazıldı** (`Personel` · `Zaman ve İzin`),
-**biri kaldı** (`Varlıklar`). Bağlam bütçesi tükendiği için durduruldu; iki
-ajanın ikisi de bitirdi, hiçbiri düşmedi. **Diskte yarım dosya yok**, 12
-eksenin 12'si yeşil, çalışma ağacı temiz ve push edilmiş.
+**AYARLAR ZİNCİRİ TAMAM.** Menüde hedefi olup diskte olmayan ekran **SIFIR**.
 
----
+| Ekran | Satır | Sekme | Rota |
+|---|---:|---|---|
+| `app-ayar-profil.html` | 556 | `hesap` · `bildirim` | 134 · 135 |
+| `app-ayar-sirket.html` | 1122 | `sirket` · `departman` · `kullanici` · `rol` · `yetki` · `onay` | 136–141 |
+| `app-ayar-entegrasyon.html` | 819 | `saglayici` · `odeme` · `otomasyon` · `hata` | 142 · 143 |
+| `app-ayar-log.html` | 772 | `kayit` · `arsiv` · `kalite` | 144 · 145 · 146 |
 
-## 1. SIRADAKİ OTURUMUN İLK İŞİ — beş ekran
-
-Ajan sözleşmesi hazır: `tasks/ekran-brief.md` **§20** dilim 4'ün sözleşmesidir
-ve doğrulanmıştır (`brief-dogrula.js` yeşil). Ajana **olduğu gibi** verilir.
-
-| Sıra | Dosya | Rota | Not |
-|---|---|---|---|
-| 1 | **`app-varlik.html`** | 93 · 96 · 98 | Üç yüzey sekmesi: **Demirbaş** (`DB.assets` 15) · **Zimmet** (`DB.assignments` 7) · **Filo** (`DB.vehicles` 4). Menü girdisi VAR ve bugün kilitli. `app-satinalma.html` deseni birebir örnektir |
-| 2 | **`app-izin-detay.html`** | 88 | **Kuyruğun 2 ölü hedefini kapatır**. `app-zaman.html` › İzin yüzeyi satır kodları buraya bağlanıyor |
-| 3 | `app-personel-detay.html` | 81 · 83 · 84 · 86 | **SEKMELİ**: `ozet · performans · egitim · yasamdongusu · zaman · zimmet · aktivite`. Tembel çizim + `#hash` (§18.7 deseni) |
-| 4 | `app-personel-form.html` | 82 | — |
-| 5 | `app-izin-form.html` | 89 | — |
-
-Sonra `app-demirbas-detay/form` (94-95) ve `app-arac-detay/form` (99-100).
-
-⚠️ Yazılan ekran `shell.js` `BUILT` listesine **ve** `tasks/qa/tarayici.js`
-`EKRANLAR` listesine eklenir, sonra rota işaretlenir.
-
-**Sonra DUR.** Ayarlar alanına geçme (Beyar talimatı H).
+**39 ekran + index · BUILT 40 = diskteki 40, birebir · rota 97/148.**
 
 ---
 
-## 2. Bu oturumda kapanan
+## 1. SIRADAKİ OTURUMUN İLK İŞİ
 
-| Karar | Sonuç |
-|---|---|
-| **K-27** bakım paketi seviyesi | Kanon **kısa biçim**. 7 paket `ad`→`seviye`, 2 talep `'—'`→`null`, sözlük kısaldı. **Veri kaybı sıfır** — uzun ad `seviye + ' ' + tip` ile 7/7 yeniden kuruluyor (`GV.destek.paketAdi`) |
-| **K-28** üç ölü hedef | Üçü de `app-musteri-detay.html?id=…#finans`. Tarama: ortak katman + 33 ekranda bu üç ad yok |
-| **K-18** İK borcu | `aktif` tuzağa çevrildi · 7 çağrı yeri `GV.hr.atanabilirler()`e geçti · `ik-ekseni.js` **42 kontrol / 7 eksen** |
-| **zimmet çelişkisi** | Envanter `DB.assignments`ten türüyor; yüklemede **4 kayıt** düzeltildi |
-| **K-29** | Dilim Ekip ve Kaynaklar — ADR-R2-30 |
+Rota defterinde **KARŞILIĞI VAR olup yayında olmayan 11 satır** kaldı
+(ölçüldü, `ayar-ekseni [A9]` her koşumda doğruluyor):
 
-ADR'ler: `tasks/kararlar.md` **ADR-R2-26 … ADR-R2-30**.
+| Rota | Dosya | Not |
+|---|---|---|
+| 81 | `app-personel-detay.html` | **SEKMELİ** — `ozet · performans · egitim · yasamdongusu · zaman · zimmet · aktivite` (§20.5) |
+| 82 | `app-personel-form.html` | maaş/saatlikÜcret **XOR** sözleşmesi (`org.js`) |
+| 89 | `app-izin-form.html` | — |
+| 94 · 95 | `app-demirbas-detay/form.html` | — |
+| 99 · 100 | `app-arac-detay/form.html` | Bakım · yakıt · ceza · muayene · kaza · gider defterleri **buraya** (§20.7) |
+| 32 | `app-proje-form.html` | V2-39 — `GV.sales.firsatKazan` önerisi buraya bağlanıyor |
+| 115 | `app-satinalma-form.html` | V2-40 — "Yeni Talep" düğmesi buraya bağlanıyor |
+| 123 · 124 | `app-dokuman.html` / `-detay` | ⚠️ **V2-68 — ÖNCE BEYAR KARARI.** `app-ayar-log.html › arsiv` sekmesi aynı yüzeyi kapsadı |
 
-Yazılan ekranlar: `app-personel.html` (1034) · `app-zaman.html` (1289).
-**33 ekran + index · BUILT 34 = diskteki 34, birebir · rota 79/148.**
+⚠️ **AJAN AÇMADAN ÖNCE:** o ekranların ihtiyacı olan HER imza
+`tasks/ekran-brief.md`e yazılır. Dilim 5'te bu kural bir kez çiğnendi ve
+**dört ajanın dördü de** ortak katmanı kazdı (ajan başına ~80 araç çağrısı).
+Kazının ilacı §21.11'de: eksik bulunan imzalar oraya yazıldı.
 
 ---
 
-## 3. Ortak katmanda bu oturumda değişen HER imza
+## 2. Ortak katmanda BU OTURUMDA değişen HER imza
 
 | İmza | Değişiklik |
 |---|---|
-| `GV.hr.istihdamda(e)` · `.atanabilir(e)` · `.atanabilirler()` · `.durum(e)` · `.kayit(e)` | **YENİ** — yaşam döngüsünden türetilir |
-| `GV.hr.ozlukGorebilir(e)` · `.maasGorebilir()` · `.ozluk(e, alan)` | **YENİ** — kişisel veri kapısı, `personel` kapsamından türetilir |
-| `GV.varlik.*` (12 yordam) | **YENİ** — zimmet tek kaynak; `kabulEt` / `kabulGeriAl` aynı yetki kümesi |
-| `GV.destek.paketAdi(p)` | **YENİ** — uzun ad `seviye + tip` birleşimi, tek yerde |
-| `GV.destek.paketOf` | Seviye eşleşmesi **düz eşitlik** (K-27 sonrası biçim farkı yok) |
-| `DB.supportPackageTypes` | `['Standart','Kurumsal']` (kısaldı) |
-| `DB.supportPackages[].ad` | **KALDIRILDI** → `[].seviye` |
-| `DB.assetStatuses` | **YENİ** — `Depoda · Zimmet bekliyor · Zimmetli · Aktif · Hurda` |
-| `DB.employees[].aktif` | **TUZAK** — okuyan `undefined` alır, `DB.ikBayat.sayac` artar |
-| `DB.transitions.leave` | `kapi:'izinBakiye'` → `girisKapi` (`Onaylandı` hedefine) |
-| `DB.transitions.project` | `kapi:'projeAktif'` → `girisKapi` (`Aktif` hedefine) |
-| `DB.transitions.contract` | `kapi:'sozlesmeAktif'` → `girisKapi` (`Aktif` hedefine) |
+| `GV.shell.ayarSekmeleri(ekran)` · `.ayarSekmeHam` | **YENİ** — §3.3, sekmeler yetkiden üretilir, kural TEK yerde |
+| `GV.entegrasyon.*` (11 yordam) | **YENİ** — K-34, bağlantı durumu türetilir |
+| `GV.ayar.modulAnahtarlari/Acik/Yetkisi/Ayarla` | **YENİ** — modül anahtarı, kapı iki yönde de aynı |
+| `GV.audit.oku()[].id` · `[].kod` | **YENİ ALAN** — birleşik deftere kararlı satır kimliği (`GV.list` `key:`) |
+| `shell.js` `dosyaIzinli()` | **YENİDEN YAZILDI** — K-36, menü kaydını okur (ADR-R2-36) |
+| `ui.js` `GV.tabs` · `wireChipbar` | **DÜZELTİLDİ** — K-37, çizim anında `scrollIntoView` yok (ADR-R2-37) |
+| `shell.js` `BUILT` | 36 → **40** |
 
 ---
 
-## 4. Ortak katmanda bulunan ve kapatılan kusurlar
+## 3. Ortak katmanda bulunan ve kapatılan kusurlar
 
-1. **`GV.destek.paketOf` seviyeyi `tip` ile karşılaştırıyordu** — `'Bakım'` vs
-   `'Kurumsal'`, hiç tutmuyordu; sessizce `aday[0]`a düşüyordu.
-2. **`aktif` alanı 16/16 `true`** — hiçbir şey ayırt etmiyordu; `Offboarding`
-   durumundaki EMP-015 yedi ekranda da atama listesindeydi.
-3. **Özlük/sağlık alanları kapısızdı** — kan grubu, acil kişi kontrolsüz.
-4. **Envanter tutanak yazıldığı an güncelleniyordu**, kabul beklenmiyordu.
-5. **ÜÇ KAPI YANLIŞ TARAFTAYDI** — kaynak tarafında durdukları için ileri
-   gitmeyi engellerken **iptal/ret yolunu da** kapatıyorlardı:
-   - `leave`: bakiyesi 0 olan `IZN-2026-039` ne onaylanıyor **ne
-     reddediliyor ne iptal edilebiliyordu** — defterde asılı kalıyordu.
-   - `project.Başlatma Onayı`: başlatma koşulunu sağlamayan proje **iptal
-     edilemiyordu**.
-   - `contract.İmza`: ödeme planı dengesiz sözleşme **iptal edilemiyordu**.
-   Üçü de `girisKapi` ile ileri hedefe taşındı. Ölçüldü: iptal/ret engelleyen
-   kaynak kapı **0** kaldı.
-6. **`ik-ekseni.js` ilk yazımı kendi ölçtüğü şeyi onarıyordu** — ölçümden önce
-   `tazeleHepsi()` çağırıyordu ve enjekte edilen kusuru yakalayamadı.
-   Ölçüm artık onarımdan önce.
-
----
-
-## 5. Eksenler — ON İKİSİ DE YEŞİL
-
-`kontrol` · `brief-dogrula` · **`ik-ekseni` (42 kontrol / 7 eksen · YENİ)** ·
-`acilis-uc` (59) · `finans-kanon` (22) · `satis-akis` (42) · `odeme-akis` ·
-`bayat-alan` (11) · `not-izolasyon` · `rapor-tavan` · `ops-akis` ·
-**`tarayici` — 43 ekran × 6 genişlik = 258 ölçüm · nöbetçi 258/258 geçerli ·
-204 786 düğüm · taşma 0**
-
-`ik-ekseni` bozulmuş kopyada sınandı: **2 kusur enjekte, 2'si de yakalandı**
-(5 bulgu); temiz vaka temiz kaldı.
+1. **KAPI KUSURU (K-36 · ADR-R2-36).** `dosyaIzinli()` iki yerden bozuktu:
+   menü kaydının `roles:` kapısı doğrudan adrese **hiç uygulanmıyordu**, ve
+   `SCREEN_DENY` **dosya adıyla** aranıyordu (sözlük **ekran adıyla**
+   anahtarlı → arama hiç tutmuyordu). Değişmez `shell.js`in **kendi
+   yorumunda** yazılıydı — defter–kod ayrışması.
+   Ölçüldü (27 rol × 20 hedef, gerçek Chromium): menüde gizli olup adresle
+   açılabilen çift **69 → 0**; `ekranAcilabilir()` yanlış `true` **254 → 0**.
+2. **ERİŞİLEBİLİRLİK (K-37 · ADR-R2-37).** `GV.tabs` **ve** `wireChipbar`
+   çizim anında `scrollIntoView` çağırıyordu; tarayıcının sıralı odak
+   başlangıç noktası oraya kayıyor, ilk `Tab` skip link'i, rail'i, menüyü ve
+   üst çubuğu **atlıyordu**. `wireChipbar` yayılımı daha genişti.
+3. **VERİ ÇELİŞKİSİ (K-34 · ADR-R2-34).** `DB.integrations` dört kayıtta
+   `durum:'Bağlı'` diyordu, aynı veri dosyası "hiçbiri çalışmıyor" yazıyordu.
+   Kayıt silinmedi, **iddia ile ölçüm ayrıştırıldı**.
+4. **`kontrol.js` kapsamı dardı** — `DB.*` adlarını yalnız `assets/data/`
+   altında arıyordu; omurgada doğan `DB.bayatAktif` "tanımsız" uyarısı
+   basıyordu. Omurga tanımları eklendi, uyarı **1 → 0**.
+5. **Rota §1 özet tablosu satırlarıyla ayrışmıştı** (V2-67): `44 · 91`
+   diyordu, gerçek `42 · 93`; "bugün yayında 17" beş dilim güncellenmemişti
+   (gerçek 84). Düzeltildi, `[A9]` mandalı kondu.
 
 ---
 
-## 6. Operasyon kuyruğu — 43 satır
+## 4. Eksenler — ON ALTISI DA YEŞİL
 
-**Gerçek hedefi olan 37 · dürüstçe devre dışı 6.**
-- `app-izin-detay.html` **2** — sıradaki oturumda yazılıyor
-- ayrı tam kaydı olmayan departman talebi **4** — panelin kendisi (rota 51-52)
+`kontrol` · `brief-dogrula` · `aktif-ekseni` · `bayat-alan` · `finans-kanon` ·
+`ik-ekseni` · `kapi-yonu` · `rapor-tavan` · `acilis-uc` · `satis-akis` ·
+`odeme-akis` · `not-izolasyon` · `ops-akis` ·
+**`ayar-ekseni` (40 kontrol / 9 eksen · YENİ)** ·
+**`tarayici` — 66 ekran × 6 genişlik = 396 ölçüm · geçerli 396/396 ·
+316 158 düğüm · taşma 0**
 
-`app-zaman-onay.html` bu turda kapandı → `app-zaman.html?t=onay`.
-
----
-
-## 7. BEYAR'DAN BEKLENEN KARARLAR
-
-1. **V2-41 — üç demirbaşta sahipsiz zimmet iddiası.** `DMB-2025-007`
-   (EMP-009) · `DMB-2026-013` (EMP-011) · `DMB-2026-014` (EMP-012) envanterde
-   zimmetli yazıyordu ama **hiç tutanak kaydı yok**. Tek kaynak kararı gereği
-   envanter temizlendi; atılan iddia `GV.varlik.sonTazeleme.degisen` içinde
-   duruyor. **Üç tutanak mı eksik, envanter mi yanlıştı?**
-2. **V2-42 — `Offboarding → Aktif` kenarı yok.** Yanlışlıkla çıkış sürecine
-   alınan personel geri döndürülemez. Kenar **eklenmedi**.
-3. **V2-45 — dört kaynak taraflı kapı daha.** `project.Test/Kabul` ·
-   `project.Kapanış` · `ticket.Müşteri Onayı` · `delivery.İç Kontrol`.
-   Dördü de yalnız **geri dönüşü** engelliyor (iptal/ret engellenmiyor), o
-   yüzden kusur ilan edilmedi. "İleri gidemiyorsan geri de gidemezsin" bir iş
-   kuralı tercihi mi, yoksa bunlar da mı taşınsın?
+`ayar-ekseni` bozulmuş kopyada sınandı: **A8'de 2 kusur enjekte, 2'si de
+yakalandı**; temiz vaka temiz kaldı. `tarayici` odak kontrolü de iki yönlü
+sınandı (K-37: 3/3 yakalandı, temiz kopyada 0/3).
 
 ---
 
-## 8. İlk üç komut
+## 5. Kuyruk — 43 satır, DEĞİŞMEDİ
+
+**Gerçek hedefi olan 39 · dürüstçe devre dışı 4 · kırık 0.**
+Devre dışı 4'ün hepsi departman talebi: tam kaydı panelin kendisidir
+(rota 51-52 GÖMÜLÜYOR). Bu dilim kuyruğa dokunmadı.
+
+---
+
+## 6. BEYAR'DAN BEKLENEN KARARLAR
+
+Önceki üç karar (**V2-41 · V2-42 · V2-45**) hâlâ açık. Bu dilimde eklenenler:
+
+1. **V2-68 — `app-dokuman.html` nereye?** ADR-R2-06 merkezî arşivi Ayarlar'ın
+   yönetim bloğunda **ayrı girdi** yapıyordu (yönetici 20→21 girdi). Bu turda
+   `app-ayar-log.html › arsiv` sekmesi **aynı yüzeyi** kapsadı. Rota 123-124
+   bilerek ✅ işaretlenmedi. **Beşinci ayar girdisi mi açılsın, yoksa 123-125
+   bu sekmeye mi gömülsün?**
+2. **V2-61 — onay zincirinde iki tanımsız rol.** `AKS-SAT-1` adım 2
+   `rol:'finans'`, `AKS-IZN-1` adım 1 `rol:'yonetici'`. İkisi de 27'lik rol
+   sözlüğünde **yok**. Rol mü, rol SINIFI mı?
+3. **V2-64 — kendi maaşını görme.** `frontend` kendi profilinde `maas`
+   alanını göremiyor (`permMatrix.maas` kapısı). Kanonun bilinen sonucu.
+   "Kendi maaşı" ayrı bir kapı mı olmalı?
+4. **V2-62 · V2-63 · V2-65** — ortak katman boşlukları (KPI'da "ölçülemedi"
+   kipi yok · `GV.hr.maas(e)` yok · `wireChipbar` `GV.on` kullanmıyor).
+
+---
+
+## 7. İlk üç komut
 
 ```bash
 cd ~/Developer/Projects/gaviaworks-crm-r2 && git pull
-node tasks/qa/kontrol.js && node tasks/qa/ik-ekseni.js && node tasks/qa/brief-dogrula.js
-cat tasks/ekran-brief.md   # §20 dilim 4 sözleşmesi — ajana OLDUĞU GİBİ verilir
+node tasks/qa/kontrol.js && node tasks/qa/ayar-ekseni.js && node tasks/qa/brief-dogrula.js
+sed -n '/## 21\./,$p' tasks/ekran-brief.md   # dilim 5 sözleşmesi + §21.11 imza boşlukları
 ```

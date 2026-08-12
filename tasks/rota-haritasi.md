@@ -30,16 +30,33 @@
 
 ## 1. Sayım özeti
 
-| Karar | Ekran | Pay | Önceki |
+| Karar | Ekran | Pay | Önceki (12 Ağu ölçümü) |
 |---|---:|---:|---:|
-| KARŞILIĞI VAR | **44** | %29,7 | 44 |
-| GÖMÜLÜYOR | **91** | %61,5 | 84 |
-| YÖNLENDİRİLİYOR | **12** | %8,1 | 11 |
-| KAPSAM DIŞI | **1** | %0,7 | 0 |
-| KARAR BEKLİYOR | **0** | %0 | 9 |
+| KARŞILIĞI VAR | **43** | %29,1 | 42 |
+| GÖMÜLÜYOR | **92** | %62,2 | 93 |
+| YÖNLENDİRİLİYOR | **12** | %8,1 | 12 |
+| KAPSAM DIŞI | **1** | %0,7 | 1 |
+| KARAR BEKLİYOR | **0** | %0 | 0 |
 | **Toplam** | **148** | %100 | 148 |
-| YENİ yazılacak | **8** (2'si karar bekliyordu, artık kesin) | — | 6+2 |
-| **Bugün R2'de yayında** | **17** | | 13 |
+| YENİ yazılacak | **8** — altısı (Y1–Y6) **yayında**, ikisi kaldı | — | 8 |
+| **Bugün R2'de yayında** | **97** | %65,5 | 84 |
+| **Kalan** | **51** | %34,5 | 64 |
+
+> ⚠️ **12 Ağustos — SAYIM DÜZELTİLDİ. Bu tablo kendi satırlarıyla
+> ÇELİŞİYORDU.** Önceki sürüm `KARŞILIĞI VAR 44 · GÖMÜLÜYOR 91` diyordu;
+> defterin §2–§12 arasındaki karar satırları sayıldığında gerçek dağılım
+> `42 · 93`'tü. "Bugün yayında **17**" satırı ise beş dilim boyunca hiç
+> güncellenmemişti — gerçek sayı **84**'tü. Yani özet tablo, altındaki
+> defterden bağımsız yaşamaya başlamıştı (ADR-R2-36'daki defter–kod
+> ayrışmasının defter–defter hâli).
+>
+> **Ham satır 153, gerçek ekran 148.** Fark, bu dosyanın SONUNDAKİ özet
+> tablosunun beş satırı ikinci kez listelemesidir: **6 · 66 · 79 · 123 · 133**.
+> O beş satır bir karar tekrarı değil, aynı kararın ikinci kez yazılmış
+> hâlidir; sayım artık **benzersiz numara** üzerinden yapılır.
+>
+> Sayım artık elle tutulmuyor — `tasks/qa/ayar-ekseni.js` [A9] her koşumda
+> defteri okuyup bu tabloyla karşılaştırıyor; ayrışırlarsa kırmızı yanıyor.
 
 > **Bu tablo ölçüldü, yazılmadı.** Defterin §2–§12 arasındaki numaralı karar
 > satırları taranarak sayıldı: 148 satır, eksik numara yok, tekrar yok.
@@ -408,19 +425,19 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | R1 ekranı | Karar | Hedef |
 |---|---|---|---|
-| 134 | `app-ayar-profil.html` | **KARŞILIĞI VAR** | "Profil" girdisi — tüm rollere açık |
-| 135 | `app-ayar-bildirim.html` | **GÖMÜLÜYOR** | Profil › Bildirim Tercihleri (kişisel ayar) |
-| 136 | `app-ayar-sirket.html` | **GÖMÜLÜYOR** | "Şirket ve Erişim" › Şirket |
-| 137 | `app-ayar-departman.html` | **GÖMÜLÜYOR** | "Şirket ve Erişim" › Departmanlar |
-| 138 | `app-ayar-kullanici.html` | **GÖMÜLÜYOR** | "Şirket ve Erişim" › Kullanıcılar |
-| 139 | `app-ayar-rol.html` | **GÖMÜLÜYOR** | "Şirket ve Erişim" › Roller |
-| 140 | `app-ayar-yetki.html` | **GÖMÜLÜYOR** | "Şirket ve Erişim" › Yetki Matrisi |
-| 141 | `app-ayar-onay.html` | **GÖMÜLÜYOR** | "Şirket ve Erişim" › Onay Akışları |
-| 142 | `app-ayar-entegrasyon.html` | **KARŞILIĞI VAR** | "Entegrasyonlar" girdisi. **Ödeme sağlayıcısı ayarı buraya gelir** (§8.7) |
-| 143 | `app-ayar-otomasyon.html` | **GÖMÜLÜYOR** | Entegrasyonlar › Otomasyonlar |
-| 144 | `app-ayar-log.html` | **KARŞILIĞI VAR** | "Sistem Kayıtları" girdisi. §8.6 ödeme denetim izi buraya akar |
-| 145 | `app-ayar-arsiv.html` | **GÖMÜLÜYOR** | Sistem Kayıtları › Arşiv |
-| 146 | `app-veri-kalitesi.html` | **GÖMÜLÜYOR** | Sistem Kayıtları › Veri Kalitesi |
+| 134 | `app-ayar-profil.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI** (556 satır). "Profil" girdisi — tüm rollere açık, `yonetim` DEĞİL, 17'nin içinde. Ayar kabuğu `GV.shell.ayarSekmeleri('profil')`ten 2 sekme üretir. İKİ OTURUM BİÇİMİ: personel 7 kart · müşteri 4 kart (özlük ve ücret blokları müşteri oturumunda HİÇ basılmaz, `GV.hr.*` çağrılmaz). Özlük kapısı `GV.hr.ozluk(e,alan)`, maaş kapısı `GV.hr.maasGorebilir()` — `frontend`/`stajyer`de kendi kaydında bile 1 maske (`••••••`), sebebi maskenin altında yazılı |
+| 135 | `app-ayar-bildirim.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — Profil › `bildirim` sekmesi. DÜRÜST BOŞLUK: kişiye bağlı tercih kaydı kaynak veride YOK, 7 kanal (`DB.notificationChannels`) listelenir ve 7'sinin de anahtarı DEVRE DIŞI + sebebi yazılı (çalışmayan anahtar basılmaz). Ölçülebilir gerçek yüzey `DB.automations` 22 kural: `Sistem içi` 20 · `E-posta` 8 · kalan 5 kanalı kullanan kural **0** — ekran bunu yazıyor (`BE-A1`) |
+| 136 | `app-ayar-sirket.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI** (1.122 satır). Menü girdisinin kendisi ("Şirket ve Erişim"), yönetim bloğunda, `roles: sahip · genelmudur · sistem`. `sirket` sekmesi `DB.company` 16 alanı basar; iç maliyet sabitleri (`isverenMaliyetKatsayisi` 1.225 · `aylikCalismaSaati` 176) `perm:'finans'` kapısıyla, yetkisizde `••••••`. **MODÜL ANAHTARI — bu dilimin tek gerçek mutasyonu**: `GV.ayar.modulAyarla`, 8 anahtar; kapatınca menü 20→16, açınca 16→20 (gerçek tarayıcıda ölçüldü), denetim izi her değişimde **tek satır** artıyor (ekran ikinci kez `GV.audit.yaz` çağırmıyor). ⚠️ KAPI İKİ YÖNDE AYNI: aynı yetki kümesi, aynı gerekçe koşulu, boş gerekçe iki yönde de reddediliyor |
+| 137 | `app-ayar-departman.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — `departman` sekmesi. `DB.departments` 21 kayıt (pasif 3), `DB.departmentGroups` 8 grup. `durum` ekseni YOK → `aktif` orada KANONDUR ve **yalnız `GV.arsivli(d)` üzerinden** sorulur (ekranda çıplak `.aktif` okuması **0**). `ustDepartman` 2 kayıtta boş → `—` + sebep. `personel` alanı 21/21 kayıtta personel defteriyle doğrulandı |
+| 138 | `app-ayar-kullanici.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — `kullanici` sekmesi (`perm:'personel'` — 15 rolde DÜŞER). `DB.employees` 16 · `GV.hr.durum`: Aktif 15 · Offboarding 1. `aktif` alanı TUZAK, okunmuyor. **MAAŞ KOLONU YOK** — kullanıcı yönetimi bordro yüzeyi değildir, sebebi ekranda yazılı. `eposta` özlük sınıfında → satır bazlı `mask:` ile maskeli, maskeli hücre çıktıya da girmiyor |
+| 139 | `app-ayar-rol.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — `rol` sekmesi. `DB.roles` 27 = `DB.permMatrix` 27, **yetim 0** (karşılaştırma ekranda koşuyor, sabit yazılmadı). Rolün kaç kişide etkin olduğu `DB.employees` `rol`/`roller` alanından türetilir. Rol adları `DB.roleName(key)` ile çözülür — uydurma rol adı yok |
+| 140 | `app-ayar-yetki.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — `yetki` sekmesi (`roles:YONETIM` — yalnız 3 rolde görünür, 24 rolde DÜŞER). 27 rol × **11 anahtar**; anahtar listesi elle yazılmadı, matrisin ilk satırından türetildi. Boolean hücre `GV.badge`, kapsam hücresi düz metin, `'yok'` `GV.cell.faint` ile soluk — **panelde tek bir `0` yok** (ölçüldü) |
+| 141 | `app-ayar-onay.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — `onay` sekmesi. `DB.approvalFlows` 3 zincir / 6 adım / 3 eşikli + `DB.approvalTypes` 8 tip. `GV.chain` KULLANILMADI (o bir KOŞUM bileşenidir, buradaki bir TANIM) → `GV.dl`. `esik:null` "her zaman çalışır" diye yazıldı, `0` yazılmadı. `entity:null` taşıyan 2 tip "kaynak kaydın durum makinesi yok" beyanıyla aynen basıldı. ⚠️ Zincir adımlarının 2'sinde rol anahtarı (`finans` · `yonetici`) 27'lik sözlükte YOK → adımın kendi `ad` alanı basıldı + uyarı, **rol adı uydurulmadı** (yeni borç V2-61) |
+| 142 | `app-ayar-entegrasyon.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI** (819 satır). Yönetim bloğunda, `roles: sahip · genelmudur · sistem · devops`. Üç sekme buraya düşer: `saglayici` · `odeme` (§8.7, `perm:'finans'` — **`devops`ta DÜŞER**, 4→3 sekme) · `hata`. **K-34 uygulandı:** katalog iddiası ile ölçülen durum İKİ AYRI KOLON. Ölçülen durum 10/10 `Bağlanmadı` (kanıtı yanında: koşum defteri `—`, hata kuyruğu 0, webhook 0); katalog iddiası **rozet OLMADAN** düz metin, çelişen 4 kayıtta (`ENT-001·003·007·009`) "ölçümle çelişiyor" yazılı. Ölçüldü: yeşil rozet **0**, `<input>/<select>/<textarea>` **0**, anahtar/sır alanı **0**, Bağlan/kes düğmesi **0**. `hata` sekmesi "hata yok" DEMİYOR — "koşum kaydı yok, kontrol yapılamadı" (§10.1). `odeme`: kart formu/anahtar yok, 5 adaptör yordamı (§8.7) ve `DB.paymentBackendGaps` 10 maddesi beyan edildi |
+| 143 | `app-ayar-otomasyon.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — Entegrasyonlar › `otomasyon` sekmesi. `DB.automations` 22 kural, `GV.list` (`urlSync:false`). **Aç/kapa anahtarı YOK** — otomasyon motoru yok, elde katalog var ve ekran bunu yazıyor (`BE-A7`). Aynı K-34 disiplini burada da uygulandı: `durum:'Aktif'` yeşil rozet DEĞİL, "kaydın iddiası · koşum ölçümü değil" notuyla düz metin. Ölçüldü: 22 kuralın kullandığı kanal yalnız `Sistem içi` 20 · `E-posta` 8; kalan **5 kanalı kullanan kural 0** ve bu yazılı |
+| 144 | `app-ayar-log.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI** (772 satır). Yönetim bloğunda, `roles: sahip · genelmudur · sistem · operasyon · devops`. **İKİNCİ DEFTER ÜRETİLMEDİ**: tek yüzey `GV.audit.oku(null,0)` → iki defter (`DB.activities` 207 + `DB.logs` 7) birleşir ve tekilleşir → **214 satır**, kimlik 214/214 benzersiz (`key:'id'`). `DB.logs`/`DB.activities` üstüne yazma **0** (`ayar-ekseni [A3]` ölçer). Filtre seçenekleri sözlükten değil 214 satırdan türetilir (modül sözlüğü yok) ve bu ekranda yazılı: `modul` yalnız **7/214** satırda dolu, kalanda `—` + sebep |
+| 145 | `app-ayar-arsiv.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — Sistem Kayıtları › `arsiv` sekmesi. `DB.documents` 11 · `DB.documentVersions` 16 · `DB.documentApprovals` 15. `durum` ekseni YOK → `aktif` orada KANONDUR ve `GV.arsivli(d)` ile sorulur (K-33 üç istisnadan biri; beyansız `.aktif` okuması 0). İndirme düğmesi YOK (`BE-S4` — dosya gerçek depoda değil). `DOK-2026-206` sürüm zinciri 1/18 eksik: **17 satır uydurulmadı**, eksiklik yazıldı. ⚠️ ADR-R2-06 ile ilişkisi Beyar kararı bekliyor (aşağıda 123-125) |
+| 146 | `app-veri-kalitesi.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — Sistem Kayıtları › `kalite` sekmesi. **YENİ ÖLÇÜM ÜRETMEZ**; ortak katmanın dokuz nöbetçisini okur ve basar: `GV.audit.denetle()` 214/0/0 · `DB.bayatAktif.sayac` 0 (38 tuzaklı · 15 kanon) · `DB.ikBayat.sayac` 0 · `GV.varlik.sonTazeleme` 15 ölçüldü/**0** değişti (K-30 mandalı) · `DB.assetClaimDrops` 3 · `GV.fin.sonSapma` 0 · `GV.approval.sonSapma` 0 · `GV.entegrasyon.kanit()` koşum defteri **yok** → `—` "ölçülemedi", **"hata yok" DEĞİL** · `TEST-MOCK`. Her satır ne ölçüldüğünü, değeri ve ölçülemediyse nedenini birden söyler |
 
 ---
 
