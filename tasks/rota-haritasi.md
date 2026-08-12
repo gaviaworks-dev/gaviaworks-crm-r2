@@ -30,17 +30,26 @@
 
 ## 1. Sayım özeti
 
-| Karar | Ekran | Pay | Önceki (12 Ağu ölçümü) |
+| Karar | Ekran | Pay | Dilim 5 kapanışı |
 |---|---:|---:|---:|
-| KARŞILIĞI VAR | **43** | %29,1 | 42 |
-| GÖMÜLÜYOR | **92** | %62,2 | 93 |
+| KARŞILIĞI VAR | **41** | %27,7 | 43 |
+| GÖMÜLÜYOR | **94** | %63,5 | 92 |
 | YÖNLENDİRİLİYOR | **12** | %8,1 | 12 |
 | KAPSAM DIŞI | **1** | %0,7 | 1 |
-| KARAR BEKLİYOR | **0** | %0 | 0 |
+| KARAR BEKLİYOR | **0** | %0,0 | 0 |
 | **Toplam** | **148** | %100 | 148 |
 | YENİ yazılacak | **8** — altısı (Y1–Y6) **yayında**, ikisi kaldı | — | 8 |
-| **Bugün R2'de yayında** | **97** | %65,5 | 84 |
-| **Kalan** | **51** | %34,5 | 64 |
+| **Bugün R2'de yayında** | **99** | %66,9 | 97 |
+| **Kalan** | **49** | %33,1 | 51 |
+
+> **12 Ağustos · Dilim 6 — iki satır karar DEĞİŞTİRDİ, dokuzu yazılıyor.**
+> `KARŞILIĞI VAR` 43 → 41: rota **123** ve **124** (`app-dokuman.html` ve
+> `-detay`) V2-68 kararıyla **GÖMÜLÜYOR**'a çevrildi ve hedefleri
+> `app-ayar-log.html › arsiv` sekmesi oldu (ADR-R2-06 revizyonu). İki yüzey
+> aynı defteri göstermez (K-21) ve beşinci bir ayar girdisi menüyü 17'den
+> çıkarırdı. Kalan dokuz `KARŞILIĞI VAR` satırı bu dilimde yazılıyor; bundan
+> sonra **kendi ekranını almış olup yazılmamış satır kalmıyor** ve `Kalan`
+> yalnız GÖMÜLÜYOR satırlarından oluşacak.
 
 > ⚠️ **12 Ağustos — SAYIM DÜZELTİLDİ. Bu tablo kendi satırlarıyla
 > ÇELİŞİYORDU.** Önceki sürüm `KARŞILIĞI VAR 44 · GÖMÜLÜYOR 91` diyordu;
@@ -378,8 +387,8 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
-| 123 | `app-dokuman.html` | **KARŞILIĞI VAR** ✔ | **ADR-R2-06:** merkezî arşiv, Ayarlar'ın **yönetim bloğunda** ayrı girdi olur. Arşiv bir yönetim yüzeyidir, günlük iş değil. Yönetim bloğu standart kullanıcıya görünmediği için **17 girdi değişmez**; yönetici 20 → 21 görür ve §3.1 buna izin veriyor. |
-| 124 | `app-dokuman-detay.html` | **KARŞILIĞI VAR** | Arşiv kayıt görünümü |
+| 123 | `app-dokuman.html` | **GÖMÜLÜYOR** ✔ ✅ | **ADR-R2-06 REVİZE (V2-68).** Ayrı girdi kararı GERİ ALINDI: `app-ayar-log.html › arsiv` sekmesi (rota 145) aynı yüzeyi kapsadı — belge arama, sürüm defteri, süresi dolanlar ve onay zinciri orada. İki yüzey aynı defteri göstermez (K-21) ve beşinci ayar girdisi menüyü 17'den çıkarırdı. **Çalışıyor.** |
+| 124 | `app-dokuman-detay.html` | **GÖMÜLÜYOR** ✔ ✅ | **ADR-R2-06 REVİZE (V2-68).** Arşiv kayıt görünümü → `app-ayar-log.html › arsiv` sekmesinin sürüm ve onay defteri. **Çalışıyor.** |
 | 125 | `app-dokuman-sure.html` | **GÖMÜLÜYOR** | `app-dokuman.html` › Süresi Dolanlar kayıtlı görünümü |
 | — | *(günlük belge ekleme)* | **GÖMÜLÜYOR** ✔ | **ADR-R2-06:** ilgili kaydın Belgeler sekmesine düşer — müşteri, proje ve destek detaylarında |
 
@@ -499,7 +508,7 @@ Her ikisi de rota haritasında zaten GÖMÜLÜYOR işaretliydi; değişen şey
 | 24–26 | `app-referans*.html` | GÖMÜLÜYOR — müşteri detayında alan | ADR-R2-04 |
 | 27–29 | `app-komisyon*.html` | GÖMÜLÜYOR — Finans raporunda satır | ADR-R2-04 |
 | 66 | `app-sohbet.html` | **KAPSAM DIŞI** | ADR-R2-03 |
-| 123 | `app-dokuman.html` | KARŞILIĞI VAR — yönetim bloğunda | ADR-R2-06 |
+| 123 | `app-dokuman.html` | GÖMÜLÜYOR — `app-ayar-log.html › arsiv` | ADR-R2-06 **rev.** (V2-68) |
 | 133 | `app-rapor-filo.html` | YÖNLENDİRİLİYOR — Ayrıntılı analiz | ADR-R2-05 |
 | Y7/Y8 | `app-firsat-*.html` | YENİ — kesin | ADR-R2-08 |
 
