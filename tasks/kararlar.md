@@ -1067,3 +1067,64 @@ görünmez ama adresle açılmaları **doğrudur** — bir form, girdisi olan li
 çocuğudur. Eksen **135 sahte çift** bildirdi. Hedefler artık
 `GV.shell.sections` kaydından okunur. Ölçüm aracı, ölçtüğü şeyin şemasını
 tahmin etmez (L-26).
+
+---
+
+## ADR-R2-37 · Çizim anında `scrollIntoView` odak sırasını bozar — iki bileşende birden
+
+**Karar (K-37).** Bir bileşen **çizim anında** (kullanıcı eylemi olmadan)
+`element.scrollIntoView()` çağırmaz. Kayan bir şeritte etkin öğeyi görünür
+kılmak gerekiyorsa **şeridin kendi `scrollLeft`i** ayarlanır.
+
+**Ölçülen kusur.** `scrollIntoView()` tarayıcının **sıralı odak başlangıç
+noktasını** (sequential focus navigation starting point) hedef düğüme taşıyor.
+Sonuç: sayfa açıldıktan sonra kullanıcının ilk `Tab` tuşu belgenin başına
+değil **sayfanın ortasına** düşüyor. Erişilemez hâle gelenler: **"İçeriğe atla"
+skip link'i · rail · bölüm menüsü · üst çubuğun yedi küresel aracı** (arama,
+Yeni, takvim, onay, bildirim, Hızlı Not, profil). Şartname §12 bunu kabul
+kriteri sayıyor: *"Klavye kullanımı, odak sırası, semantik etiketler … WCAG
+2.2 AA."*
+
+**İki bileşende birden vardı ve ikincisi daha genişti:**
+
+| Bileşen | Satır | Yayılım |
+|---|---|---|
+| `GV.tabs` — sekme şeridi | `ui.js` `activate()` | `GV.tabs` kullanan **8 ekran** |
+| `wireChipbar` — çip şeridi | `ui.js` `wireChipbar()` | `GV.list` `cfg.tabs` üreten **her ekran** |
+
+**Deney — sebep tahmin edilmedi, ölçüldü.** `ui.js` akışta değiştirilerek
+(çalışma ağacına dokunmadan) `scrollIntoView` sökülmüş bir kopya sunuldu ve
+aynı sayfalar iki kipte ölçüldü:
+
+| Ekran | `scrollIntoView` VAR | SÖKÜLÜ |
+|---|---|---|
+| `app-ayar-profil.html` | zincir 1, ilk `button.gv-tab` | zincir 8, ilk **`a.gv-skip`** |
+| `app-ayar-sirket.html#onay` | zincir **0** | zincir 8, ilk **`a.gv-skip`** |
+| `app-musteri-detay.html` | zincir 8, ilk `button.gv-tab` | zincir 8, ilk **`a.gv-skip`** |
+
+`app-musteri-detay.html` satırı önemlidir: **kusur oradaydı ama eksen yeşil
+yanıyordu.** Sekme şeridinden sonra bol odaklanabilir düğüm olduğu için zincir
+yine 5'i geçiyordu. Yani kusur ölçülmüyor değildi — **eşiğin altında
+saklanıyordu.**
+
+### Eksen neden yakalamadı — ve ne değişti
+
+`tasks/qa/tarayici.js` odak ölçüyordu ama **yanlış soruyu** soruyordu:
+*"Tab ilerledi mi?"* (zincir ≥5). Doğru soru ikisi birden:
+*"Tab ilerledi mi **ve baştan mı başladı?**"*
+
+Eklenen kontrol: ilk odak hedefi belgenin **ilk odaklanabilir düğümü**
+(`a.gv-skip`) olmak zorunda. Bir eşik, altında saklanabilen bir kusur sınıfı
+üretir; değişmez eşikle değil **eşitlikle** ölçülür.
+
+**Bozulmuş kopyada iki yönlü sınandı:**
+
+| Vaka | Kod | İlk odak | Eksen |
+|---|---|---|---|
+| olumlu | temiz | `gv-skip` · `gv-skip` · `gv-skip` | **bulgu 0/3** |
+| olumsuz | `scrollIntoView` geri kondu | `gv-tab` · `gv-tab` · **null** | **bulgu 3/3** |
+
+**Kullanıcı eylemiyle çağrılan `scrollIntoView` KALDI** (`ui.js` form hata
+özeti ve rapor paneli): orada odak başlangıç noktasını zaten kullanıcının
+kendi tıklaması taşımıştır, kusur o dalda doğmaz. Yasak "bu API kullanılmaz"
+değil, **"çizim anında kullanılmaz"**dır.

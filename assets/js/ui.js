@@ -2043,8 +2043,24 @@
       bar.addEventListener('scroll', upd);
       window.addEventListener('resize', upd);
       setTimeout(upd, 60);
+      /* ⚠️ `scrollIntoView` KULLANILMAZ — K-37, `GV.tabs`taki kusurun ikizi.
+         Ölçüldü: çizim anında etkin çipe `scrollIntoView` çağırmak,
+         tarayıcının SIRALI ODAK BAŞLANGIÇ NOKTASINI o çipe taşıyor. Sayfa
+         açıldıktan sonra ilk `Tab` belgenin başına değil çip şeridine
+         düşüyor; "İçeriğe atla" bağlantısı, rail, bölüm menüsü ve üst çubuk
+         klavyeyle ERİŞİLEMEZ oluyor (şartname §12 · WCAG 2.2 odak sırası).
+
+         Bu kusur `GV.tabs`taki kardeşinden DAHA GENİŞ yayılımlıydı: çip
+         şeridini `GV.list` `cfg.tabs` üreten HER ekran taşıyor.
+
+         Amaç (kayan şeritte etkin çipi görünür kılmak) korunur: şeridin
+         KENDİ `scrollLeft`i ayarlanır — belge kaydırmasına dokunmaz ve odak
+         başlangıç noktasını taşımaz. */
       var active = bar.querySelector('[aria-selected="true"]');
-      if(active) active.scrollIntoView({ inline:'nearest', block:'nearest' });
+      if(active && bar.scrollWidth > bar.clientWidth + 1){
+        var hedefSol = active.offsetLeft - (bar.clientWidth - active.offsetWidth) / 2;
+        bar.scrollLeft = Math.max(0, Math.min(hedefSol, bar.scrollWidth - bar.clientWidth));
+      }
     });
   }
   GV.chipbar = wireChipbar;
@@ -2076,7 +2092,25 @@
       panels.forEach(function(p){ p.hidden = p.dataset.panel !== key; });
       if(push) history.replaceState({}, '', location.pathname + location.search + '#' + key);
       var b = btns.filter(function(x){ return x.dataset.tab === key; })[0];
-      if(b) b.scrollIntoView({ inline:'nearest', block:'nearest' });
+      /* ⚠️ `scrollIntoView` BURADA KULLANILMAZ — ERİŞİLEBİLİRLİK KUSURU (K-37).
+         Ölçüldü (bozulmuş kopyada iki yönlü sınandı): `b.scrollIntoView()`
+         tarayıcının SIRALI ODAK BAŞLANGIÇ NOKTASINI etkin sekme düğmesine
+         taşıyor. Sonuç: sayfa açıldıktan sonra ilk `Tab` belgenin başına
+         değil sekme şeridine düşüyor — "İçeriğe atla" bağlantısı, rail,
+         bölüm menüsü ve üst çubuk klavyeyle ERİŞİLEMEZ hâle geliyor.
+         Şartname §12 "klavye kullanımı, odak sırası" bunu kabul kriteri
+         sayıyor. Sekme şeridinden sonra az sayıda odaklanabilir düğüm olan
+         ekranlarda zincir tamamen kopuyordu (ölçüm: 8 ekranın 6'sında).
+
+         Amaç (yatay kayan şeritte etkin sekmeyi görünür kılmak) KORUNUR:
+         şeridin KENDİ `scrollLeft`i ayarlanır. Bu belge kaydırmasına
+         dokunmaz ve odak başlangıç noktasını taşımaz.
+         Klavye ok gezinmesinde `btns[n].focus()` zaten çağrılıyor ve odak
+         düğümü kendisi görünür kılıyor — orada bu satıra gerek yok. */
+      if(b && el.scrollWidth > el.clientWidth + 1){
+        var hedefSol = b.offsetLeft - (el.clientWidth - b.offsetWidth) / 2;
+        el.scrollLeft = Math.max(0, Math.min(hedefSol, el.scrollWidth - el.clientWidth));
+      }
       document.dispatchEvent(new CustomEvent('gv:tab', { detail:{ key:key } }));
     }
 
