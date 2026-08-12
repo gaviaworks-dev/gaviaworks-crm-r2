@@ -2773,6 +2773,44 @@ buraya yazılır. Dilim 5'te bu kural bir kez çiğnendi ve dört ajanın dörd�
 ortak katmanı kazdı. Kazının maliyeti ölçüldü: ajan başına ortalama **80
 araç çağrısı**. Brief'e bir imza yazmanın maliyeti bir satırdır.
 
+### 21.13 YANLIŞ BİR SATIR, EKSİK BİR SATIRDAN PAHALIDIR
+
+§21.12 eksik imzanın maliyetini ölçüyor. Dilim 6 ikinci bir maliyeti ölçtü ve
+o daha yüksek çıktı: **eksik olan aranır, yanlış olana GÜVENİLİR.**
+
+Sekiz ajan bu turda brief'in **on satırını** yanlış, bayat ya da eksik
+buldu — hepsi §21.12'nin kapsamından geçmişti (ad vardı, yordam vardı,
+koleksiyon vardı) çünkü yanlış olan **iddiaydı**:
+
+| Satır | Yanlışlık | Bedeli |
+|---|---|---|
+| `GV.fmt.days` §21.11 | `hours(7.5)` yanına konup süre biçimlendiricisi gibi gösterilmişti; gerçek imza `days(iso, today)` ve çıplak sayı geçiriliyordu | ekrana **`NaN`** basıldı |
+| `reasonCodes[].tur === 'cikis'` §20.2 **ve** §22.14 | alan bir DİZİ; `===` **0 kod** bulur | `Ayrıldı` geçişi boş neden listesiyle **hiç tamamlanamazdı** |
+| `DB.leaves[].cakisma` §22.9 | "personel çakışması" yazılıydı; `hr.js:10` **proje takvimi** diyor | brief'e uyan ekran iki yayındaki ekranı **yalan söyletirdi** |
+| `maasGorebilir(rec \|\| {})` §22.8 | boş nesne kayıt sayılıyordu | "Bu kayıt sizin değil" — **var olmayan kaydın sahipliği** hakkında hüküm |
+| §20.0 veri-dosyası eşlemesi | 11 koleksiyonun **5'i** `hr.js`te; demirbaş/filonun tamamı `ops.js`te | "kullanmadığın dosyayı yükleme" kuralını uygulayan **koleksiyonu düşürür** |
+| `DB.vehicles` "28 alan" §20.4 | **34** — kiralama bloğu eksikti | `showIf` ekseninin yarısı hiç yazılmazdı |
+| `sertifika` "4/4 `false`" §22.14 | **2/4 `true`** | cümleyi kopyalayan ekran yanlış konuşurdu |
+| V2-46 "4 durum ton sözlüğünde yok" §22.14 | borç **kapanmış**, brief canlı gösteriyordu | ekran gereksiz bir **telafiye** yönlendirilirdi |
+| §22.10 `durum` çelişkisi | aynı alan hem form alanı hem yasak | ajan **karar vermek** zorunda kaldı |
+| `DB.assetStatuses` §20.0 | hiçbir dosyaya yazılmamıştı | iki ajan **aradı** |
+
+**Üç kural doğuyor:**
+
+1. **Brief bir alanın TİPİNİ ya da OKUNMA BİÇİMİNİ yazıyorsa, o iddia
+   koşulur.** `tasks/qa/brief-dogrula.js` `[B5]` bunu yapar (4 alt kontrol).
+   ⚠️ Bilinen sınırı: **`yoksay` bloğu içindeki satırları görmez.** `tur ===
+   'cikis'` hatasının §20.2'deki kopyasını yakaladı, §22.14'teki İKİNCİ
+   kopyasını `yoksay` bloğunun içinde kaldığı için kaçırdı — aynı hata
+   brief'in iki yerinde yaşıyordu ve eksen birini gördü.
+2. **Bir borç kapandığında brief'teki ATIFLARI da aranır.** V2-46 kapanmıştı
+   ama brief onu canlı anlatıyordu; kapanan borç, kapandığı yerde değil
+   **anıldığı her yerde** güncellenir.
+3. **Ajan brief ile ölçüm çelişirse ÖLÇÜMÜ seçer ve çelişkiyi raporlar.**
+   Bu turda iki ajan tam bunu yaptı (`cakisma` ve `sertifika`) ve ikisi de
+   doğru olanı yaptı. Brief bir emir değil, ölçülmüş bir defterdir; ölçümle
+   çeliştiği an defter yanlıştır.
+
 ## 22. Dilim 6 — KALAN DOKUZ EKRAN (rota defterinin son KARŞILIĞI VAR satırları)
 
 §1–§21 aynen geçerlidir. Bu bölümdeki her sayı **ölçüldü**; ajan hiçbirini
