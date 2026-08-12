@@ -39,8 +39,8 @@
 | KARAR BEKLİYOR | **0** | %0,0 | 0 |
 | **Toplam** | **148** | %100 | 148 |
 | YENİ yazılacak | **8** — altısı (Y1–Y6) **yayında**, ikisi kaldı | — | 8 |
-| **Bugün R2'de yayında** | **103** | %69,6 | 97 |
-| **Kalan** | **45** | %30,4 | 51 |
+| **Bugün R2'de yayında** | **105** | %70,9 | 97 |
+| **Kalan** | **43** | %29,1 | 51 |
 
 > **12 Ağustos · Dilim 6 — iki satır karar DEĞİŞTİRDİ, dokuzu yazılıyor.**
 > `KARŞILIĞI VAR` 43 → 41: rota **123** ve **124** (`app-dokuman.html` ve
@@ -331,12 +331,12 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 |---|---|---|---|
 | 93 | `app-demirbas.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI** — `app-varlik.html` › Demirbaş yüzeyi (844 satır, üç yüzey TEK `GV.list` mount'unda). 15 demirbaş · `passive:['Hurda']` · K-30 düşen iddia satırı çekmecede basılıyor |
 | 94 | `app-demirbas-detay.html` | **KARŞILIĞI VAR** | — |
-| 95 | `app-demirbas-form.html` | **KARŞILIĞI VAR** | — |
+| 95 | `app-demirbas-form.html` | **KARŞILIĞI VAR** ✅ | `durum` TÜRETİLMİŞ: formda yalnız `Depoda` ve `Aktif` seçilebilir (sonda ile ölçüldü, `Zimmetli`/`Zimmet bekliyor` ezilir), düzenlemede alan basılmaz. `zimmetli/zimmetTarihi/iadeTarihi` `null` şekliyle doğar — K-30'un ölçüm kapısı böyle korunur. **Çalışıyor.** |
 | 96 | `app-zimmet.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — `app-varlik.html` › Zimmet yüzeyi. Tutanak **drawer**'dır, ayrı ekran açılmadı. Kabul / kabul geri alma aynı yetki kümesinden geçiyor |
 | 97 | `app-zimmet-form.html` | **GÖMÜLÜYOR** ✅ | **KAPANDI** — zimmet çekmecesi (`app-varlik.html?t=zimmet`) |
 | 98 | `app-arac.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** — `app-varlik.html` › Filo yüzeyi. 4 araç · sözlüğü olmayan 5 alan kayıtlardan türetildi ve kaynağı ekranda yazılı (V2-43) |
 | 99 | `app-arac-detay.html` | **KARŞILIĞI VAR** | Altı alt kaydın sekmesini R1'de zaten taşıyor — bu revizyonun istediği yapının **çalışan emsali** |
-| 100 | `app-arac-form.html` | **KARŞILIĞI VAR** | — |
+| 100 | `app-arac-form.html` | **KARŞILIĞI VAR** ✅ | Araç `GV.flow` varlığı DEĞİL: `durum` düz alan, `required` + ön seçim yok (doğum durumunu söyleyen kaynak yok). Mülkiyet ekseni `showIf` ile ayrılıyor ve düşen alanlar `read()` katmanında kayboluyor. Dört ret iki yönde ölçüldü. **Çalışıyor.** |
 
 ### 6.4 Araç alt ekranları — R1'de zaten gömülü
 

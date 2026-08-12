@@ -3066,6 +3066,47 @@ söyleyen **hiçbir kaynak yok**. Üç yol vardı ve seçilen üçüncüsü:
 `anaSurucu === yedekSurucu`); kiralama bloğunda `sozlesmeBit > sozlesmeBas`
 da aynı sınıftır ve eklendi. Aynı disiplin: **reddeder**, uyarmaz.
 
+### 22.1g ALTINCI AJANIN brief'te BULAMADIĞI imzalar
+
+**1 · `GV.varlik.tazele` `degisti` BAYRAĞI "DURUM TÜRETİLDİ Mİ" DEMEK
+DEĞİLDİR.** §20.3 bunu yazmıyordu ve bedeli ölçüldü: bayrağı o soruya cevap
+sanan bir ilk yazım, sözlüğün **5 durumunun 5'ini de** "türetilir" sayıp formu
+durumsuz bıraktı. Bayrak `zimmetli` **ve** `durum` eksenlerini birlikte taşır.
+"Bu değer ezilir mi?" sorusunun doğru ölçümü **SONDA**dır:
+
+```js
+/* Deftere DOKUNMADAN: tutanağı olmayan bir sonda nesnesiyle yordamı sorgula */
+var sonda = { kod:'__SONDA__', durum:deger };
+GV.varlik.tazele(sonda);
+var ezilir = sonda.durum !== deger;          /* karar BU · `degisti` DEĞİL */
+```
+Ölçülen sonuç: `Depoda` korunur · `Aktif` **korunur** · `Zimmetli` → `Depoda`
+**ezilir** · `Zimmet bekliyor` → `Depoda` **ezilir** · `Hurda` korunur (ama
+yazan yordam yok). Sonda defteri bozmaz: `DB.assets` 15, `DB.assignments` 7,
+aktivite 207 — öncesi = sonrası.
+
+**2 · `GV.fmt.days` İŞARET SÖZLEŞMESİ:** `iso − DB.today`, yani **gelecek
+pozitif**, geçmiş negatif. §21.11 yalnız "gün farkı" diyordu; bir kalan-gün
+hesabının yönü buna bağlı.
+
+**3 · `GV.form` `select` KARIŞIK DİZİ kabul eder** — aynı `options` dizisinde
+`'düz metin'` ile `{value,label}` **öğe başına** çözülür. KORUNAN SEÇENEK
+deseni buna dayanır: sözlükten gelen düz dize listesine kaydın kendi değerini
+`{value,label}` olarak eklemek geçerlidir.
+
+**4 · ⚠️ `readonly:true` OLAN `select` `read()` TARAFINDAN OKUNUR.** Motor salt
+okunur seçimi **değeri taşıyan gizli bir `input` ile** eşliyor; görünen metin
+yalnız gösterimdir. Yani `readonly` bir `select` `read()` çıktısında **vardır**
+ve çağıran onu kayda yazarsa yazılır. Sessiz tuzak: **"salt okunur" ile
+"kaydetmede okunmaz" AYNI ŞEY DEĞİLDİR.** Kaydedilmemesi gereken bir alan ya
+`read()` çıktısından adıyla dışlanır ya farklı bir anahtarla (`*Bilgi`) basılır.
+
+**5 · `GV.toast(mesaj, tone, ms)`** — üçüncü parametre süre (ms).
+
+**6 · `DB.orders` — 4 kayıt, 14 alan:** `kod · talep · tedarikci · tarih ·
+teslimTarihi · tutar · vergi · toplam · doviz · durum · fatura · irsaliye ·
+teslimKontrol · kismiTeslimTarihi`. Demirbaşın `siparis` alanı buna bağlanır.
+
 ### 22.2 KOD ÜRETİMİ — sıra GLOBAL, yıl damgası kayıt yılıdır
 
 ⚠️ Ölçüldü ve §13.2'deki desen **bu koleksiyonlarda yetersizdir.** `domain.js`
@@ -3440,8 +3481,31 @@ sözleşmesi şudur:
 | `Hurda` | **HAYIR** | Bir emeklilik kararıdır, doğum durumu değil — ve yordamı YOKTUR (§22.16) |
 
 Form iki seçeneği basar, kalan üçünü **listelemez** ve neden listelemediğini
-yazar. `zimmetli` · `zimmetTarihi` · `iadeTarihi` alanlarına **ekran hiç
+yazar. `zimmetli` · `zimmetTarihi` · `iadeTarihi` alanlarına **ekran hiç DEĞER
 yazmaz** (`DB.assets` üstünde doğrudan atama yasaktır).
+
+⚠️ **BU TABLO "EZİLİR Mİ" SORUSUNUN CEVABIDIR ve SONDA ile ölçülür,
+`degisti` bayrağıyla DEĞİL** (§22.1g madde 1). Ölçüm deftere dokunmaz.
+
+⚠️ **ÇELİŞKİ ÇÖZÜMÜ — `durum` YALNIZ DOĞUM LİTERALİNDE.** Bu bölüm `durum`u
+form alanı sayıyor, §22.17.1 ise `a.durum = …`yı yasaklıyor ve **mevcut** bir
+demirbaşın durumunu yazan yordam **yoktur** (§22.16 madde 0). İkisi de
+doğrudur, çakışan şey kip: doğum kipinde durum nesne literalinde verilir (bir
+atama değildir), **düzenleme kipinde alan BASILMAZ** — salt okunur bilgi +
+eksik yordam beyanı. Salt okunur basılacaksa `durum` anahtarıyla DEĞİL ayrı bir
+anahtarla (`durumBilgi`) basılır: `readonly` bir `select` `read()` tarafından
+OKUNUR (§22.1g madde 4).
+
+⚠️ **ŞEKİL KURALI — üç alan `null` OLARAK DOĞAR.** "Ekran yazmaz" kuralı
+onları kayıttan **çıkarmak** demek değildir. Ölçüldü: defterdeki 15 kaydın
+**15'i** bu üç anahtarı taşıyor. Anahtar hiç yoksa `GV.varlik.tazeleHepsi` o
+kaydı **her açılışta** "değişti" diye raporluyordu (`Depoda → Depoda`) ve
+K-30'un ölçüm kapısını — *"bir onarımın her seferinde tekrar koşması,
+onarılmamış demektir"*, `sonTazeleme.degisen.length === 0` öyle KALMALI —
+kalıcı olarak kırıyordu. Yordam K-43'te sağlamlaştırıldı (`undefined` ile
+`null` artık aynı sayılıyor), ama defterin şeklini korumak yine de doğrudur:
+kayıttan kayda değişen bir şema, okuyan her yordamı bir dal daha yazmaya
+zorlar.
 
 **Alanlar:** `kategori`(req, `DB.assetCategories` 20) ·
 `altKategori`(**sözlüksüz** → `DB.assets`ten türet + serbest metin) ·
@@ -3698,6 +3762,10 @@ Bu dilimde ölçüldü; ajan bunlardan birine ihtiyaç duyarsa **ekranı devre d
 bir düğmeyle değil, bir BEYANLA kapatır** (§14.6 — yapılamayan iş düğme
 olarak vaat edilmez) ve raporunda madde olarak yazar:
 
+0. **MEVCUT bir demirbaşın `durum`unu yazan yordam YOK.** `Depoda ↔ Aktif`
+   çevirmek (bir cihazı ortak kullanıma almak ya da depoya çekmek) bir iş
+   olayıdır ama yordamı yazılmamış; `GV.varlik.tazele` yalnız TÜRETİR, karar
+   yazmaz. Demirbaş formu bu yüzden `durum`u yalnız doğumda sorar.
 1. **`GV.varlik.hurdayaAyir(kod, gerekce)` YOK.** `DB.assetStatuses`
    `'Hurda'` içeriyor ve 1 kayıt o durumda, ama demirbaşı hurdaya ayıran bir
    yordam yazılmamış. `a.durum = 'Hurda'` yazmak **yasaktır**.
