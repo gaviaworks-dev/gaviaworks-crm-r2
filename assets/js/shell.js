@@ -843,6 +843,8 @@
     'app-personel-form.html',
     'app-demirbas-form.html',
     'app-arac-form.html',
+    'app-demirbas-detay.html',
+    'app-personel-detay.html',
     /* Dilim 5 — Ayarlar. Dört ekranın dördü de şartname §3.3'ün AYNI ayar
        kabuğudur; sekmeler `GV.shell.ayarSekmeleri()` ile yetkiden üretilir. */
     'app-ayar-profil.html',
