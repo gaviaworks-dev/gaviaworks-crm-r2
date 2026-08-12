@@ -626,9 +626,15 @@ document.addEventListener('gv:ready', function(){
   /* =================================================================
      6. FORM
      ================================================================= */
-  var sekmeler = [{ key:'temel', label:'Kimlik ve görev', icon:'i-user' }];
-  if(ozlukAcik) sekmeler.push({ key:'ozluk', label:'İletişim ve özlük', icon:'i-phone' });
-  if(maasAcik)  sekmeler.push({ key:'ucret', label:'Ücret', icon:'i-wallet' });
+  /* ⚠️ BÖLÜM ATLAMA YAMASI KALKTI (K-44). Sekmeler ve bölümler `if(ozlukAcik)`
+     / `if(maasAcik)` dallarıyla listeye HİÇ eklenmiyordu; kapı böylece dört
+     yerde yaşıyordu (sekme listesi · bölüm listesi · kaydetme dalı ×2).
+     Artık kapı bölümün kendi `mask(rec)` bildirimindedir: bütün alanları
+     düşen BÖLÜM düşer, bütün bölümleri düşen SEKME düşer (bileşen `cfg.tabs`i
+     kendisi süzer) ve gerekçe `form.kapaliAlanlar()`tan okunur. */
+  var sekmeler = [{ key:'temel', label:'Kimlik ve görev', icon:'i-user' },
+                  { key:'ozluk', label:'İletişim ve özlük', icon:'i-phone' },
+                  { key:'ucret', label:'Ücret', icon:'i-wallet' }];
   if(rec)       sekmeler.push({ key:'diziler', label:'Durum ve diziler', icon:'i-list' });
 
   var bolumler = [
@@ -642,13 +648,20 @@ document.addEventListener('gv:ready', function(){
            'anda ilerletilebilir olsun diye zorunlu tutar.',
       fields:gorevAlanlar }
   ];
-  if(ozlukAcik) bolumler.push({
+  bolumler.push({
     title:'İletişim, özlük ve sağlık', icon:'i-phone', tab:'ozluk',
+    /* Kapı BÖLÜMÜN kendi bildirimi (K-44) — satır bazlı kapı rol bazlıyı
+       gevşetir, tıpkı K-39 öz-erişiminde olduğu gibi. */
+    mask:function(){ return !ozlukAcik; },
+    maskSebep:'kişisel veri kapısı kapalı — GV.hr.ozlukGorebilir(e), ' +
+              'personel veri kapsamı "' + GV.perm.scope('personel') + '"',
     desc:'Bu bölüm kişisel veri kapısının arkasındadır ve kapı bu oturumda AÇIK. Alanlar ' +
          'ortak yordamdan (GV.hr.ozluk) okunup basıldı; ekran kapıyı kendi lehine gevşetmez.',
     fields:ozlukAlanlar });
-  if(maasAcik) bolumler.push({
+  bolumler.push({
     title:'Ücret — maaş XOR saatlik ücret', icon:'i-wallet', tab:'ucret',
+    mask:function(){ return !maasAcik; },
+    maskSebep:maasKapi.neden || 'ücret kapısı bu oturumda kapalı',
     desc:'Ücret kapısı bu oturumda AÇIK (kaynak: ' +
          (maasKapi.kaynak === 'ozErisim' ? 'öz-erişim, kendi kaydınız' : 'permMatrix.maas') +
          '). İki alan birlikte dolamaz; eksen seçimi diğerini formdan düşürür.',
@@ -1035,14 +1048,17 @@ document.addEventListener('gv:ready', function(){
       uzmanlik:bosNull(v.uzmanlik),
       izinBakiye:sayiYaNull(v.izinBakiye),
       doluluk:sayiYaNull(v.doluluk),
-      tel:ozlukAcik ? bosNull(v.tel) : null,
-      eposta:ozlukAcik ? bosNull(v.eposta) : null,
-      dogum:ozlukAcik ? bosNull(v.dogum) : null,
-      kanGrubu:ozlukAcik ? bosNull(v.kanGrubu) : null,
-      acilKisi:ozlukAcik ? bosNull(v.acilKisi) : null,
-      egitim:ozlukAcik ? bosNull(v.egitim) : null,
-      sozlesme:ozlukAcik ? bosNull(v.sozlesme) : null,
-      calismaTuru:ozlukAcik ? bosNull(v.calismaTuru) : null,
+      /* Kapı bölümün tanımında olduğu için burada ikinci bir süzgeç yok:
+         bölüm düştüyse anahtar `read()`te YOKTUR ve `bosNull(undefined)`
+         null döner — yeni kayıt o alanı taşımadan doğar (K-44). */
+      tel:bosNull(v.tel),
+      eposta:bosNull(v.eposta),
+      dogum:bosNull(v.dogum),
+      kanGrubu:bosNull(v.kanGrubu),
+      acilKisi:bosNull(v.acilKisi),
+      egitim:bosNull(v.egitim),
+      sozlesme:bosNull(v.sozlesme),
+      calismaTuru:bosNull(v.calismaTuru),
       yetkinlik:[],
       teknoloji:[],
       sertifika:[],
@@ -1107,6 +1123,7 @@ document.addEventListener('gv:ready', function(){
     var degisen = [];
     GENEL_METIN.forEach(function(k){
       if(k === 'ini') return;                 /* türetme dalı aşağıda */
+      if(!(k in v)) return;                   /* K-44 — kapıyla düşen alan yazılmaz */
       var yeniD = bosNull(v[k]);
       var eskiD = (rec[k] == null || rec[k] === '') ? null : rec[k];
       if(String(yeniD) !== String(eskiD)){ degisen.push(k); rec[k] = yeniD; }
@@ -1116,6 +1133,7 @@ document.addEventListener('gv:ready', function(){
       degisen.push('ini'); rec.ini = yeniIni;
     }
     GENEL_SAYI.forEach(function(k){
+      if(!(k in v)) return;                   /* K-44 */
       var yeniD = sayiYaNull(v[k]);
       var eskiD = rec[k] == null ? null : rec[k];
       if(yeniD !== eskiD){ degisen.push(k); rec[k] = yeniD; }
@@ -1133,13 +1151,19 @@ document.addEventListener('gv:ready', function(){
       degisen.push('roller (birincil rol eklendi)');
     }
 
-    if(ozlukAcik){
-      OZLUK_METIN.forEach(function(k){
-        var yeniD = bosNull(v[k]);
-        var eskiD = (rec[k] == null || rec[k] === '') ? null : rec[k];
-        if(String(yeniD) !== String(eskiD)){ degisen.push(k); rec[k] = yeniD; }
-      });
-    }
+    /* ⚠️ `if(ozlukAcik)` SARMALAYICISI KALKTI, YERİNE `k in v` (K-44).
+       Koruma artık rol dalında değil, `read()`in KENDİSİNDE: kapalı bölümün
+       alanı çıktıda anahtar olarak BULUNMAZ. İkisi bugün aynı sonucu
+       veriyor ama biri diğerinden dayanıklı — rol dalı unutulabilir bir
+       koruma, anahtar kontrolü kapının doğrudan sonucudur.
+       (`app-firsat-form.html` bu turda tam bu farktan bir veri kaybı
+       yaşadı ve ölçümle yakalandı.) */
+    OZLUK_METIN.forEach(function(k){
+      if(!(k in v)) return;
+      var yeniD = bosNull(v[k]);
+      var eskiD = (rec[k] == null || rec[k] === '') ? null : rec[k];
+      if(String(yeniD) !== String(eskiD)){ degisen.push(k); rec[k] = yeniD; }
+    });
 
     if(ucret && ucret.ok){
       if(Number(rec.maas) !== Number(ucret.maas)){ degisen.push('maas'); rec.maas = ucret.maas; }
