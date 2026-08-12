@@ -3185,6 +3185,40 @@ doğru yere sokmak için sıra yönü gerekli. Öğe alanları
 ⚠️ **`DB.suppliers` 13 alan taşır**, §22.4 altısını sayıyordu. Eksikler:
 `yetkili · tel · eposta · vergiNo · adres · siparisSayisi · toplamTutar`.
 
+### 22.1i SEKİZİNCİ AJANIN brief'te BULAMADIĞI imzalar
+
+```js
+GV.hr.icMaliyet(kod, tarih)
+//  → { saat, kaynak:'saatlikUcret'|'maas'|'maasGecmisi', guvenilir, donem?, formul }
+//  → null  (iki ücret ekseni de boşsa — maliyet UYDURULMAZ)
+//  ⚠️ TARİHSİZ ÇAĞRIDA `guvenilir:true` DÖNER (ölçüldü) — yani bayrak
+//     "bugünkü orana düştüm" DEMİYOR. Bayrak yalnız `tarih` verildiğinde
+//     anlamlıdır. Brief'i okuyup bayrağa güvenen ekran YANLIŞ cümle basar;
+//     doğru cümleyi `kaynak` + `formul` birlikte kurar (borç V2-92).
+GV.hr.kayitOrani(l)      // → { saat, kaynak, guvenilir, formul } | null
+GV.hr.disKaynak(kod)     // → boolean
+GV.zaman.timesheetOf(l)  // → timesheet kaydı | null
+GV.zaman.kayitlar(ts)    // → timelog dizisi (tarihe göre artan)
+GV.varlik.zimmetliler(kod)
+//  → `DB.assignments` SATIR DİZİSİ · süzgeç `durum !== 'İade edildi'`
+//  ⚠️ "Açık zimmet" ONAY BEKLEYENİ DE KAPSAR — `personelOnay`a bakmaz.
+GV.tone(deger)           // ton sözlüğünde karşılığı var mı — rozet uydurmadan ölçmenin yolu
+```
+
+**`DB.company` iki SABİT taşır** ve iç maliyet formülünün iki çarpanı onlar:
+`isverenMaliyetKatsayisi` **1.225** · `aylikCalismaSaati` **176**. Formül:
+`maas × katsayı ÷ saat`. `DB.company` bu dilimde brief'te hiç anılmıyordu.
+
+⚠️ **KİŞİ EKSENİNDE DÜŞEN İDDİA YORDAMI YOK.** `GV.varlik.dusenIddia` ve
+`.dusenIddiaSatiri` yalnız **demirbaş** eksenindedir. "Envanter bir zamanlar
+BU KİŞİ için ne dedi" sorusunun ortak karşılığı yoktur; ekran
+`DB.assetClaimDrops[].iddiaPersonel` süzgecini kendisi kurmak zorunda kalıyor
+(borç **V2-93**). Satırın METNİ yine ortak yordamdan alınır — cümle iki yerde
+yazılmaz.
+
+⚠️ **`GV.flow.adimlar` dönüşündeki `yetki:[…]` KAYNAK kuralın rol listesidir**,
+hedefin değil. Ekran "bu geçişi kimler yapabilir" diye basacaksa bunu bilmeli.
+
 ### 22.2 KOD ÜRETİMİ — sıra GLOBAL, yıl damgası kayıt yılıdır
 
 ⚠️ Ölçüldü ve §13.2'deki desen **bu koleksiyonlarda yetersizdir.** `domain.js`
@@ -3745,9 +3779,14 @@ var maasKapi  = GV.hr.maasKapi(e);            /* { acik, kaynak, neden } */
 `GV.hr.disKaynak(e.kod)` · `uzmanlik` · `yetkinlik`/`teknoloji`/`sertifika`
 DİZİ) · yönetici bağı (`e.yonetici` → `GV.user`) ve **astlar**
 (`DB.employees` `yonetici === e.kod` süzgeci) · durum rozeti
-(⚠️ `Onboarding`/`İzinli`/`Offboarding`/`Ayrıldı` `ui.js` ton sözlüğünde
-**yoktur** — V2-46; `GV.badge` nötr basar ve ekran bunu telafi etmeye
-çalışmaz, rozet uydurmaz) · `izinBakiye` · `doluluk` (**bir SAYAÇ DEĞİL**,
+(⚠️ **DÜZELTME — bu satır BAYATLADI.** V2-46 "dört personel durumu ton
+sözlüğünde yok" diyordu; ölçüldü ve **kapanmış**: `Onboarding→info` ·
+`İzinli→warn` · `Offboarding→warn` eklenmiş, `Taslak`/`Pasif` **açıkça**
+nötr, `Aktif→ok`. Sözlükte olmayan tek durum **`Ayrıldı`** ve o **bilerek**
+nötrdür — gerekçesi `ui.js` ton sözlüğünün kendi yorumunda yazılı. Ekran
+yine rozet uydurmaz, ama artık "dört durum nötr basılıyor" da demez:
+`GV.tone(deger)` ile sözlükte karşılığı olup olmadığını **ölçer** ve
+olmayanı düz metin basar) · `izinBakiye` · `doluluk` (**bir SAYAÇ DEĞİL**,
 kayıtta yazılı plandır) · özlük bloğu (`GV.hr.ozluk(e, alan)` — yetkisizde
 `••••••`, hücre çıktıya da girmez) · ücret bloğu (`GV.hr.maas(e)` +
 `maasKapi.neden` + **XOR** beyanı + `GV.hr.icMaliyet(e.kod)`).
@@ -3772,8 +3811,10 @@ her biri **"ölçülemedi"**dir, `0` değil. `durum` sözlüğü yok
 
 **`egitim`** — `DB.trainings` içinde `katilimci` DİZİsi bu kodu içeren
 kayıtlar: `DB.trainings.filter(function(t){ return (t.katilimci||[])
-.indexOf(e.kod) !== -1; })`. `kazanim` DİZİ. `sertifika` boolean (4/4
-`false`) — "sertifika verilmiyor" diye yazılır, boş bırakılmaz.
+.indexOf(e.kod) !== -1; })`. `kazanim` DİZİ. `sertifika` boolean —
+⚠️ **DÜZELTME: 4/4 `false` DEĞİL, 2/4 `true`** (`EGT-2026-010` ·
+`EGT-2026-009`). Bu satır önce yanlış yazılıydı ve kopyalanan ekran yanlış
+konuşurdu; sayı ölçülür, brief'ten alınmaz.
 `trainingStatuses` sözlüğü yok → türet.
 
 **`yasamdongusu`** — bu sekmenin işi **`GV.flow`**:
@@ -3789,8 +3830,13 @@ GV.flow.gec('employee', e.kod, hedef, ek, { neden, not })
   hedefi çıkış tarihi + neden kodu + zimmet kapısı ister; `Aktif` hedefi
   yalnız gerekçe. **Geri almak ileri gitmekten ağır değildir** ve ekran bu
   farkı yazar.
-- Çıkış neden kodları: `DB.reasonCodes` içinde `tur === 'cikis'` olanlar
-  (6 kod + `DIGER`).
+- Çıkış neden kodları: `DB.reasonCodes` içinde
+  **`(c.tur || []).indexOf('cikis') !== -1`** olanlar — alan bir DİZİDİR ve
+  `===` **SIFIR kod** bulur (§20.2 düzeltmesi). Ölçüldü: **7 kod**.
+  ⚠️ Tür dağılımı: `iade 2 · revizyon 5 · ret 6 · iptal 5 · geri 3 ·
+  istisna 2 · cikis 7`. **"Pasife alma" ya da "izne ayırma" karşılığı bir tür
+  YOKTUR** — `Aktif → Pasif`/`İzinli` geçişinin neden kodu kümesi tanımsızdır
+  ve uydurulan bir eşleme listeyi yanlış daraltır.
 - **Süreç defteri:** `DB.onboarding` — `personel` süzgeci, `tur` `Giriş`
   **ve** `Çıkış` aynı defterdedir. `adimlar[]` = `{ad, tamam, sorumlu}`;
   ekran `tamam` üzerinden ilerlemeyi basar.
@@ -3840,6 +3886,10 @@ Bu dilimde ölçüldü; ajan bunlardan birine ihtiyaç duyarsa **ekranı devre d
 bir düğmeyle değil, bir BEYANLA kapatır** (§14.6 — yapılamayan iş düğme
 olarak vaat edilmez) ve raporunda madde olarak yazar:
 
+-1. **`DB.onboarding[].adimlar[].tamam` yazan yordam YOK.** Giriş/çıkış
+   sürecinin bir adımını "tamamlandı" işaretlemek bir iş olayıdır; yordamı
+   yazılmamış. Personel detayı bu yüzden süreç adımlarını **salt okunur**
+   basıyor ve ilerlemeyi (`tamam`/toplam) yalnız ÖLÇÜYOR.
 0. **MEVCUT bir demirbaşın `durum`unu yazan yordam YOK.** `Depoda ↔ Aktif`
    çevirmek (bir cihazı ortak kullanıma almak ya da depoya çekmek) bir iş
    olayıdır ama yordamı yazılmamış; `GV.varlik.tazele` yalnız TÜRETİR, karar

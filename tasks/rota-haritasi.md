@@ -39,8 +39,8 @@
 | KARAR BEKLİYOR | **0** | %0,0 | 0 |
 | **Toplam** | **148** | %100 | 148 |
 | YENİ yazılacak | **8** — altısı (Y1–Y6) **yayında**, ikisi kaldı | — | 8 |
-| **Bugün R2'de yayında** | **106** | %71,6 | 97 |
-| **Kalan** | **42** | %28,4 | 51 |
+| **Bugün R2'de yayında** | **107** | %72,3 | 97 |
+| **Kalan** | **41** | %27,7 | 51 |
 
 > **12 Ağustos · Dilim 6 — iki satır karar DEĞİŞTİRDİ, dokuzu yazılıyor.**
 > `KARŞILIĞI VAR` 43 → 41: rota **123** ve **124** (`app-dokuman.html` ve
@@ -307,7 +307,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 | # | R1 ekranı | Karar | Hedef / gerekçe |
 |---|---|---|---|
 | 80 | `app-personel.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** 5 sekme, hepsi geçiş tablosundan ve `GV.hr.*`ten TÜRETİLDİ. **K-18 kapandı**: `aktif` tuzağa çevrildi, `DB.ikBayat.sayac` her rolde 0. Kişisel veri kapısı SATIRA bakar (`GV.hr.ozlukGorebilir`), role değil — `muhasebe` maaşı görür özlüğü görmez |
-| 81 | `app-personel-detay.html` | **KARŞILIĞI VAR** | Performans · eğitim · yaşam döngüsü sekmeleri buraya gelir |
+| 81 | `app-personel-detay.html` | **KARŞILIĞI VAR** ✅ | YEDİ SEKME (`ozet · performans · egitim · yasamdongusu · zaman · zimmet · aktivite`), tembel çizim bir kez koşuyor, `#hash` derin bağlantısı çalışıyor, şeritte ikon yok. K-39 öz-erişimi `depmudur` ile iki yönde ölçüldü: kendi kaydında ücret açık (`ozErisim`), başkasında kapalı, KÜME sorusu ikisinde de kapalı. **Çalışıyor.** |
 | 82 | `app-personel-form.html` | **KARŞILIĞI VAR** ✅ | Doğum durumu `Taslak`. `maas` XOR `saatlikUcret` radio + `showIf` ile; kapı kapalıysa alan HİÇ ÇİZİLMEZ (maskelenmiş input gerçek değeri ezer). K-39 öz-erişim iki yönde ölçüldü. **Çalışıyor.** |
 | 83 | `app-personel-giris.html` | **GÖMÜLÜYOR** | §3.1 "işe giriş/çıkış" birleştirilen içerik → personel detayı › Yaşam Döngüsü (`employee` 15. geçiş varlığı `domain.js`'te hazır) |
 | 84 | `app-performans.html` | **GÖMÜLÜYOR** | §3.1 aynı hüküm → personel detayı › Performans |
