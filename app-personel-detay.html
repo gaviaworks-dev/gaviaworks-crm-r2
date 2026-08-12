@@ -478,11 +478,16 @@ document.addEventListener('gv:ready', function(){
     if(im){
       satirlar.push(['Şirkete saatlik iç maliyet',
         GV.cell.mny(im.saat) + GV.cell.sub('kaynak: ' + esc(im.kaynak) +
-          ' · güvenilir: ' + (im.guvenilir === false ? 'HAYIR' : 'evet') +
+          ' · güvenilir: ' + (im.guvenilir ? 'evet' : 'HAYIR') +
+          (im.donemsiz ? ' (dönemsiz)' : '') +
           (im.donem ? ' · dönem: ' + esc(im.donem) : '') +
-          ' · yordama TARİH VERİLMEDİ, yani bu BUGÜNKÜ orandır (' +
-          esc(F.date(DB.today)) + '); geçmiş bir tarihin oranı bu defterden ' +
-          'türetilemez çünkü maaş geçmişi yok')]);
+          /* ⚠️ Gerekçe artık YORDAMDAN okunuyor (V2-92 · ADR-R2-45). Ekran
+             kendi cümlesini kurarsa kural iki yerde yaşar ve yordam değişince
+             sessizce ayrışır (L-40). Bayrak da yordamdan: tarihsiz çağrı
+             artık `guvenilir:false · donemsiz:true` döner. */
+          (im.neden ? ' · ' + esc(im.neden) : '') +
+          ' Yordama tarih verilmedi; bu BUGÜNKÜ orandır (' +
+          esc(F.date(DB.today)) + ').')]);
       satirlar.push(['Formül', '<span class="u-sm">' + esc(im.formul) + '</span>' +
         GV.cell.sub('GV.hr.icMaliyet · şirket katsayısı ' +
           esc(String((DB.company || {}).isverenMaliyetKatsayisi)) + ' ve aylık ' +

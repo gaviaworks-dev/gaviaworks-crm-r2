@@ -383,8 +383,29 @@
        YAZILIYDI ama karşılığı olan yordam yoktu; motor eksik kapıyı sessizce
        atlar, yani kural hiç uygulanmazdı — L-31'in tam tarifi ("uygulanmayan
        kural, yanlış kuralın en sinsi hâlidir").
-       Zorunluluk sürecin adımlarından okunur (`DB.onboarding[].adimlar` →
-       `zorunlu:true`), ekranda ikinci bir liste tutulmaz. */
+       ⚠️ V2-94 · ADR-R2-46 — KAPI ÖNCEDEN HİÇ EVRAK ÖLÇMÜYORDU.
+       Eski gövde `a.zorunlu && a.durum !== 'Tamamlandı'` okuyordu. Ölçüldü:
+       ÖRNEK adımlar (`DB.onboarding[].adimlar`) yalnız `{ad, tamam, sorumlu}`
+       taşıyor — ne `zorunlu` ne `durum` alanı VAR. İki alan da ŞABLONUN
+       (`DB.onboardingTemplates[].adimlar`: `{ad, tur, sorumluRol, gun, zorunlu}`).
+       Yani süzgeç HİÇBİR adımı seçemiyor, `eksik` her zaman boş kalıyor ve
+       kapı süreç kaydı olan herkesi GEÇİRİYORDU. Görünen ama reddetmeyen
+       yapı: ölçüm yeşil yanar, şartname [4.2.3] hiç uygulanmaz.
+
+       ONARIM — zorunluluk ŞABLONDAN, tamamlanma ÖRNEKTEN okunur:
+         · şablon `tur:'Giriş'` + `tip:'temel'` + `aktif` + `calismaTipi`
+           eşleşmesiyle çözülür (ölçüldü: 3/3 giriş süreci çözülüyor ve adım
+           adları örnekle BİREBİR tutuyor)
+         · şablonun `zorunlu:true` adımı örnekte YOKSA → eksik evrak
+         · örnekte VAR ama `tamam !== true` ise → tamamlanmamış evrak
+       Şablon çözülemezse kapı AÇILMAZ: zorunluluğu ölçemeyen bir kapının
+       "geçebilir" demesi, ölçmediğini ölçtüm saymaktır.
+
+       ⚠️ BİLİNEN SINIR (borç V2-96): `tip:'ek'` şablonlar (`SBL-GIRIS-YAZILIM`
+       · `SBL-GIRIS-SATIS` · `SBL-GIRIS-STAJYER`) hiçbir örnek sürece
+       uygulanmamış; bu kapı yalnız `temel` şablonu ölçer ve ek şablonun
+       zorunlu adımını arayamaz. Sınır kapının değil süreç kaydının borcudur,
+       ama BURAYA yazılıdır ki kapının kapsamı görünsün. */
     personelEvrak:function(e){
       var surec = (window.DB && DB.onboarding || []).filter(function(o){
         return o.personel === e.kod && o.tur === 'Giriş';
@@ -394,13 +415,37 @@
          kullanıcıyı yanlış yere bakmaya gönderirdi. */
       if(!surec) return { ok:false, why:'Bu personel için bir onboarding süreci açılmamış. ' +
                                         'Aktifleştirmeden önce süreç başlatılmalı.' };
-      var eksik = (surec.adimlar || []).filter(function(a){
-        return a.zorunlu && a.durum !== 'Tamamlandı';
+
+      /* K-33 BEYANI — `onboardingTemplates` `durum` ekseni TAŞIMAYAN 15
+         koleksiyondan biridir; orada `aktif` KANON alandır ve doğrudan
+         okunur (`aktif-ekseni` [A3] beyansız okumayı bulgu sayar, haklı
+         olarak: beyan bir sonraki okuyucunun okumayı yanlışlıkla
+         "temizlememesi" için durur). Şablonun pasifi bir arşiv sorusu
+         değil, "bu şablon artık uygulanmıyor" demektir. */
+      var sablon = (window.DB && DB.onboardingTemplates || []).filter(function(t){
+        return t.tur === 'Giriş' && t.tip === 'temel' && t.aktif !== false && /* K-33 */
+               (t.calismaTipi == null || t.calismaTipi === e.calismaTipi);
+      })[0];
+      if(!sablon) return { ok:false, why:'"' + (e.calismaTipi || '—') + '" çalışma tipi için ' +
+        'etkin bir temel giriş şablonu yok; zorunlu evrak listesi ÖLÇÜLEMİYOR. ' +
+        'Ölçemeyen kapı geçirmez — şablon tanımlanmalı.' };
+
+      var ornekAdim = function(ad){
+        return (surec.adimlar || []).filter(function(x){ return x.ad === ad; })[0] || null;
+      };
+      var yok = [], acik = [];
+      (sablon.adimlar || []).filter(function(a){ return a.zorunlu; }).forEach(function(a){
+        var i = ornekAdim(a.ad);
+        if(!i) yok.push(a.ad);
+        else if(i.tamam !== true) acik.push(a.ad);
       });
-      if(!eksik.length) return { ok:true };
-      return { ok:false, why:'Zorunlu onboarding adımı tamamlanmadı: ' +
-        eksik.map(function(a){ return a.ad; }).join(' · ') +
-        ' (' + eksik.length + ' adım). Personel Onboarding durumunda kalır.' };
+      if(!yok.length && !acik.length) return { ok:true };
+
+      var parca = [];
+      if(acik.length) parca.push('tamamlanmayan zorunlu adım: ' + acik.join(' · '));
+      if(yok.length)  parca.push('süreçte hiç açılmamış zorunlu adım: ' + yok.join(' · '));
+      return { ok:false, why:'Zorunlu evrak eksik (' + sablon.kod + ') — ' + parca.join('; ') +
+        '. Toplam ' + (acik.length + yok.length) + ' adım. Personel Onboarding durumunda kalır.' };
     },
 
     /* [20.4.4] — AYRILIŞ KAPISI: aktif zimmet varken personel `Ayrıldı`
@@ -2856,7 +2901,24 @@
          2. Yoksa `DB.salaryHistory` içinde tarihi kapsayan kayıt aranır.
          3. O da yoksa bugünkü orana düşülür ve `guvenilir:false` işaretlenir —
             çağıran bunu ekranda söyleyebilsin diye. Sessizce bugünü kullanmak
-            tam da kapatılan hataydı. */
+            tam da kapatılan hataydı.
+
+       ⚠️ V2-92 · ADR-R2-45 — TARİHSİZ ÇAĞRIDA BAYRAK ARTIK `true` DÖNMÜYOR.
+       Ölçülen kusur: `guvenilir:!!gecmis || !tarih` yazılıydı, yani
+       `icMaliyet('EMP-006')` (tarihsiz) `guvenilir:true` dönüyordu. Oysa
+       tarihsiz çağrı da tam olarak 3. kademeye düşer — bugünkü orana. Bayrağın
+       İŞİ bu düşüşü göstermekti; `true` dönerek onu GÖRÜNMEZ kılıyordu:
+         icMaliyet('EMP-006')              → guvenilir TRUE  (bugünkü oran)
+         icMaliyet('EMP-006','2025-01-01') → guvenilir false (bugünkü oran)
+       Aynı sayı, aynı kaynak, ZIT bayrak. Brief'i okuyup bayrağa güvenen bir
+       ekran güvenilmez bir oranı "güvenilir" diye basar ve ADR-07'nin kapattığı
+       hata sessizce geri döner — L-31'in tarifi.
+
+       ÇÖZÜM ÜÇÜNCÜ KİP: tarihsiz çağrı artık `guvenilir:false` **ve**
+       `donemsiz:true` döner. `donemsiz`, "soru bir döneme sorulmadı" demektir
+       ve "dönem soruldu ama geçmiş yok" (`donemsiz:false`, `guvenilir:false`)
+       durumundan AYRIDIR. Bayrak yalnız `oranSnapshot`, `maasGecmisi` ve
+       sözleşmeli `saatlikUcret` kaynaklarında `true`dur. */
     icMaliyet:function(kod, tarih){
       if(!window.DB || !DB.employees) return null;
       var e = DB.employees.filter(function(x){ return x.kod === kod; })[0];
@@ -2872,19 +2934,25 @@
       }
 
       if(e.saatlikUcret > 0 && !gecmis)
-        return { saat:e.saatlikUcret, kaynak:'saatlikUcret', guvenilir:true,
+        return { saat:e.saatlikUcret, kaynak:'saatlikUcret', guvenilir:true, donemsiz:false,
                  formul:'Sözleşmeli saat ücreti · ' + e.saatlikUcret + ' ₺/saat' };
 
       var maas = gecmis ? gecmis.maas : e.maas;
       if(maas > 0){
         var s = Math.round(maas * c.isverenMaliyetKatsayisi / c.aylikCalismaSaati);
         return { saat:s, kaynak:gecmis ? 'maasGecmisi' : 'maas',
-                 guvenilir:!!gecmis || !tarih,
+                 guvenilir:!!gecmis,
+                 donemsiz:!tarih,
+                 neden:gecmis ? null
+                     : (tarih ? 'Bu tarih için maaş geçmişi yok — bugünkü orana düşüldü.'
+                              : 'Çağrı bir tarih taşımıyor — oran bir döneme değil BUGÜNE aittir; ' +
+                                'geçmiş bir işin maliyetine uygulanamaz.'),
                  donem:gecmis ? (gecmis.baslangic + ' →' + (gecmis.bitis || ' bugün')) : null,
                  formul:maas + ' ₺ brüt × ' + c.isverenMaliyetKatsayisi + ' ÷ ' +
                         c.aylikCalismaSaati + ' saat = ' + s + ' ₺/saat' +
                         (gecmis ? ' (' + gecmis.baslangic + ' dönemi oranı)'
-                                : tarih ? ' (⚠ bu tarih için maaş geçmişi yok, bugünkü oran)' : '') };
+                                : tarih ? ' (⚠ bu tarih için maaş geçmişi yok, bugünkü oran)'
+                                        : ' (⚠ tarihsiz çağrı — bugünkü oran, döneme ait DEĞİL)') };
       }
       /* İki eksenin ikisi de boşsa maliyet UYDURULMAZ — null döner ve
          çağıran bunu ekranda söyler. */
@@ -2896,7 +2964,7 @@
     kayitOrani:function(l){
       if(!l) return null;
       if(l.oranSnapshot > 0)
-        return { saat:l.oranSnapshot, kaynak:'oranSnapshot', guvenilir:true,
+        return { saat:l.oranSnapshot, kaynak:'oranSnapshot', guvenilir:true, donemsiz:false,
                  formul:'Satır onayında dondurulan oran · ' + l.oranSnapshot + ' ₺/saat' };
       return Hr.icMaliyet(l.personel, l.tarih);
     },

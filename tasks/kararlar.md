@@ -1412,3 +1412,102 @@ yazılıp geçilir. İstisna: **yazdığın ekranı doğrudan bozan kusur.** Rot
 (`app-proje-form.html`) bu kapının arkasında duruyordu: yeni açılan bir
 projeyi başlatmak mümkün olmadan form yazmak, çalışmayan bir zincirin başına
 ekran koymak olurdu.
+
+---
+
+> ⚠️ **ADR-R2-41 · 42 · 43 · 44 NUMARALARI REZERVEDİR** — dilim 6'nın K-41
+> (`approval.adimCalisir`), K-42 (`hr.kayit` sertleşmesi), K-43
+> (`Varlik.tazele` `degisti`) ve K-44 (`GV.form` sözleşmesi) kararlarına
+> aittir. Gerekçeleri o turun commit mesajlarında tam; buraya taşınmayı
+> bekliyorlar. Numaralar boş göründüğü için YENİDEN KULLANILMAZ.
+
+---
+
+## ADR-R2-45 · `guvenilir` bayrağı BİR DÖNEM İDDİASIDIR — tarihsiz çağrıda `true` dönemez
+
+**Bağlam.** ADR-07 şu hatayı kapatmıştı: bugünkü personel maliyetini geçmiş
+zamanlara uygulamak. Bir maaş zammı, geçmiş projelerin kârlılığını geriye
+dönük değiştiriyordu; şartname [10.5.2] bunu doğrudan yasaklıyor. Çözüm üç
+kademeliydi (`oranSnapshot` → `maasGecmisi` → bugünkü orana düşüş) ve düşüşü
+`guvenilir:false` bayrağı GÖSTERECEKTİ.
+
+**Ölçülen kusur (V2-92).** Bayrak `!!gecmis || !tarih` yazılıydı:
+
+```
+GV.hr.icMaliyet('EMP-006')               → saat 613 · kaynak 'maas' · guvenilir TRUE
+GV.hr.icMaliyet('EMP-006','2025-01-01')  → saat 613 · kaynak 'maas' · guvenilir false
+```
+
+Aynı sayı, aynı kaynak, ZIT bayrak. İki çağrı da tam olarak üçüncü kademeye
+düşüyor — bugünkü orana. Tarihsiz olan, düşüşü bayrakta **saklıyordu**.
+
+**Karar.** `guvenilir`, "bu oran sorulan döneme aittir" demektir; bir dönem
+sorulmadıysa iddia da kurulamaz. Tarihsiz çağrı artık `guvenilir:false` ve
+**`donemsiz:true`** döner. Üçüncü kip şart, çünkü iki durum aynı değildir:
+
+| çağrı | guvenilir | donemsiz | anlamı |
+|---|---|---|---|
+| `icMaliyet(kod)` | `false` | `true` | döneme sorulmadı — oran BUGÜNE ait |
+| `icMaliyet(kod, tarih)` geçmiş yok | `false` | `false` | döneme soruldu, karşılığı yok |
+| `icMaliyet(kod, tarih)` geçmiş var | `true` | `false` | kaynak `maasGecmisi` |
+| `saatlikUcret` · `oranSnapshot` | `true` | `false` | dönemden bağımsız / dondurulmuş |
+
+Gerekçe cümlesi de yordama taşındı (`neden`): ekran kendi cümlesini kurarsa
+kural iki yerde yaşar ve yordam değişince sessizce ayrışır (L-40).
+`app-personel-detay.html` artık bayrağı ve gerekçeyi yordamdan okuyor.
+
+**Ölçüm (iki yönlü).** Beş kaynak ayrı ayrı koşuldu: tarihsiz `false/true` ·
+tarihli-geçmişsiz `false/false` · tarihli-geçmişli `true/false` ·
+`saatlikUcret` `true/false` · `oranSnapshot` `true/false`.
+
+**Reddedilen seçenek.** Bayrağı olduğu gibi bırakıp ekranda cümleyle telafi
+etmek — dilim 6'da yapılan buydu. Telafi ekrandaydı, kusur yordamdaydı: brief'i
+okuyup bayrağa güvenen İKİNCİ bir ekran aynı hatayı yeniden yapardı.
+
+---
+
+## ADR-R2-46 · Zorunluluk ŞABLONDA yaşar, tamamlanma ÖRNEKTE — kapı ikisini birden okur
+
+**Bağlam.** Şartname [4.2.3]: *"Zorunlu evrak eksikken personel Aktif olamaz."*
+Kural `org.js` geçiş tablosunda `kapi:'personelEvrak'` diye yazılıydı ve
+karşılığı olan yordam da vardı. Yani hem kural hem kapı GÖRÜNÜYORDU.
+
+**Ölçülen kusur (V2-94).** Yordam `a.zorunlu && a.durum !== 'Tamamlandı'`
+okuyordu. Ölçüldü:
+
+```
+DB.onboarding[].adimlar          → { ad, tamam, sorumlu }            ← ÖRNEK
+DB.onboardingTemplates[].adimlar → { ad, tur, sorumluRol, gun, zorunlu } ← ŞABLON
+```
+
+`zorunlu` ve `durum` alanlarının İKİSİ DE örnekte yok. Süzgeç hiçbir adımı
+seçemiyor, `eksik` her zaman boş kalıyor, kapı süreç kaydı olan **herkesi
+geçiriyordu**. Reddettiği tek şey "onboarding hiç açılmamış" durumuydu — yani
+evrak eksikliğini değil, sürecin yokluğunu ölçüyordu. L-31'in tarifi:
+*görünen ama reddetmeyen yapı.*
+
+**Karar.** İki defter AYRI SORULARIN cevabıdır ve kapı ikisini birleştirir:
+zorunluluk **şablondan**, tamamlanma **örnekten** okunur. Şablon
+`tur:'Giriş' + tip:'temel' + aktif + calismaTipi` eşleşmesiyle çözülür;
+şablonun `zorunlu:true` adımı örnekte YOKSA "hiç açılmamış zorunlu adım",
+VARSA ama `tamam !== true` ise "tamamlanmayan zorunlu adım" olarak ayrı ayrı
+raporlanır — ikisi farklı işe gönderir.
+
+**Şablon çözülemezse kapı AÇILMAZ.** Zorunluluğu ölçemeyen bir kapının
+"geçebilir" demesi, ölçmediğini ölçtüm saymaktır — bu ADR'nin kapattığı
+hatanın ta kendisi.
+
+**Ölçüm (iki yönlü).** Temiz veride: `EMP-016` REDDEDİLDİ (iki tamamlanmamış
+zorunlu adım: *Ekipman zimmeti · Oryantasyon eğitimi*), `EMP-014` ve `EMP-015`
+GEÇTİ, `EMP-001` süreç yokluğundan ayrı gerekçeyle reddedildi. Bozulmuş
+kopyada: tamam bayrağı düşürülünce REDDETTİ · adım silinince REDDETTİ (doğru
+mesajla) · yedek geri yüklenince GEÇTİ · şablon silinince REDDETTİ.
+
+⚠️ **Ölçülen yan bulgu:** `EMP-016` bugün `Aktif` durumda ama kapı onu
+reddediyor — yani tohum veri, kapı gerçekten ölçmeye başlamadan önce yapılmış
+bir geçişi taşıyor. Kapının kusuru değil, kuralın nihayet uygulanmasıdır.
+
+**Bilinen sınır (V2-96).** `tip:'ek'` şablonlar (`SBL-GIRIS-YAZILIM` ·
+`SBL-GIRIS-SATIS` · `SBL-GIRIS-STAJYER`) hiçbir örnek sürece uygulanmamış;
+kapı yalnız `temel` şablonu ölçer. Sınır kapının değil süreç kaydının
+borcudur ve kapının kendi yorumunda yazılıdır ki kapsamı görünsün.
