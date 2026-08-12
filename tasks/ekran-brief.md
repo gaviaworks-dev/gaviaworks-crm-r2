@@ -2608,8 +2608,17 @@ GV.fmt.num(1234)          // '1.234'      · basamak seçeneği: GV.fmt.num(1.5,
 GV.fmt.date('2026-08-03') // '03.08.2026' · boş/None → '—'
 GV.fmt.dt('2026-08-03T09:12')  // '03.08.2026 09:12'
 GV.fmt.money(1500) · GV.fmt.moneyK(1500000)   // '1,5 Mn' — KPI için
-GV.fmt.pct(72) · GV.fmt.hours(7.5) · GV.fmt.days(3)
+GV.fmt.pct(72) · GV.fmt.hours(7.5)
+GV.fmt.days('2026-08-25')      // ⚠️ SÜRE BİÇİMLENDİRİCİSİ DEĞİL
+GV.fmt.rel('2026-08-25')       // 'bugün' · 'yarın' · 'dün' · '3 gün sonra'
 ```
+⚠️ **DÜZELTME — `GV.fmt.days` yukarıda BİR SÜRE BİÇİMLENDİRİCİSİ GİBİ
+yazılıydı ve yanlıştı.** Gerçek imza `days(iso, today)`: iki tarih arasındaki
+**tam gün farkını** döndürür (`today` verilmezse `DB.today`), bir sayıyı
+"3 gün" diye biçimlendirmez. `GV.fmt.days(3)` çağrısı `new Date('3T00:00:00')`
+üretip **`NaN`** döndürür ve o `NaN` DOM'a basılır — dilim 6'da bir ajan bu
+satırı brief'ten okuyup tam olarak bunu yaşadı. Gün SAYISI basacaksan
+`GV.fmt.num(n) + ' gün'` ya da hücre tarafında `GV.cell.gun(n, tone)` kullan.
 ⚠️ `GV.fmt.mny` **YOKTUR** (§4.3). Para HTML'i `GV.cell.mny`dir.
 
 **`GV.list` — brief'te yazılı olmayan üç bayrak (üçü de gerçek):**
@@ -2754,6 +2763,125 @@ projenin 14'ünde reddediyordu ve `istisnaRol` boş olduğu için **hiçbir proj
 Aktife alınamıyordu**. Artık `planlananBitis` okunuyor ve sözleşme bağı
 otorite defterden (`DB.contracts[].proje`) geliyor: geçen **8/14**, reddeden
 **6/14** (altısı da 2023-2025 kapanmış, sözleşme kaydı olmayan projeler).
+
+### 22.1b Dilim 6'nın İLK AJANININ brief'te BULAMADIĞI imzalar
+
+§21.11 ile aynı disiplin: bu bölüm ölçümdür. Aşağıdaki beş imza gerçektir,
+yayındadır ve brief'te **yazılı değildi** — ilk ajan onları emsal ekranlardan
+okumak zorunda kaldı. Bundan sonra **brief'ten okunur.**
+
+**1 · `GV.gates` ORTAK KATMANDA AÇIKTIR (`domain.js:819`).** Brief bu ada
+**hiç değinmiyordu** ve sonucu ölçüldü: ajan `Gates.projeAktif`in koşullarını
+ekranda yeniden kurmak (bir AYNA yazmak) zorunda kaldı. Ayna eksik çıktı —
+gerçek kapı sözleşme kaynaklı projede `musteri` alanını da soruyor, ayna
+sormuyordu; 14 kaydın 14'ünde `musteri` dolu olduğu için ikisi **aynı
+sonucu veriyordu**, yani kusur veri sayesinde görünmüyordu (V2-48 sınıfı).
+
+```js
+GV.gates.projeAktif(p) · .projeTeslim(p) · .projeKapanis(p) · .sozlesmeAktif(c)
+GV.gates.teklifOnAnaliz(q) · .teslimKritikHata(d) · .izinBakiye(l)
+GV.gates.personelEvrak(e) · .personelZimmet(e) · .firsatKazanma(o)
+GV.gates.teklifSurumKilidi(q) · .destekKota(t)
+//  → { ok:true } | { ok:false, why:'…' } | { ok:false, olculemedi:true, why:'…' }
+//  bazıları ayrıca: { ok:true, uyari, gerekceZorunlu }
+```
+**Kural:** bir kapının bugünkü hâlini ekranda GÖSTERECEKSEN yordamı **çağır**;
+koşullarını yeniden okuma. `GV.flow.adimlar` zaten `kapi` ADINI veriyor,
+`GV.gates[ad]` de kararı verir. Yordam yoksa **"geçer" DEMEZ, "ölçülemedi"**
+der (L-13).
+
+**2 · `GV.hr.atanabilirler()` KAYIT DİZİSİ döndürür**, `{value,label}` değil.
+`DB.employees` kayıtlarının kendisi, `ad`a göre `localeCompare(…, 'tr')` ile
+sıralı. Çağıran yeniden sıralamaz; `select` seçeneklerini kendisi kurar
+(`{ value:e.kod, label:e.ad }`). Bugün **15 kayıt** döner (16 personelin
+`Aktif` olanları — `EMP-015` `Offboarding` olduğu için listede **yok**).
+
+**3 · `GV.lifecycle.ad(evre)`** — evre anahtarının insan-okur adı
+(`'MUSTERI'` → `'Müşteri'`). §9.2 bu yordamı listelemiyordu.
+`GV.lifecycle.evreler` · `.sonraki(evre)` · `.hesap(kod)` · `.eksikAlanlar(h)` ·
+`.gec(...)` · `.rozet(h)` ile aynı ad alanındadır.
+
+**4 · DOĞUM LİTERALİ DESENİ ALTI FORM EKRANININ TAMAMINDA GEÇERLİDİR.**
+§22.16 bunu yalnız personel ve izin için yazıyordu; proje · satın alma ·
+demirbaş · araç için de aynıdır çünkü **hiçbirinin `olustur` yordamı yok**.
+Desen: kod `kodUret()`ten, doğum durumu **nesne literalinde**, kayda sonradan
+durum yazan satır yok, `list.push(yeni)`. Emsal: `app-teklif-form.html` ·
+`app-fatura-form.html`. (`GV.task.olustur` ve `GV.destek.olustur` **vardır** —
+görev ve destek formu onları çağırır; kalan altısında karşılığı yoktur.)
+
+**5 · KORUNAN SEÇENEK — düzenlemede sözlükte olmayan değeri DÜŞÜRME.**
+Sözlüksüz alanlarda seçenekler defterden türetilir; ama düzenlenen kaydın
+kendi değeri o türetimin dışında kalabilir (silinmiş bir kategori, elle
+girilmiş bir bütçe kodu). O değer listeye **eklenir**, yoksa `select` onu
+sessizce başka bir değere çevirir ve kullanıcı kaydettiğinde **veri kaybolur**.
+
+```js
+function secenekler(defterDegerleri, mevcut){
+  var l = defterDegerleri.slice();
+  if(mevcut && l.indexOf(mevcut) === -1) l.push(mevcut);   /* korunan seçenek */
+  return l;
+}
+```
+Emsal: `app-destek-form.html`. Bu dilimde geçerli olduğu alanlar:
+`altKategori` · `butceKodu` · `kategori` (satın alma) · `tur` (proje) ·
+`lokasyon` · `mulkiyet` · `kullanim` · `tip` · `yakit` · `vites` · `renk` ·
+`calismaTuru` · `sozlesme`.
+
+### 22.1c İKİNCİ AJANIN brief'te BULAMADIĞI imzalar
+
+Aynı disiplin (§21.11 · §22.1b). Dokuz madde; ilki bir brief **hatasıydı**,
+kalanı **boşluk**.
+
+**1 · `GV.fmt.days` §21.11'de YANLIŞ belgelenmişti — düzeltildi** (bkz. §21.11).
+Ekranda `NaN` üretti. Süre değil TARİH FARKI yordamıdır.
+
+**2 · `GV.approval.akisTanim(tur)` dönüş sözleşmesi:**
+```js
+GV.approval.akisTanim('Satın alma talebi')
+//  → { kod:'AKS-SAT-1', ad, tur, surum:1, durum:'Yayında', yururluk, adimlar:[…] }
+//  Yalnız `durum === 'Yayında'` olanı döner, en yüksek `surum` kazanır.
+//  Yayında zincir yoksa null → ekran "yayında bir zincir tanımı yok" der.
+```
+
+**3 · `adim.kosul` DEĞER KÜMESİ — üç değer, ölçüldü:** `'hep'` · `'tutar'` ·
+`'gun'`. ⚠️ Koşulsuz adım `kosul:null` DEĞİL **`kosul:'hep'`** taşır; ayırt
+edici olan `esik == null`dır. `'tutar'` → `tahminiMaliyet >= esik`;
+`'gun'` → `gun >= esik` (izin zincirinde).
+
+**4 · `GV.approval.adim(tur, kayitKod)` — `tur` bir VARLIK ADI DEĞİL, onay
+tipinin İNSAN-OKUR adıdır.** `'purchase'` değil **`'Satın alma talebi'`**;
+anahtarlar `DB.approvalTypes` içindedir (8 tip). Dönüş:
+`{ adim, toplam, siradaki, sonuclandi, reddedildi }` · zincir yoksa **`null`**
+(ekran "zincir tanımlı değil" der, `0/0` basmaz).
+
+**5 · `DB.purchases` — 18 alanın tam envanteri:**
+`kod · talepEden · dep · proje · urun · kategori · aciklama · ozellik ·
+miktar · tahminiMaliyet · ihtiyacTarihi · oncelik · gerekce · butceKodu ·
+durum · olusturma · onayAdim · onayToplam`.
+
+**6 · `olusturma` bir TARİHTİR, zaman damgası değil.** Ölçüldü: 7/7 kayıtta
+`'2026-07-30'` biçiminde. §22.2'nin `DB.today + 'T' + HH:MM` damgası
+`DB.activities`/`GV.audit` tarafı içindir; **kayıt alanlarında hangi biçim
+kullanılıyorsa o korunur** — biçim değiştirmek defteri ikiye böler.
+Bu dilimde tarih biçimi kullanan alanlar: `olusturma` (satın alma) ·
+`talepTarihi`/`onayTarihi` (izin) · `alisTarihi`/`garantiBas`/`garantiBit`
+(demirbaş) · `girisTarihi`/`cikisTarihi` (personel) · `teslimTarihi`
+(zimmet). Saat taşıyan tek yer `DB.purchaseApprovals[].tarih`
+(`'2026-07-30T14:20'`).
+
+**7 · `app-satinalma.html` `?ac=<kod>` derin bağlantı sözleşmesi taşır** —
+liste açılışında o kaydın çekmecesini açar. `GV.afterSave` `alt` düğmesi buna
+bağlanır. Aynı sınıf: `app-varlik.html` `?t=<yuzey>` (§20.7) ·
+`app-zaman.html#izin` · `app-personel.html?t=cikis`.
+
+**8 · `GV.form` `options` DÜZ DİZE DİZİSİ de kabul eder** —
+`options:['Yüksek','Orta']` ile `options:[{value,label}]` ikisi de geçerlidir
+(`ui.js` select dalı). Sözlükten gelen listeler için birincisi yeterlidir.
+
+**9 · §12'de yazılı OLMAYAN ama yayında olan sınıflar:** `u-mt-8` ·
+`u-mt-4` (`ui.css` boşluk yardımcıları) · `.odl-gap` · `.odl-gap-kod` ·
+`.odl-gap-bolum` (backend payı listesi — adı ödeme linki modülüne ait, V2-05).
+Backend payı bloğunu bu üç sınıfla bas; `<style>` yazma.
 
 ### 22.2 KOD ÜRETİMİ — sıra GLOBAL, yıl damgası kayıt yılıdır
 
