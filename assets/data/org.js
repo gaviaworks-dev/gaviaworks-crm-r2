@@ -832,20 +832,38 @@ DB.approvalTypes = {
 
 /* Onay akış TANIMI — sürümlü. Şartname [6.3.1]: `Taslak → Yayında →
    Kullanımdan Kaldırıldı`. Süreç başlatıldığında sürüm örneğe sabitlenir,
-   yönetici şablonu sonradan değiştirse bile çalışan zincir değişmez. */
+   yönetici şablonu sonradan değiştirse bile çalışan zincir değişmez.
+
+   ⚠️ ADIMIN MUHATABI İKİ EKSENDEDİR — `rol` ile `iliski` AYRI ALANLARDIR
+   (K-38 · ADR-R2-38). Ölçülen kusur: iki adım `rol:` alanında 27'lik rol
+   sözlüğünde OLMAYAN bir anahtar taşıyordu (`finans` · `yonetici`) ve
+   `DB.roleName()` ikisini de çözemiyordu.
+     · `finans`   → adımın kendi `ad` alanı 'Muhasebe' yazıyordu ve sözlükteki
+                    `muhasebe` rolünün adı da 'Muhasebe'dir; anahtar YANLIŞ
+                    yazılmış bir ROL adıydı → `muhasebe` olarak düzeltildi.
+     · `yonetici` → adımın `ad` alanı 'Bağlı Yönetici' yazıyor; sözlükte böyle
+                    bir rol YOK ve olmamalı. Bu bir rol değil bir İLİŞKİDİR:
+                    talebi açan personelin `DB.employees[].yonetici` alanı.
+                    `genelmudur`a eşlemek her izin talebini kişinin kendi
+                    yöneticisi yerine Genel Müdür'e göndermek olurdu.
+   Motorda emsali var: `Flow.yetkili` `sorumlu`/`onaylayan`/`veren`
+   anahtarlarını rol değil ilişki olarak çözer ve kendi yorumunda "karıştırmak
+   her kullanıcıyı her kaydın sorumlusu yapardı" der. Aynı ayrım burada da
+   ALAN ADIYLA yazılıdır: bir adım ya `rol` taşır ya `iliski`, ikisini birden
+   taşımaz. Çözen tek yordam `GV.approval.adimMuhatap(adim, kayit)`. */
 DB.approvalFlowStatuses = ['Taslak','Yayında','Kullanımdan Kaldırıldı'];
 DB.approvalFlows = [
   { kod:'AKS-SAT-1', ad:'Satın alma onay zinciri', tur:'Satın alma talebi', surum:1,
     durum:'Yayında', yururluk:'2026-01-01',
     adimlar:[
       { sira:1, rol:'depmudur',  ad:'Departman Yöneticisi', kosul:'hep',        esik:null,    sla:1 },
-      { sira:2, rol:'finans',    ad:'Muhasebe',             kosul:'tutar',      esik:25000,   sla:1 },
+      { sira:2, rol:'muhasebe',  ad:'Muhasebe',             kosul:'tutar',      esik:25000,   sla:1 },
       { sira:3, rol:'sahip',     ad:'Şirket Sahibi',        kosul:'tutar',      esik:100000,  sla:2 }
     ] },
   { kod:'AKS-IZN-1', ad:'İzin onay zinciri', tur:'İzin talebi', surum:1,
     durum:'Yayında', yururluk:'2026-01-01',
     adimlar:[
-      { sira:1, rol:'yonetici', ad:'Bağlı Yönetici', kosul:'hep',    esik:null, sla:1 },
+      { sira:1, iliski:'yonetici', ad:'Bağlı Yönetici', kosul:'hep', esik:null, sla:1 },
       { sira:2, rol:'ik',       ad:'İnsan Kaynakları', kosul:'gun',  esik:10,   sla:1 }
     ] },
   { kod:'AKS-TKL-1', ad:'Teklif iç onay zinciri', tur:'Teklif iç onayı', surum:1,

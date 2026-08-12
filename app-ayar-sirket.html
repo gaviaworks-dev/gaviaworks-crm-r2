@@ -970,15 +970,31 @@ document.addEventListener('gv:ready', function(){
     var esikliAdim = AKIS.reduce(function(s, a){
       return s + say(a.adimlar || [], function(x){ return x.esik != null; }); }, 0);
 
-    /* Adımın rol anahtarı 27 rollük sözlükte var mı — ölçülür, varsayılmaz. */
+    /* ADIMIN MUHATABI — iki eksende olabilir (K-38 · ADR-R2-38) ve çözen
+       yordam ortak katmandadır: `GV.approval.adimMuhatap`. Bu ekran eskiden
+       yalnız `adim.rol`u okuyup 27'lik sözlükte arıyordu; sözlükte olmayan
+       iki anahtar (`finans` · `yonetici`) bu yüzden ⚠ ile basılıyordu (V2-61).
+       Biri yazım hatasıydı, öbürü hiç rol değildi. Ekran artık kuralı
+       kendisi kurmuyor, yordamı çağırıyor — bir adım ROL taşıyorsa küme,
+       İLİŞKİ taşıyorsa kenar olarak yazılır.
+
+       ⚠️ Bu sekme zincirin TANIMINI gösterir, bir koşumunu değil: ilişki
+       adımının muhatabı kayda bağlıdır, tanımda kişi YAZILMAZ. `cozuldu:false`
+       burada bir kusur değil, doğru cevaptır ve sebebi basılır. */
     function rolCozum(adim){
-      var bilinen = ROL.some(function(r){ return r.key === adim.rol; });
-      return bilinen
-        ? GV.esc(DB.roleName(adim.rol)) + GV.cell.sub('<span class="cell-code">' +
-            GV.esc(adim.rol) + '</span> · ad DB.roleName(key) ile çözüldü')
-        : GV.esc(adim.ad || adim.rol) + GV.cell.sub('⚠ <span class="cell-code">' +
-            GV.esc(adim.rol) + '</span> ' + F.num(ROL.length) + ' rollük sözlükte YOK; ' +
-            'adım kendi <b>ad</b> alanını taşıyor — rol adı uydurulmadı');
+      var m = GV.approval.adimMuhatap(adim);
+      if(m.tur === 'iliski')
+        return GV.esc(m.ad) + GV.cell.sub('<span class="cell-code">iliski:' +
+          GV.esc(m.anahtar) + '</span> · bir ROL DEĞİL, bir İLİŞKİ: ' +
+          'muhatap kaydın kendisinden türer (' +
+          GV.esc((GV.approval.ILISKILER[m.anahtar] || {}).aciklama || '—') + '). ' +
+          'Tanımda kişi yazılmaz — koşumda çözülür');
+      if(m.tur === 'rol' && m.cozuldu)
+        return GV.esc(m.ad) + GV.cell.sub('<span class="cell-code">rol:' +
+          GV.esc(m.anahtar) + '</span> · bir KÜME (' + F.num(ROL.length) +
+          ' rollük sözlükte var) · ad DB.roleName(key) ile çözüldü');
+      return GV.esc(m.ad || adim.ad || '—') + GV.cell.sub('⚠ ' + GV.esc(m.neden || 'muhatap çözülemedi') +
+        ' — adım kendi <b>ad</b> alanını taşıyor, rol adı uydurulmadı');
     }
     /* Eşik: `esik:null` “her zaman çalışır” diye YAZILIR, `0` yazılmaz —
        `0` bir eşik varmış ve sıfıra ayarlanmış gibi okunur (§10.1). */

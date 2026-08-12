@@ -1230,6 +1230,95 @@
                not:(!t.entity && t.not) ? t.not : null };
     },
 
+    /* ===================================================================
+       ADIMIN MUHATABI — ROL mü İLİŞKİ mi (K-38 · ADR-R2-38)
+
+       `DB.approvalFlows[].adimlar[]` iki eksende muhatap tanımlayabilir ve
+       ikisi AYNI ŞEY DEĞİLDİR:
+         · `rol:'muhasebe'`   → bir KÜME. "muhasebe rolündeki herkes."
+                                Kişi döndürmez; döndürmeye çalışmak kümenin
+                                bir üyesini keyfî biçimde seçmek olurdu.
+         · `iliski:'yonetici'`→ bir KENAR. "BU kaydın kişisinin yöneticisi."
+                                Kayıt olmadan çözülemez ve kayıttan kayda
+                                farklı kişiye çıkar.
+
+       Ölçülen kusur: iki adım `rol` alanında sözlükte olmayan anahtar
+       taşıyordu ve `DB.roleName()` çözemiyordu; `app-ayar-sirket.html`
+       adımın kendi `ad` alanını basıp uyarmak zorunda kalmıştı (V2-61).
+       Biri yazım hatasıydı (`finans` → `muhasebe`), öbürü hiç rol değildi.
+
+       `Flow.yetkili` bu ayrımı zaten yapıyor (`sorumlu`/`onaylayan`/`veren`
+       ilişki, `pm` rol) ama YETKİ sorusu için. Bu yordam MUHATAP sorusunu
+       cevaplar ve ikinci bir sözlük açmaz: ilişki adları aşağıda TEK yerde.
+
+       Dönüş: { tur, anahtar, ad, kisi, cozuldu, neden }
+         `cozuldu:false` → muhatap ÇÖZÜLEMEDİ. Ekran adımın `ad` alanını
+         basar ve sebebini yazar; kişi UYDURMAZ, sıfır da basmaz (§10.1).
+       =================================================================== */
+    ILISKILER:{
+      yonetici:{ ad:'Bağlı yönetici',
+                 alan:'yonetici',
+                 kisiAlan:'personel',
+                 aciklama:'Talebi açan personelin `DB.employees[].yonetici` alanı' },
+      veren:{    ad:'Talebi açan',
+                 alan:null,
+                 kisiAlan:'talepEden',
+                 aciklama:'Kaydın `talepEden` / `personel` alanı' }
+    },
+
+    adimMuhatap:function(adim, kayit){
+      if(!adim) return null;
+      /* Bir adım ya rol taşır ya ilişki — ikisi birden yazılıysa defter
+         çelişkilidir ve bunu yutmak, hangisinin kazandığını gizlemektir. */
+      if(adim.rol && adim.iliski)
+        return { tur:'celiski', anahtar:adim.rol + '+' + adim.iliski, ad:adim.ad || null,
+                 kisi:null, cozuldu:false,
+                 neden:'Adım hem `rol` hem `iliski` taşıyor — defter çelişkili, ' +
+                       'muhatap tek eksende yazılmalı.' };
+
+      if(adim.iliski){
+        var t = Approval.ILISKILER[adim.iliski];
+        if(!t)
+          return { tur:'iliski', anahtar:adim.iliski, ad:adim.ad || adim.iliski, kisi:null,
+                   cozuldu:false, neden:'`' + adim.iliski + '` ilişki sözlüğünde tanımlı değil.' };
+        if(!kayit)
+          return { tur:'iliski', anahtar:adim.iliski, ad:t.ad, kisi:null, cozuldu:false,
+                   neden:'İlişki muhatabı kayıt olmadan çözülemez — ' + t.aciklama +
+                         '. Zincir TANIMI gösterilirken kişi yazılmaz.' };
+        var kisiKod = kayit[t.kisiAlan] || kayit.personel || kayit.talepEden || null;
+        if(!kisiKod)
+          return { tur:'iliski', anahtar:adim.iliski, ad:t.ad, kisi:null, cozuldu:false,
+                   neden:'Kayıtta `' + t.kisiAlan + '` alanı boş — ilişki kurulamadı.' };
+        if(!t.alan)
+          return { tur:'iliski', anahtar:adim.iliski, ad:t.ad, kisi:kisiKod, cozuldu:true,
+                   neden:null };
+        var e = GV.hr && GV.hr.kayit ? GV.hr.kayit(kisiKod) : null;
+        if(!e)
+          return { tur:'iliski', anahtar:adim.iliski, ad:t.ad, kisi:null, cozuldu:false,
+                   neden:kisiKod + ' personel kaydı bulunamadı — ilişki çözülemedi.' };
+        var hedef = e[t.alan] || null;
+        if(!hedef)
+          return { tur:'iliski', anahtar:adim.iliski, ad:t.ad, kisi:null, cozuldu:false,
+                   neden:e.kod + ' kaydında `' + t.alan + '` alanı boş — bu personelin ' +
+                         'bağlı yöneticisi defterde yazılı değil.' };
+        return { tur:'iliski', anahtar:adim.iliski, ad:t.ad, kisi:hedef, cozuldu:true, neden:null };
+      }
+
+      if(adim.rol){
+        var bilinen = ((window.DB && DB.roles) || []).some(function(r){ return r.key === adim.rol; });
+        return { tur:'rol', anahtar:adim.rol,
+                 ad:bilinen ? (DB.roleName(adim.rol) || adim.rol) : (adim.ad || adim.rol),
+                 /* Rol bir KÜMEdir — kişi döndürmez. */
+                 kisi:null, cozuldu:bilinen,
+                 neden:bilinen ? null
+                     : '`' + adim.rol + '` ' + ((window.DB && DB.roles) || []).length +
+                       ' rollük sözlükte YOK.' };
+      }
+
+      return { tur:null, anahtar:null, ad:adim.ad || null, kisi:null, cozuldu:false,
+               neden:'Adımda ne `rol` ne `iliski` yazılı — muhatap tanımsız.' };
+    },
+
     /* Yayındaki akış tanımı — sürüm örneğe sabitlenir ([6.3.2]) */
     akisTanim:function(tur){
       return (window.DB && DB.approvalFlows || [])
