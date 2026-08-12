@@ -109,6 +109,12 @@ document.addEventListener('gv:ready', function(){
   var iletisimler = (DB.interactions || []).filter(function(i){
     return i.musteri === h.kod || leadKodlari.indexOf(i.lead) !== -1; });
   var izler       = GV.audit.oku(h.kod, 30);
+  /* Rota 62 · 63 — bu hesabın toplantıları. Sekme sayacı bunu okur, o yüzden
+     tanım sekme şeridinden ÖNCE durur. `aktif` alanı var ama `durum` da var:
+     arşiv sorusu `GV.arsivli`ye sorulur, `aktif` orada tuzaktır (K-33). */
+  var toplantilar = (DB.meetings || [])
+    .filter(function(m){ return m.musteri === h.kod && !GV.arsivli(m); })
+    .sort(function(a,b){ return String(b.tarih).localeCompare(String(a.tarih)); });
 
   var bosSebep = adayKaynakli
     ? 'Bu hesap aday kaydından (' + h.legacy_id + ') türedi; kaynak veride bu bağ yok.'
@@ -220,8 +226,9 @@ document.addEventListener('gv:ready', function(){
     { key:'belge',    label:'Belgeler',
       sayac:belgeler.length, ipucu:'bu hesaba bağlı belge kaydı' },
     { key:'aktivite', label:'Aktivite',
-      sayac:izler.length + iletisimler.length,
-      ipucu:izler.length + ' denetim izi · ' + iletisimler.length + ' iletişim kaydı' }
+      sayac:izler.length + iletisimler.length + toplantilar.length,
+      ipucu:izler.length + ' denetim izi · ' + iletisimler.length + ' iletişim kaydı · ' +
+            toplantilar.length + ' toplantı' }
   ];
 
   /* ⚠️ SEKME ŞERİDİNDE İKON YOK — ölçüm kararı, tercih değil.
@@ -741,6 +748,79 @@ document.addEventListener('gv:ready', function(){
     '</section>';
   }
 
+  /* ---- 7.7b TOPLANTILAR — rota 62 · 63 -----------------------------
+     Rota 62 (`app-toplanti.html`) ve 63 (`app-toplanti-detay.html`) AYRI
+     EKRAN OLMAZ: brief §23.7 toplantıyı bağlamsal kayıt sayıyor. Panel ayağı
+     zaten yayında ("Günün ajandası", bugüne göre süzer); burası bağlamın
+     ikinci ayağıdır — hesabın kendi geçmiş yüzeyinde toplantı satırı.
+
+     Ölçüm (13 Ağustos): `DB.meetings` 9 kayıt · **5'inde `musteri` dolu** ve
+     aynı 5'inde `proje` de dolu; kalan 4'ü departman/satış toplantısıdır ve
+     hiçbir hesaba bağlı değildir, o yüzden hiçbir hesap sayfasında görünmez.
+
+     ⚠️ ROZET BASILMAZ. `tur` ve `durum` için sözlük koleksiyonu YOK
+     (`DB.meetingStatuses` / `DB.meetingTypes` diye bir şey ölçülmedi);
+     sözlüksüz alana rozet basmak §22.17.12 ihlalidir (V2-91'de tam bu
+     kusur kapatıldı). Değerler düz metin basılır.
+
+     ⚠️ "Toplantı ekle" DÜĞMESİ YOK ve sebebi ekranda yazılı: `DB.meetings`
+     defterine kayıt EKLEYEN yordam ortak katmanda yok (rota 64 bloke,
+     V2-99). Olmayan yordamı düğme olarak vaat etmek §14.6 yasağıdır. */
+  function cizToplanti(){
+    var kolonlar = [
+      { label:'Tür' }, { label:'Tarih', cls:'center' }, { label:'Konu' },
+      { label:'Durum' }, { label:'Katılımcı' }, { label:'Dış katılımcı' }
+    ];
+    var satirlar = toplantilar.map(function(m){
+      var dis = (m.disKatilimci || []).filter(Boolean);
+      return [
+        esc(m.tur) + '<span class="cell-code">' + esc(m.kod) + '</span>',
+        '<span class="cell-date">' + esc(F.dt(m.tarih)) + '</span>' +
+          GV.cell.sub(esc((m.sure != null ? m.sure + ' dk' : '') +
+                          (m.yer ? (m.sure != null ? ' · ' : '') + m.yer : '')) || '—'),
+        '<span class="cell-main">' + esc(m.ad) + '</span>' +
+          ((m.gundem || []).length ? GV.cell.sub(esc(m.gundem.join(' · '))) : ''),
+        esc(m.durum),
+        (m.katilimci || []).length
+          ? '<span class="gv-user-stack">' + m.katilimci.map(function(k){
+              return GV.user(k, { sm:true }); }).join('') + '</span>'
+          : BOS,
+        /* Dış katılımcı SATIRI boşsa basılmaz (§23.7): serbest metin adlardır,
+           sözlükte karşılığı yoktur ve boş dizi "kimse yoktu" demez, "yazılmadı"
+           demektir. */
+        dis.length ? esc(dis.join(', ')) : BOS
+      ];
+    });
+    var mobil = toplantilar.map(function(m){
+      var dis = (m.disKatilimci || []).filter(Boolean);
+      return GV.cell.mrow(
+        '<span class="cell-main">' + esc(m.ad) + '</span>' + esc(m.durum),
+        esc(m.kod) + ' · ' + esc(m.tur) + ' · ' + esc(F.dt(m.tarih)),
+        /* `i-map-pin` sprite'ta YOK (113 ikon tarandı); olmayan ikonu
+           çağırmak boş bir <use> bırakır ve tarayıcı ekseni bunu yakalar.
+           Yer bilgisi takvim ikonuyla basılır. */
+        [ m.yer ? ico('i-calendar','ic-sm') + esc(m.yer) : '',
+          dis.length ? ico('i-users','ic-sm') + esc(dis.join(', ')) : '' ].filter(Boolean),
+        (m.katilimci || []).length ? GV.user(m.katilimci[0], { sm:true }) : '');
+    });
+
+    return '<section class="gv-card">' +
+      kartBasi('i-calendar', 'Toplantılar', sayacEtiketi(toplantilar.length, 'toplantı')) +
+      tablo(kolonlar, satirlar, mobil, {
+        icon:'i-calendar', title:'Bu hesapta toplantı kaydı yok',
+        desc:'Toplantı defterinde ' + (DB.meetings || []).length + ' kayıt var; ' +
+             (DB.meetings || []).filter(function(m){ return !!m.musteri; }).length +
+             '’i bir hesaba bağlı ve hiçbiri bu hesap değil.'
+      }) +
+      '<div class="gc-body u-sm u-muted">Toplantının ayrı bir ekranı yoktur; kayıt ' +
+        'bağlamında yaşar (rota 62 · 63). <b>Yeni toplantı açma düğmesi yok</b>: ' +
+        '<code>DB.meetings</code> defterine kayıt ekleyen bir yordam ortak katmanda ' +
+        'ölçülmedi, olmayan yordamı düğme olarak vaat etmek yasaktır. ' +
+        'Tür ve durum düz metin basılır — ikisinin de sözlük koleksiyonu yok, ' +
+        'sözlüksüz alana rozet basılmaz.</div>' +
+    '</section>';
+  }
+
   /* ---- 7.8 AKTİVİTE ------------------------------------------------ */
   function cizAktivite(){
     var ekle = canEkle
@@ -771,7 +851,8 @@ document.addEventListener('gv:ready', function(){
         i.kisi ? GV.user(i.kisi, { sm:true }) : '');
     });
 
-    return '<section class="gv-card">' +
+    return cizToplanti() +
+    '<section class="gv-card">' +
       kartBasi('i-chat', 'İletişim geçmişi',
         ekle + ' ' + sayacEtiketi(iletisimler.length, 'kayıt')) +
       tablo(kolonlar, satirlar, mobil, {

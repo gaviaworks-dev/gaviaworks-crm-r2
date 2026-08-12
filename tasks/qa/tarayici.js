@@ -194,6 +194,15 @@ const EKRANLAR = [
   { dosya: 'app-personel-detay.html?id=EMP-011',        ad: 'Personel · Boş',     oturum: true },
   { dosya: 'app-personel-detay.html?id=EMP-004',        ad: 'Personel · Öz-erişim', oturum: true, rol: 'takimlideri' },
   { dosya: 'app-personel-detay.html?id=EMP-005',        ad: 'Personel · Maskeli', oturum: true, rol: 'takimlideri' },
+  /* ---- Dilim 7 kapanışı: rota 62 · 63 toplantı bağlamı ---------------
+     İKİ YÖN DE ölçülür. Toplantı yüzeyi Aktivite sekmesinde yaşar ve o
+     sekme TEMBEL çizilir — varsayılan sekmeyi ölçmek yerleşimi hiç
+     çizmemek olurdu. Kayıt seçimi ölçümden geldi: `DB.meetings` 9 kaydın
+     5'i bağlamlı ve MUS-2024-002 ile PRJ-2026-003 o beşin içindedir;
+     yukarıdaki `MUS-2026-008` ise hiçbir toplantı taşımaz, yani BOŞ
+     yerleşim de ayrıca ölçülüyor. */
+  { dosya: 'app-musteri-detay.html?id=MUS-2024-002#aktivite', ad: 'Müşteri · Toplantı', oturum: true },
+  { dosya: 'app-proje-detay.html?id=PRJ-2026-003#aktivite',   ad: 'Proje · Toplantı',   oturum: true },
   { dosya: 'app-izin-form.html',                        ad: 'İzin Formu',         oturum: true },
   { dosya: 'app-izin-form.html?id=IZN-2026-039',        ad: 'İzin · Bakiyesiz',   oturum: true },
   { dosya: 'app-demirbas-form.html',                    ad: 'Demirbaş Formu',     oturum: true },

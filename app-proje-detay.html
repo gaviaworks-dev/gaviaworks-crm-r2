@@ -121,6 +121,12 @@ document.addEventListener('gv:ready', function(){
   var tslmler = byProje(DB.deliveries);
   var belgeler= byProje(DB.documents);
   var izler   = GV.audit.oku(p.kod, 30);
+  /* Rota 62 · 63 — bu projenin toplantıları. Sekme sayacı bunu okur, tanım
+     sekme şeridinden ÖNCE durur. `aktif` alanı var ama `durum` da var:
+     arşiv sorusu `GV.arsivli`ye sorulur, `aktif` orada tuzaktır (K-33). */
+  var toplantilar = (DB.meetings || [])
+    .filter(function(m){ return m.proje === p.kod && !GV.arsivli(m); })
+    .sort(function(a,b){ return String(b.tarih).localeCompare(String(a.tarih)); });
 
   /* Alt kayıt toplamı — "bu proje hiç defter tutmamış" ölçümü.
      Sayı ekranda gerekçe olarak kullanılıyor, o yüzden türetilir. */
@@ -238,7 +244,7 @@ document.addEventListener('gv:ready', function(){
       ipucu:'bu projeye bağlı teslim kaydı' },
     { key:'belge', label:'Belgeler', sayac:belgeler.length,
       ipucu:'DB.documents · proje alanı bu projeyi gösteren belge' },
-    { key:'aktivite', label:'Aktivite', sayac:izler.length,
+    { key:'aktivite', label:'Aktivite', sayac:izler.length + toplantilar.length,
       ipucu:'denetim izi ve sistem günlüğü kaydı' }
   ];
 
@@ -1312,8 +1318,60 @@ document.addEventListener('gv:ready', function(){
   /* ===================================================================
      17. SEKME 10 — AKTİVİTE (GV.audit.oku)
      =================================================================== */
+  /* ---- 17.1 TOPLANTILAR — rota 62 · 63 -----------------------------
+     Brief §23.7: toplantı AYRI EKRAN değil, kaydın kendi geçmiş yüzeyinde
+     bağlamsal satırdır. Panel ayağı ("Günün ajandası") zaten yayında;
+     müşteri ayağı `app-musteri-detay.html`te, proje ayağı burada.
+     Ölçüm: `DB.meetings` 9 kayıt · **5'inde `proje` dolu** (aynı 5'inde
+     `musteri` de dolu); kalan 4'ü departman/satış toplantısıdır ve hiçbir
+     projeye bağlı değildir.
+     ⚠️ Rozet YOK — `tur` ve `durum` için sözlük koleksiyonu ölçülmedi,
+     sözlüksüz alana rozet basmak §22.17.12 ihlalidir.
+     ⚠️ "Toplantı ekle" düğmesi YOK — `DB.meetings`e yazan yordam yok
+     (rota 64 bloke · V2-99); olmayan yordam düğme olarak vaat edilmez. */
+  function toplantiKarti(){
+    var govde;
+    if(!toplantilar.length){
+      govde = '<div class="gc-body">' + GV.empty({
+        icon:'i-calendar', title:'Bu projede toplantı kaydı yok',
+        desc:'Toplantı defterinde ' + (DB.meetings || []).length + ' kayıt var; ' +
+             (DB.meetings || []).filter(function(m){ return !!m.proje; }).length +
+             '’i bir projeye bağlı ve hiçbiri bu proje değil.' }) + '</div>';
+    }else{
+      govde = '<div class="gc-body"><ul class="gv-tl">' + toplantilar.map(function(m){
+        var dis = (m.disKatilimci || []).filter(Boolean);
+        return '<li class="gv-tl-row">' +
+          '<div class="gv-tl-head"><span class="gv-tl-who">' + esc(m.ad) + '</span>' +
+            '<span class="gv-tl-when">' + esc(F.dt(m.tarih)) + '</span></div>' +
+          '<div class="gv-tl-body">' +
+            esc(m.tur) + ' · ' + esc(m.durum) +
+            (m.sure != null ? ' · ' + esc(m.sure + ' dk') : '') +
+            (m.yer ? ' · ' + esc(m.yer) : '') +
+            '<span class="cell-code">' + esc(m.kod) + '</span>' +
+            ((m.gundem || []).length
+              ? GV.cell.sub('Gündem: ' + esc(m.gundem.join(' · '))) : '') +
+            ((m.katilimci || []).length
+              ? '<div class="gv-user-stack">' + m.katilimci.map(function(k){
+                  return GV.user(k, { sm:true }); }).join('') + '</div>' : '') +
+            /* Dış katılımcı SATIRI boşsa basılmaz (§23.7): boş dizi
+               "kimse yoktu" demez, "yazılmadı" demektir. */
+            (dis.length ? GV.cell.sub('Dış katılımcı: ' + esc(dis.join(', '))) : '') +
+          '</div></li>';
+      }).join('') + '</ul></div>';
+    }
+    return '<section class="gv-card">' +
+      kartBasi('i-calendar', 'Toplantılar', sayacEtiketi(toplantilar.length, 'toplantı')) +
+      '<div class="gc-body u-sm u-muted">Toplantının ayrı bir ekranı yoktur; kayıt ' +
+        'bağlamında yaşar (rota 62 · 63). <b>Yeni toplantı açma düğmesi yok</b>: ' +
+        '<code>DB.meetings</code> defterine kayıt ekleyen bir yordam ortak katmanda ' +
+        'ölçülmedi. Tür ve durum düz metin basılır — sözlük koleksiyonu yok.</div>' +
+      govde +
+    '</section>';
+  }
+
   function cizAktivite(el){
-    el.innerHTML = '<section class="gv-card">' +
+    el.innerHTML = toplantiKarti() +
+      '<section class="gv-card">' +
       kartBasi('i-activity', 'Denetim izi', sayacEtiketi(izler.length, 'hareket')) +
       '<div class="gc-body u-sm u-muted">Olay defteri ve sistem günlüğü zaman sırasına ' +
         'dizilmiş hâlde; en fazla 30 hareket gösterilir. Durum geçişlerini motor kendisi ' +
