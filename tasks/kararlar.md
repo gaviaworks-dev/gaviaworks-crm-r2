@@ -865,3 +865,104 @@ kapı engelledi, geri dönüş açık kaldı. Veri dosyası değişmedi.
 **Nöbetçi: `tasks/qa/kapi-yonu.js` · 48 kontrol / 6 eksen.** Yeni bir kapı
 kaynağa bağlanırsa ya da `girisKapi`nin hedefine ikinci bir kenar girerse
 kırmızı yanar.
+
+---
+
+## ADR-R2-34 · Entegrasyon katalogu bir NİYETTİR; bağlantı durumu ölçümden türer
+
+**Karar (K-34).** `DB.integrations[].durum` alanı **ölçüm değildir**, katalogun
+niyetidir. Bağlantının bağlı olup olmadığı ortak katmanda **kanıttan türetilir**
+ve tek yordamdan okunur: `GV.entegrasyon.olculenDurum()`.
+
+**Ölçülen çelişki.** `DB.integrations` on kayıt taşıyor ve **dördü
+`durum:'Bağlı'`** diyor: `ENT-001` GitHub · `ENT-003` Google Calendar ·
+`ENT-007` Paraşüt · `ENT-009` OpenAI API. Aynı veri dosyası, 60 satır altında,
+`DB.integrationErrors` başlığında şunu yazıyor:
+
+> "Bu prototipte GERÇEK BİR ENTEGRASYON KOŞUMU YOK — `DB.integrations` yalnız
+> bağlantı tanımlarını taşıyor, hiçbiri çalışmıyor."
+
+İkisi aynı anda doğru olamaz. Depo kendi içinde çelişiyordu ve çelişkinin
+görünür tarafı — yeşil bir "Bağlı" rozeti — kullanıcıya kurulmamış bir
+bağlantıyı kurulmuş gösterecekti.
+
+**Çözüm K-30'un aynısıdır: kayıt silinmez, iddia ile ölçüm AYRIŞTIRILIR.**
+
+| Yordam | Ne söyler | Bugünkü değer |
+|---|---|---|
+| `GV.entegrasyon.kanit()` | bağlantının ölçülebilir kanıtı | koşum defteri **yok** · hata kuyruğu **0** · webhook olayı **0** · ödeme sağlayıcısı `TEST-MOCK` |
+| `.kosumVar()` | üç kanıttan biri dolu mu | **false** |
+| `.olculenDurum()` | ölçülen durum | **`Bağlanmadı`** — 10 kaydın 10'unda |
+| `.olculemedi()` | koşum defteri koleksiyonu var mı | **true** — "hata yok" ile "ölçülemedi" ayrı şeydir |
+| `.katalogIddiasi(e)` | katalogun ne dediği, AYRI ad altında | `Bağlı` / `Bağlı değil` / `Planlandı` |
+| `.celisenler()` | iddia ile ölçümün çeliştiği kayıtlar | **4** |
+
+**Alan tuzağa çevrilmedi.** `aktif` (K-33) ve `customers.durum` (K-21) tuzağa
+çevrilmişti çünkü onları okuyan **yanlış cevap** alıyordu. Burada durum farklı:
+`durum` alanı bir soruya doğru cevap veriyor — "hangi sağlayıcıyla entegre
+olunması planlandı". Yanlış olan alan değil, **alanın bağlantı durumu sanılması**.
+Tuzak, doğru bilgiyi de yok ederdi. Bunun yerine yordam adı ayrıştı:
+`katalogIddiasi()` ile `olculenDurum()` aynı ekranda yan yana durur.
+
+**Ekran sözleşmesi.** `app-ayar-entegrasyon.html` katalog `durum` alanını
+`GV.badge`'e **doğrudan vermez** (yeşil rozet = sahte bağlantı), "Bağlan" /
+"Bağlantıyı kes" düğmesi **basmaz** (yapılamayan iş düğme olarak vaat edilmez) ve
+**hiçbir anahtar/parola girdisi açmaz** (§8.7: canlı anahtarlar istemci paketinde
+bulunmaz). Üçü de `tasks/qa/ayar-ekseni.js` [A4] ve [A5] tarafından ölçülür.
+
+---
+
+## ADR-R2-35 · Ayar kabuğu tek yerden sekme üretir; modül anahtarı tek gerçek mutasyondur
+
+**Karar (K-35).** Şartname §3.3 "aynı ayar kabuğunda sekmeli yönetim; **yetkiye
+göre sekme üret**" hükmü, dört ayar ekranının **tek bir sekme kaydından**
+beslenmesiyle karşılanır: `shell.js` `AYAR_SEKME` → `GV.shell.ayarSekmeleri(ekran)`.
+Ekran kendi sekme listesini yazmaz; ne gelirse basar — `GV.flow.adimlar` düğme
+üretiminin aynı ilkesi (L-40: kural N yerde yaşamaz).
+
+**Dört ekran, on beş sekme, on üç rota satırı.** Sekme kaydı `rota` alanı taşır;
+hangi R1 ekranını kapattığı defterle karşılıklı ölçülebilir, süs değildir.
+
+| Ekran | Sekmeler | Rota |
+|---|---|---|
+| `profil` | `hesap` · `bildirim` | 134 · 135 |
+| `sirket` | `sirket` · `departman` · `kullanici` · `rol` · `yetki` · `onay` | 136–141 |
+| `entegrasyon` | `saglayici` · `odeme` · `otomasyon` · `hata` | 142 · 143 |
+| `log` | `kayit` · `arsiv` · `kalite` | 144 · 145 · 146 |
+
+**Menü sayımı değişmedi ve bu ölçüldü.** Dört ayar girdisi `SECTIONS.ayarlar`
+içinde zaten kayıtlıydı; bu turda yalnız **dosyaları doğdu**. Standart
+kullanıcının görünür günlük girdisi **17** (kabul kriteri ≤18), üç yönetim
+girdisi `yonetim:true` ile ayrı ve soluk blokta (`.gv-menu-admin` ·
+`.gv-menu-item.is-admin`, `opacity:.72`) ve günlük sayıya girmez. `Profil`
+girdisi yönetim **değildir** — herkes kendi profilini yönetir.
+
+**Sekme kapısı ölü değildir, kestiği ölçüldü.** `devops` rolü
+`entegrasyon` ekranına girer ama `odeme` sekmesini **görmez**
+(`perm:'finans'`, matriste `devops.finans:false`) → 4 sekme yerine 3. Yetkisiz
+sekme **basılmaz**; gri ya da kilitli gösterilmez (§2).
+
+**Modül anahtarı — bu dilimin TEK gerçek mutasyonu.**
+`DB.company.aktifModuller` kabuğun **gerçekten okuduğu** tek ayardır
+(`Perm.modul` → menü + `guard`): kapatılan modülün girdisi menüden düşer,
+doğrudan adres de 403 verir, **veri silinmez**. Tek mutasyon noktası
+`GV.ayar.modulAyarla(anahtar, acik, gerekce)`.
+
+⚠️ **KAPI İKİ YÖNDE DE AYNIDIR — ölçüldü.** Açma ve kapatma **aynı yetki
+kümesini** ister (`sahip · genelmudur · sistem`; ölçülen küme birebir aynı) ve
+**aynı gerekçe koşulunu** taşır (≥8 karakter; boş gerekçe iki yönde de
+`why:'gerekce'` ile REDDEDİLİR). Bir işi geri almak onu yapmaktan ağır değildir.
+`tasks/qa/ayar-ekseni.js` [A6] iki kümeyi karşılaştırır ve ayrışırlarsa kırmızı
+yanar.
+
+**Sistem Kayıtları ikinci defter üretmez.** Tek yüzey `GV.audit`tir ve o iki
+defteri (`DB.activities` 207 + `DB.logs` 7) birleştirip **tekilleştirir** →
+**214 satır**. Ekranın `DB.logs`a ya da `DB.activities`e doğrudan yazması
+[A3] tarafından yasaklanır ve ölçülür.
+
+**Birleşik deftere kararlı satır kimliği eklendi.** `GV.list` `key:` ile zorunlu
+bir alan ister; olay defterinin kaydında `kod` **yoktu**. Dizi indeksi kimlik
+olamaz — iki defter de `unshift` ile büyür ve indeks her yazmada kayar, seçili
+satır başka bir kayda kayardı. Kimlik, tekilleştirmenin zaten kullandığı
+**içerik anahtarıdır**; benzersizliğini tekilleştirmenin kendisi garanti eder
+(ölçüldü: **214/214 benzersiz**, defter büyüdüğünde eski kimlik değişmiyor).

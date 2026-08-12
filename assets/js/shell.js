@@ -98,6 +98,50 @@
 
   var RAIL_ORDER = ['gundem','satis','operasyon','finans','ekip','rapor','ayarlar'];
 
+  /* ===================================================================
+     AYAR SEKMELERİ — şartname §3.3
+     "`app-ayar-*.html` → `/ayarlar/:sekme` · Aynı ayar kabuğunda sekmeli
+      yönetim; YETKİYE GÖRE SEKME ÜRET."
+
+     Dört ayar ekranının hepsi bu tek kayıttan sekme üretir. Kural burada
+     TEK yerde durur (L-40): dört ekranda dört kopya olsaydı bir rol
+     değiştiğinde üçü sessizce eskirdi.
+
+     `rota` alanı `tasks/rota-haritasi.md` satır numarasıdır — bir sekmenin
+     hangi R1 ekranını kapattığı defterle karşılıklı ölçülebilsin diye
+     yazılıdır, süs değildir.
+
+     Kapı sırası: `roles` (rol beyaz listesi) → `perm` (yetki matrisi
+     anahtarı). Sekme kapısı MENÜ kapısından ayrıdır: ekrana girebilen bir
+     rol her sekmeyi göremeyebilir; göremediği sekme BASILMAZ (§2 "yetkisiz
+     öğe gri veya kilitli gösterilmek yerine kaldırılmalı").
+     =================================================================== */
+  var AYAR_SEKME = {
+    profil:[
+      { key:'hesap',     lbl:'Hesabım',             ic:'i-user',         rota:134 },
+      { key:'bildirim',  lbl:'Bildirim Tercihleri', ic:'i-bell',         rota:135 }
+    ],
+    sirket:[
+      { key:'sirket',    lbl:'Şirket',              ic:'i-building',     rota:136 },
+      { key:'departman', lbl:'Departmanlar',        ic:'i-layers',       rota:137 },
+      { key:'kullanici', lbl:'Kullanıcılar',        ic:'i-users',        rota:138, perm:'personel' },
+      { key:'rol',       lbl:'Roller',              ic:'i-shield',       rota:139 },
+      { key:'yetki',     lbl:'Yetki Matrisi',       ic:'i-key',          rota:140, roles:YONETIM },
+      { key:'onay',      lbl:'Onay Akışları',       ic:'i-stamp',        rota:141 }
+    ],
+    entegrasyon:[
+      { key:'saglayici', lbl:'Sağlayıcılar',        ic:'i-link',         rota:142 },
+      { key:'odeme',     lbl:'Ödeme Sağlayıcısı',   ic:'i-wallet',       rota:142, perm:'finans' },
+      { key:'otomasyon', lbl:'Otomasyonlar',        ic:'i-refresh',      rota:143 },
+      { key:'hata',      lbl:'Hata Kuyruğu',        ic:'i-alert',        rota:142 }
+    ],
+    log:[
+      { key:'kayit',     lbl:'Sistem Kayıtları',    ic:'i-list',         rota:144, perm:'log' },
+      { key:'arsiv',     lbl:'Belge Arşivi',        ic:'i-archive',      rota:145 },
+      { key:'kalite',    lbl:'Veri Kalitesi',       ic:'i-shield-check', rota:146 }
+    ]
+  };
+
   /* Rol → görebileceği çalışma alanı.
      R1'de 27 rol × 16 bölüm bir haritaydı; R2'de alan sayısı yediye indiği
      için harita da sadeleşti. `ayarlar` HERKESE açıktır (herkes kendi
@@ -281,6 +325,16 @@
       });
     });
     return out;
+  }
+
+  /* Ayar sekmesi üretimi — §3.3. Menü kapısıyla AYNI ilkelleri okur
+     (`Perm.role` · `Perm.can`), kendi yetki kuralını TANIMLAMAZ. */
+  function ayarSekmeleri(ekran){
+    return (AYAR_SEKME[ekran] || []).filter(function(t){
+      if(t.roles && t.roles.indexOf(Perm.role()) === -1) return false;
+      if(t.perm && !Perm.can(t.perm)) return false;
+      return true;
+    });
   }
 
   /* ===================================================================
@@ -778,7 +832,13 @@
        bağlantı verir; listede olmasalar `markWip` bağlantıyı keserdi. */
     'app-odeme.html',
     'app-odeme-sonuc.html',
-    'app-rapor.html'
+    'app-rapor.html',
+    /* Dilim 5 — Ayarlar. Dört ekranın dördü de şartname §3.3'ün AYNI ayar
+       kabuğudur; sekmeler `GV.shell.ayarSekmeleri()` ile yetkiden üretilir. */
+    'app-ayar-profil.html',
+    'app-ayar-log.html',
+    'app-ayar-entegrasyon.html',
+    'app-ayar-sirket.html'
   ];
   GV.built = BUILT;
 
@@ -1037,6 +1097,9 @@
     sections:SECTIONS,
     railOrder:RAIL_ORDER,
     secByRole:SEC_BY_ROLE,
+    /* Ayar sekmeleri — ham kayıt ve yetkiden SÜZÜLMÜŞ küme (§3.3) */
+    ayarSekmeHam:AYAR_SEKME,
+    ayarSekmeleri:ayarSekmeleri,
     /* Ölçüm kapısı — tasks/qa/menu.js bunu çağırır */
     visibleItems:gorunurGirdiler,
     session:function(){ return session; },

@@ -192,12 +192,13 @@
       var a = (DB.activities || []).filter(function(x){
         return !kayitKod || x.kayit === kayitKod; })
         .map(function(x){ return { tarih:x.tarih, kisi:x.kisi, metin:x.metin,
-          eski:x.eski, yeni:x.yeni, tone:x.tone, icon:x.icon, kayit:x.kayit, defter:'olay' }; });
+          eski:x.eski, yeni:x.yeni, tone:x.tone, icon:x.icon, kayit:x.kayit,
+          kod:null, defter:'olay' }; });
       var b = (DB.logs || []).filter(function(x){
         return !kayitKod || x.kayit === kayitKod; })
         .map(function(x){ return { tarih:x.tarih, kisi:x.kisi, metin:x.islem,
           eski:x.eski, yeni:x.yeni, tone:'info', icon:'i-shield', kayit:x.kayit,
-          modul:x.modul, ip:x.ip, defter:'sistem' }; });
+          kod:x.kod || null, modul:x.modul, ip:x.ip, defter:'sistem' }; });
       /* ⚠️ ÇİFT SAYIM — `yaz({modul:…})` aynı olayı BİLEREK iki deftere
          yazar (olay defteri + sistem günlüğü; sebebi yukarıda). Birleştirme
          bunu görmezden gelince aynı satır zaman çizelgesinde İKİ KEZ
@@ -214,6 +215,18 @@
           if(x.modul && !onceki.modul){ onceki.modul = x.modul; onceki.ip = x.ip; }
           return;
         }
+        /* SATIR KİMLİĞİ — `GV.list` `key:` ile ZORUNLU bir alan ister;
+           olay defterinin kaydında `kod` YOKTUR (yalnız sistem
+           günlüğünde var). Dizi indeksi kimlik olamaz: iki defter de
+           `unshift` ile büyür, indeks her yazmada kayar ve seçili satır
+           başka bir kayda kayar. Kimlik, tekilleştirmenin zaten
+           kullandığı İÇERİK anahtarıdır; benzersizliğini
+           tekilleştirmenin kendisi garanti eder. Ayraç `\x01` bir
+           HTML özniteliğinde taşınamaz, o yüzden kimlikte kaçışlı `|`
+           kullanılır — kaçış olmadan eşleme birebir olmazdı. */
+        x.id = [x.kayit || '', x.tarih || '', x.metin || '']
+                 .map(function(v){ return String(v).replace(/\|/g,'\\|'); }).join('|');
+        if(x.kod === undefined) x.kod = null;
         gorulen[anahtar] = x;
         tekil.push(x);
       });
@@ -4292,5 +4305,160 @@
              hataBaglami:hataBaglami, hatasizBasarisiz:hatasizBasarisiz,
              senaryolar:senaryolar, adimlar:adimlar };
   })();
+
+  /* ===================================================================
+     ENTEGRASYON — BAĞLANTI DURUMU TÜRETİLİR, KATALOGDAN OKUNMAZ (K-34)
+     -------------------------------------------------------------------
+     ÖLÇÜLEN ÇELİŞKİ: `DB.integrations` on kayıt taşıyor ve dördü
+     `durum:'Bağlı'` diyor (GitHub · Google Calendar · Paraşüt · OpenAI).
+     Aynı deponun kendi veri dosyası bunun yanında şunu yazıyor
+     (`assets/data/misc.js`, `DB.integrationErrors` başlığı):
+
+       "Bu prototipte GERÇEK BİR ENTEGRASYON KOŞUMU YOK — `DB.integrations`
+        yalnız bağlantı tanımlarını taşıyor, hiçbiri çalışmıyor."
+
+     İkisi aynı anda doğru olamaz. `durum` alanı bir ÖLÇÜM değil, katalogun
+     NİYETİDİR: hangi sağlayıcıyla entegre olunması planlandığını söyler.
+     Yeşil bir "Bağlı" rozeti basmak, hiç kurulmamış bir bağlantıyı kurulmuş
+     göstermek olurdu — K-30'da envanterin tutanaksız zimmet iddiası aynı
+     gerekçeyle düşürülmüştü.
+
+     KURAL — kayıt SİLİNMEZ, iddia ile ölçüm AYRIŞTIRILIR:
+       · `olculenDurum()` her entegrasyonda `'Bağlanmadı'` döner ve bunun
+         KANITINI verir. Sabit bir dize değildir; kanıt boşalırsa (gerçek
+         bir koşum defteri eklenirse) yordam yeniden yazılır.
+       · `katalogIddiasi()` katalogun ne dediğini AYRI bir ad altında verir.
+       · `celisenler()` ikisinin çeliştiği kayıtları sayar — ekran bunu
+         gizlemez, dürüstçe basar.
+
+     ⚠️ ANAHTAR ALANI YOKTUR VE EKLENMEZ. Şartname §8.7: "Canlı anahtarlar
+     kodda veya istemci paketinde bulunmamalıdır." Bir `<input>` bile
+     açmak, anahtarın istemcide toplanabileceğini ima ederdi.
+     =================================================================== */
+  var BAGLI_IDDIA = ['Bağlı','Senkronda'];
+
+  var Entegrasyon = {
+    liste:function(){ return (window.DB && DB.integrations) || []; },
+    kayit:function(k){
+      if(!k) return null;
+      if(typeof k === 'object') return k;
+      return this.liste().filter(function(e){ return e.kod === k; })[0] || null;
+    },
+
+    /* Bağlantının ÖLÇÜLEBİLİR kanıtı. Üçü de boşsa hiçbir sağlayıcı
+       çalışmıyor demektir ve tek dürüst durum `Bağlanmadı`dır. */
+    kanit:function(){
+      var D = window.DB || {};
+      return {
+        kosumDefteri:  Array.isArray(D.integrationRuns) ? D.integrationRuns.length : null,
+        hataKuyrugu:   (D.integrationErrors || []).length,
+        webhookOlayi:  (D.webhookEvents || []).length,
+        /* Ödeme sağlayıcısı da bir entegrasyondur ve o da seçilmemiştir. */
+        odemeSaglayici:(D.paymentLinkDefaults || {}).saglayici || null
+      };
+    },
+    kosumVar:function(){
+      var k = this.kanit();
+      return !!(k.kosumDefteri || k.hataKuyrugu || k.webhookOlayi);
+    },
+    olculenDurum:function(){
+      return this.kosumVar() ? null : 'Bağlanmadı';
+    },
+    olculemedi:function(){
+      /* Koşum defteri hiç YOK — "hata yok" ile "ölçülemedi" ayrı şeydir. */
+      return !Array.isArray((window.DB || {}).integrationRuns);
+    },
+
+    katalogIddiasi:function(e){
+      var r = this.kayit(e);
+      return r ? (r.durum || null) : null;
+    },
+    celisir:function(e){
+      var i = this.katalogIddiasi(e);
+      return !!i && BAGLI_IDDIA.indexOf(i) !== -1 && !this.kosumVar();
+    },
+    celisenler:function(){
+      var self = this;
+      return this.liste().filter(function(e){ return self.celisir(e); });
+    },
+    kategoriler:function(){
+      return this.liste().reduce(function(acc, e){
+        if(e.kategori && acc.indexOf(e.kategori) === -1) acc.push(e.kategori);
+        return acc;
+      }, []).sort();
+    },
+
+    /* §8.7 — sağlayıcı bağımsız ödeme adaptörü. Beş yordam ADI ŞARTNAMEDEN
+       alındı, uydurulmadı; hiçbiri uygulanmadı. */
+    odemeAdaptoru:function(){
+      var d = (window.DB || {}).paymentLinkDefaults || {};
+      return {
+        saglayici:d.saglayici || null,
+        etiket:d.saglayiciEtiket || null,
+        secildi:!!d.saglayici && d.saglayici !== 'TEST-MOCK',
+        yordamlar:['createCheckoutSession','verifyWebhook','getPaymentStatus',
+                   'refundPayment','cancelSession'],
+        acikMadde:((window.DB || {}).paymentBackendGaps || [])
+                    .filter(function(g){ return ['§8.6','§8.7','§8.5'].indexOf(g.bolum) !== -1; })
+      };
+    }
+  };
+  GV.entegrasyon = Entegrasyon;
+
+  /* ===================================================================
+     AYAR MUTASYONU — MODÜL ANAHTARI (şartname §3.1 · REVİZE 18)
+     -------------------------------------------------------------------
+     `DB.company.aktifModuller` kabuğun GERÇEKTEN okuduğu tek ayardır
+     (`shell.js` `Perm.modul` → menü + `guard`). Bu yüzden ayar ekranındaki
+     TEK gerçek eylemdir: kapatınca menü girdisi düşer ve doğrudan adres de
+     403 verir, veri SİLİNMEZ.
+
+     ⚠️ KAPI İKİ YÖNDE DE AYNIDIR. Kapatma ile açma aynı yetki kümesini
+     ister ve açmak kapatmaktan AĞIR koşula bağlanmaz. Ters kurgu — "kapatan
+     herkes kapatır, açmayı yalnız sahip açar" — kullanıcıyı kendi kapattığı
+     kapının arkasında bırakırdı. Gerekçe de iki yönde de aynı kuralla
+     istenir: ikisi de bir yönetim kararıdır.
+     =================================================================== */
+  var Ayar = {
+    modulAnahtarlari:function(){
+      var m = (window.DB && DB.company && DB.company.aktifModuller) || {};
+      return Object.keys(m);
+    },
+    modulAcik:function(anahtar){
+      var m = (window.DB && DB.company && DB.company.aktifModuller) || {};
+      return !(anahtar in m) || m[anahtar] !== false;
+    },
+    /* Yetki TEK yordamda durur; iki yön de burayı çağırır. */
+    modulYetkisi:function(){
+      return !!(GV.perm && GV.perm.can('duzenle') && GV.perm.role &&
+                ['sahip','genelmudur','sistem'].indexOf(GV.perm.role()) !== -1);
+    },
+    modulAyarla:function(anahtar, acik, gerekce){
+      if(!window.DB || !DB.company || !DB.company.aktifModuller)
+        return { ok:false, why:'kayit', mesaj:'Modül defteri yüklü değil.' };
+      if(!(anahtar in DB.company.aktifModuller))
+        return { ok:false, why:'kayit', mesaj:'Tanımsız modül anahtarı: ' + anahtar };
+      if(!this.modulYetkisi())
+        return { ok:false, why:'yetki',
+                 mesaj:'Modül anahtarını yalnız şirket sahibi, genel müdür ve sistem yöneticisi değiştirebilir.' };
+      var g = String(gerekce == null ? '' : gerekce).trim();
+      if(g.length < 8)
+        return { ok:false, why:'gerekce',
+                 mesaj:'Gerekçe zorunludur (en az 8 karakter) — açmak ve kapatmak için aynı koşul.' };
+      var eski = this.modulAcik(anahtar);
+      if(eski === !!acik)
+        return { ok:false, why:'degisiklikyok', mesaj:'Anahtar zaten bu durumda.' };
+      DB.company.aktifModuller[anahtar] = !!acik;
+      GV.audit.yaz({
+        kayit:'AYAR-MODUL-' + anahtar,
+        islem:(acik ? 'Modül açıldı' : 'Modül kapatıldı') + ': ' + anahtar,
+        eski:eski ? 'açık' : 'kapalı', yeni:acik ? 'açık' : 'kapalı',
+        tone:acik ? 'ok' : 'warn', icon:'i-sliders',
+        modul:'Ayarlar', not:g
+      });
+      return { ok:true, anahtar:anahtar, eski:eski, yeni:!!acik, gerekce:g };
+    }
+  };
+  GV.ayar = Ayar;
 
 })();
