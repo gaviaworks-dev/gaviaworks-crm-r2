@@ -322,7 +322,9 @@ document.addEventListener('gv:ready', function(){
     DUZ_ALANLAR.concat(['tahminiSure']).forEach(function(k){
       formKayit[k] = rec[k] == null ? '' : rec[k];
     });
-    if(canFinans) PARA_ALANLAR.forEach(function(k){
+    /* Kapı koşulu BURADA GEREKMİYOR (K-44): bölüm kapıyla düşerse alan hiç
+       çizilmez, taslakta durması zararsızdır ve `read()` onu döndürmez. */
+    PARA_ALANLAR.forEach(function(k){
       formKayit[k] = rec[k] == null ? '' : rec[k];
     });
     /* Görüntü alanları SALT OKUNUR ve adları `*Bilgi` — `kayit.durum = …`
@@ -511,7 +513,12 @@ document.addEventListener('gv:ready', function(){
     { key:'plan',  label:'Plan',   icon:'i-calendar' },
     { key:'ortam', label:'Ortam',  icon:'i-server' }
   ];
-  if(canFinans) sekmeler.splice(2, 0, { key:'butce', label:'Bütçe', icon:'i-wallet' });
+  /* ⚠️ BÜTÇE SEKMESİ ARTIK `splice` İLE KOŞULLU EKLENMİYOR (K-44 ·
+     ADR-R2-44). Sekme her zaman tanımlanır; bölümü kapıyla düşerse
+     `GV.form` sekmeyi KENDİSİ düşürür. Eskiden kapı üç yerde birden
+     kurulmak zorundaydı (sekme listesi · bölüm listesi · kaydetme listesi)
+     ve üçü ayrışabilirdi. */
+  sekmeler.splice(2, 0, { key:'butce', label:'Bütçe', icon:'i-wallet' });
   if(rec)       sekmeler.push({ key:'listeler', label:'Ekip ve listeler', icon:'i-list' });
 
   var bolumler = [
@@ -528,8 +535,13 @@ document.addEventListener('gv:ready', function(){
       desc:'Hepsi serbest metindir ve sözlükleri yok; boş kalanlar detayda "—" basılır.',
       fields:ortamAlanlar }
   ];
-  if(canFinans) bolumler.splice(2, 0, {
+  /* KAPI BÖLÜMÜN KENDİSİNDE (K-44): `perm:'finans'`. Yetki yoksa bölüm
+     çizilmez, alanları DOĞRULANMAZ ve `read()` çıktısında ANAHTAR OLARAK
+     BULUNMAZ — yani kaydetme mevcut tutarları ezemez. Sekme de kendiliğinden
+     düşer. Eskiden bunu ekran üç yerde elle kuruyordu. */
+  bolumler.splice(2, 0, {
     title:'Sözleşme tutarı ve bütçe', icon:'i-wallet', tab:'butce',
+    perm:'finans',
     desc:'İki alan da kaydın kendi alanıdır. Tahsilat ve kâr bu alanlardan türetilmez; ' +
          'onlar finans zincirinin ve zaman defterinin işidir.',
     fields:paraAlanlar });
@@ -882,8 +894,11 @@ document.addEventListener('gv:ready', function(){
       planlananBitis:bosNull(v.planlananBitis),
       gercekBitis:null,
       ilerleme:null,
-      sozlesmeTutari:canFinans ? sayiYaNull(v.sozlesmeTutari) : null,
-      butce:canFinans ? sayiYaNull(v.butce) : null,
+      /* Kapı kapalıysa `read()` bu iki anahtarı HİÇ DÖNDÜRMEZ (K-44), yani
+         `v.x` `undefined` gelir ve `sayiYaNull` `null` üretir — ikinci bir
+         kapı koşuluna gerek yok. */
+      sozlesmeTutari:sayiYaNull(v.sozlesmeTutari),
+      butce:sayiYaNull(v.butce),
       tahminiSure:sayiYaNull(v.tahminiSure),
       kaynak:bosNull(v.kaynak),
       tur:bosNull(v.tur),
@@ -939,11 +954,17 @@ document.addEventListener('gv:ready', function(){
 
     /* Yazılan alanlar: yalnız forma basılanlar. `durum` · `arsiv` ·
        `ilerleme` · `gercekBitis` ve dört dizi alan bu döngüde YOK —
-       basılmadıkları için okunmuyorlar da. Para alanları yalnız yetki
-       varsa listeye giriyor: maskelenmiş/basılmamış alanı yazmak gerçek
-       değeri ezerdi (brief §22.17.6). */
-    var yazilacak = DUZ_ALANLAR.slice();
-    if(canFinans) yazilacak = yazilacak.concat(PARA_ALANLAR);
+       basılmadıkları için okunmuyorlar da.
+
+       ⚠️ PARA KAPISI BURADA BİR DAHA KURULMUYOR (K-44). Eskiden
+       `if(canFinans) yazilacak = …concat(PARA_ALANLAR)` yazılıydı, yani aynı
+       kapı üçüncü kez kuruluyordu. Artık gerek yok: bölüm kapıyla düştüğünde
+       `read()` o anahtarları HİÇ DÖNDÜRMÜYOR (ölçüldü — brief §5.2 tablosu),
+       o yüzden `v[k]` `undefined` gelir ve döngü `bosNull(undefined) → null`
+       ile mevcut değeri EZERDİ. Bu yüzden döngü artık `read()` çıktısında
+       ANAHTAR olup olmadığına bakıyor: olmayan anahtar atlanır. Kapı tek
+       yerde (bölümde), sonucu her yerde. */
+    var yazilacak = DUZ_ALANLAR.concat(PARA_ALANLAR).filter(function(k){ return k in v; });
 
     var degisen = [];
     yazilacak.forEach(function(k){
@@ -970,9 +991,14 @@ document.addEventListener('gv:ready', function(){
         : 'Proje kaydı kaydedildi — basılan alanlarda değişiklik yok',
       tone:'info', icon:'i-edit' });
 
-    if(!canFinans)
-      GV.toast('Tutar alanları yetkiniz olmadığı için ne basıldı ne yazıldı; kaydın mevcut ' +
-               'tutarları korundu.', 'info');
+    /* Sebebi EKRAN YAZMIYOR, SÖZLEŞMEDEN OKUYOR (K-44): `kapaliAlanlar()`
+       düşen her alanı sebebiyle döndürür. Ekran kendi cümlesini kurarsa aynı
+       kural iki yerde yaşar (L-40) ve kapı değişince cümle bayat kalır. */
+    var dusen = form.kapaliAlanlar();
+    if(dusen.length)
+      GV.toast(dusen.length + ' alan bu oturumda basılmadı ve kaydetme onlara dokunmadı (' +
+               dusen.map(function(x){ return x.label; }).join(' · ') + ') — sebep: ' +
+               dusen[0].sebep + '. Kaydın mevcut değerleri korundu.', 'info');
 
     GV.afterSave({
       kod:rec.kod, liste:'app-proje.html', detay:'app-proje-detay.html', yeni:false,

@@ -892,26 +892,26 @@ document.addEventListener('gv:ready', function(){
   }
 
   /* ---- Türetilmiş alanın CANLI eşitlenmesi -----------------------
-     `gun` alanı türetilmiştir ve iki tarih değişince değişir. Bileşen her
-     değişimde sağ paneli yeniden çiziyor ama alanların değerine
-     dokunmuyor; bu yüzden salt okunur alanın gösterdiği sayıyı burada
-     eşitliyoruz. Dinleyici mount'un İÇİNDEDİR (`GV.on` gerekmez, §2.6):
-     GV.refresh() mount'u baştan çizdiğinde bu düğüm de dinleyicisiyle
-     birlikte gider. Kaydetmede sayı yine tarihlerden ölçülür — bu satır
-     bir gösterim eşitlemesidir, veri kaynağı değildir. */
-  var formEl = document.getElementById('iznForm');
+     `gun` alanı türetilmiştir ve iki tarih değişince değişir.
+
+     ⚠️ BU BLOK BİR YAMAYDI, ARTIK SÖZLEŞME (K-44 · ADR-R2-44). İlk yazımda
+     bileşende türetilmiş alanın DEĞERİNİ yazacak bir yol yoktu (`sync()`
+     yalnız `showIf`i değerlendiriyor, `aside` yeniden çiziliyor ama alanlara
+     dokunulmuyor), o yüzden ekran alanın DOM sözleşmesine elle dokunuyordu:
+     `formEl.querySelector('[name="gun"]').value = …`. Kaçamak olduğu
+     ekranda yazılıydı ve borç olarak açıldı (V2-83).
+     `form.setValue` o yuvayı kapattı: ekran artık DOM'a değil SÖZLEŞMEYE
+     yazıyor ve bileşen çoklu seçim/onay kutusu/radyo ayrımını kendisi
+     biliyor. Dinleyici mount'un İÇİNDEDİR (`GV.on` gerekmez, §2.6).
+     Kaydetmede sayı yine tarihlerden ölçülür — bu satır bir gösterim
+     eşitlemesidir, veri kaynağı değildir. */
   function gunAlaniniEsitle(){
-    if(!formEl) return;
-    var gunEl = formEl.querySelector('[name="gun"]');
-    if(!gunEl) return;
     var v = form.read();
     var n = isGunu(bosNull(v.baslangic), bosNull(v.bitis));
-    gunEl.value = (n == null ? '' : n);
+    form.setValue('gun', n == null ? '' : n);
   }
-  if(formEl){
-    formEl.addEventListener('input',  gunAlaniniEsitle);
-    formEl.addEventListener('change', gunAlaniniEsitle);
-  }
+  form.el.addEventListener('input',  gunAlaniniEsitle);
+  form.el.addEventListener('change', gunAlaniniEsitle);
 
   /* ================================================================
      KAYDETME
