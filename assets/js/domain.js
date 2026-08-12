@@ -2707,12 +2707,20 @@
       return Hr.durum(e) === 'Aktif';
     },
 
-    /* Kod da kayıt da kabul edilir — çağıran elindekini verir. */
+    /* Kod da kayıt da kabul edilir — çağıran elindekini verir.
+       ⚠️ `kod` alanı OLMAYAN nesne kayıt DEĞİLDİR (K-42). Eskiden dizge
+       olmayan her şey kayıt sayılıyordu; personel formu yeni kayıt için
+       `maasKapi({})` çağırdığında yordam boş nesneyi bir kayıt gibi ölçüp
+       "Bu kayıt sizin değil" diyordu — var olmayan bir kaydın sahipliği
+       hakkında hüküm vermek. Şimdi `null` döner ve çağıran KÜME sorusuna
+       düşer, ki yeni kayıtta doğru soru odur. */
     kayit:function(e){
       if(!e) return null;
-      if(typeof e !== 'string') return e;
-      if(!window.DB || !DB.employees) return null;
-      return DB.employees.filter(function(x){ return x.kod === e; })[0] || null;
+      if(typeof e === 'string'){
+        if(!window.DB || !DB.employees) return null;
+        return DB.employees.filter(function(x){ return x.kod === e; })[0] || null;
+      }
+      return e.kod ? e : null;
     },
 
     durum:function(e){
