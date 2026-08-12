@@ -254,18 +254,33 @@ DB.policies = [
     kalanGun:393, yenileme:'—', odeme:'Sözleşmeye dahil', aktif:true }
 ];
 
-/* ---- Yakıt kayıtları ---------------------------------------------------- */
+/* ---- Yakıt kayıtları ----------------------------------------------------
+   `depoDoldu` — dolumun depoyu DOLDURUP doldurmadığı. Tüketim (L/100km)
+   ancak iki dolumun İKİSİ DE tam depoysa anlamlıdır; alan yokken ekran
+   bu varsayımı cümleyle telafi ediyordu (V2-77). Varsayım artık ÖLÇÜM:
+
+   ⚠️ ÜÇ DEĞER, ÜÇÜ DE AYRI ŞEY: `true` tam depo · `false` kısmi dolum ·
+   **`null` BİLİNMİYOR**. `null` "kısmi dolum" DEĞİLDİR; sıfır ile
+   bilinmeyen aynı şey değildir (UID-11'in yakıt ekseni karşılığı).
+
+   ⚠️ BEŞ KAYDIN BEŞİ DE `null` VE BU UYDURMAMAK İÇİNDİR. Defterde
+   doluluğu söyleyen hiçbir işaret yok (ne kayıtta bir not, ne araç
+   künyesinde depo hacmi — arandı, ikisi de yok), yani hiçbir kayıt için
+   `true` yazmanın dayanağı yok. Sonucu ölçüldü ve kabul edildi: bugün
+   HİÇBİR araçta tüketim hesaplanmıyor, `ARC-001`in daha önce basılan
+   7,08 L/100km değeri de basılmıyor — o sayı ölçüm değil VARSAYIMDI.
+   Değerleri operatör girdikçe KPI kendiliğinden canlanır. */
 DB.fuelLogs = [
   { kod:'YKT-2026-088', arac:'ARC-001', tarih:'2026-07-30', istasyon:'Shell Çankaya', litre:52.4, birimFiyat:48.9,
-    tutar:2562, km:68120, surucu:'EMP-001', aktif:true },
+    tutar:2562, km:68120, surucu:'EMP-001', aktif:true, depoDoldu:null },
   { kod:'YKT-2026-089', arac:'ARC-004', tarih:'2026-07-29', istasyon:'Opet Kızılay', litre:38.2, birimFiyat:48.5,
-    tutar:1853, km:29380, surucu:'EMP-002', aktif:true },
+    tutar:1853, km:29380, surucu:'EMP-002', aktif:true, depoDoldu:null },
   { kod:'YKT-2026-090', arac:'ARC-002', tarih:'2026-07-28', istasyon:'BP Bahçelievler', litre:41.0, birimFiyat:48.7,
-    tutar:1997, km:41010, surucu:'EMP-014', aktif:true },
+    tutar:1997, km:41010, surucu:'EMP-014', aktif:true, depoDoldu:null },
   { kod:'YKT-2026-091', arac:'ARC-003', tarih:'2026-07-24', istasyon:'Petrol Ofisi', litre:63.5, birimFiyat:46.2,
-    tutar:2934, km:112400, surucu:'EMP-012', aktif:true },
+    tutar:2934, km:112400, surucu:'EMP-012', aktif:true, depoDoldu:null },
   { kod:'YKT-2026-092', arac:'ARC-001', tarih:'2026-07-18', istasyon:'Shell Çankaya', litre:49.8, birimFiyat:48.4,
-    tutar:2410, km:67380, surucu:'EMP-001', aktif:true }
+    tutar:2410, km:67380, surucu:'EMP-001', aktif:true, depoDoldu:null }
 ];
 
 /* ---- Araç giderleri ----------------------------------------------------- */

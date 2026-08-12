@@ -438,11 +438,14 @@ document.addEventListener('gv:ready', function(){
      TÜRETİLEMEYENDE `—` + GERÇEK SEBEP basılır ("veri yok" değil, hangi
      verinin neden yetmediği — §10.1).
 
-     ⚠️ VARSAYIM DA BASILIR: tüketim ancak HER İKİ DOLUMUN DA depoyu
-     DOLDURDUĞU varsayımıyla anlamlıdır ve `DB.fuelLogs` bunu söyleyen bir
-     alan TAŞIMAZ (`kod · arac · tarih · istasyon · litre · birimFiyat ·
-     tutar · km · surucu · aktif`). Varsayımı yazmadan basılan sayı, ölçüm
-     değil iddiadır. */
+     ⚠️ VARSAYIM ÖLÇÜME ÇEVRİLDİ (K-45). Eskiden `DB.fuelLogs` doluluğu
+     söyleyen bir alan taşımıyordu ve ekran varsayımı CÜMLEYLE telafi
+     ediyordu — sayı basılıyor, yanına "tam depo varsayımıyla" yazılıyordu.
+     Artık alan var (`depoDoldu`: `true`/`false`/`null`) ve telafi yerine
+     KAPI kondu: doluluk bilinmiyorsa sayı BASILMAZ.
+     Bugünkü ölçüm: beş dolum kaydının beşi de `null`, yani dört aracın
+     hiçbirinde tüketim hesaplanmıyor — `ARC-001`in 7,08 L/100km değeri de
+     artık basılmıyor, çünkü o sayı bir ölçüm değil bir VARSAYIMDI. */
   var TUKETIM = (function(){
     if(!YAKIT.length)
       return { ok:false, neden:'bu araç için yakıt defterinde hiç dolum kaydı yok; ' +
@@ -460,6 +463,24 @@ document.addEventListener('gv:ready', function(){
                                'aralık olmadan tüketim türetilemez' };
     if(sonraki.litre == null)
       return { ok:false, neden:'sonraki dolumun litre alanı boş; tüketim türetilemez' };
+    /* ⚠️ VARSAYIM ARTIK ÖLÇÜM (K-45 · `DB.fuelLogs[].depoDoldu`). Tüketim
+       ancak İKİ dolumun da depoyu doldurduğu biliniyorsa anlamlıdır.
+       Üç değer üç ayrı şeydir: `true` tam depo · `false` kısmi dolum ·
+       `null` BİLİNMİYOR — ve `null` "kısmi" sayılmaz. Bilinmeyeni
+       varsaymak, ölçüm gibi görünen bir iddia basmaktır; o yüzden burada
+       hesap DURUR ve hangi kaydın neyi söylemediği yazılır. */
+    var eksik = [onceki, sonraki].filter(function(x){ return x.depoDoldu == null; });
+    var kismi = [onceki, sonraki].filter(function(x){ return x.depoDoldu === false; });
+    if(kismi.length)
+      return { ok:false, neden:'aralığın ' + kismi.length + ' dolumu KISMİ (' +
+        kismi.map(function(x){ return x.kod; }).join(' · ') + '); tüketim yalnız ' +
+        'tam depodan tam depoya ölçülebilir' };
+    if(eksik.length)
+      return { ok:false, neden:'aralığın ' + eksik.length + ' dolumunda depo doluluğu ' +
+        'KAYITLI DEĞİL (' + eksik.map(function(x){ return x.kod; }).join(' · ') +
+        '); tüketim ancak iki dolumun da TAM DEPO olduğu biliniyorsa türetilir. ' +
+        'Bilinmeyen bir doluluk "kısmi" DEĞİLDİR — sayı bu yüzden basılmıyor, ' +
+        'sıfır da basılmıyor. Alan doldurulunca KPI kendiliğinden canlanır' };
     return { ok:true, deger:sonraki.litre / dk * 100, km:dk, litre:sonraki.litre,
              onceki:onceki, sonraki:sonraki };
   })();
