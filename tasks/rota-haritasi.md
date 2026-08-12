@@ -39,8 +39,8 @@
 | KARAR BEKLİYOR | **0** | %0,0 | 0 |
 | **Toplam** | **148** | %100 | 148 |
 | YENİ yazılacak | **8** — altısı (Y1–Y6) **yayında**, ikisi kaldı | — | 8 |
-| **Bugün R2'de yayında** | **99** | %66,9 | 97 |
-| **Kalan** | **49** | %33,1 | 51 |
+| **Bugün R2'de yayında** | **101** | %68,2 | 97 |
+| **Kalan** | **47** | %31,8 | 51 |
 
 > **12 Ağustos · Dilim 6 — iki satır karar DEĞİŞTİRDİ, dokuzu yazılıyor.**
 > `KARŞILIĞI VAR` 43 → 41: rota **123** ve **124** (`app-dokuman.html` ve
@@ -181,7 +181,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 |---|---|---|---|
 | 30 | `app-proje.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** 6 sekme, hepsi `DB.projectStatuses` ve `GV.proje.*` yordamlarından TÜRETİLDİ. ⚠️ "Kapanan" varsayılan görünümde **0** satır: kapanan 7 projenin 7'si de `arsiv:true`, şerit bunu söylüyor. `GV.proje.sure` 7/14 projede `kapsam:false` → "0 sa" değil "defterde kayıt yok" |
 | 31 | `app-proje-detay.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** Dokuz sekme, tembel çizim. `#<sekme>` derin bağlantısı çalışıyor ve SÖZLEŞMEDİR — kuyruk ve `GV.proje.kapanisKontrol` buraya bağlandı. |
-| 32 | `app-proje-form.html` | **KARŞILIĞI VAR** | — |
+| 32 | `app-proje-form.html` | **KARŞILIĞI VAR** ✅ | Doğum durumu `Plan`; `?hesap=` tohumu `GV.sales.firsatKazan`dan gelir (V2-39 kapandı). Aktivasyon kapısı `GV.gates.projeAktif` ile ÇAĞRILIR, aynası kurulmaz. **Çalışıyor.** |
 
 ### 4.2 Proje alt kayıtları — §3.3 birebir hüküm
 
@@ -368,7 +368,7 @@ R1 ölçümü (grep ile, `tasks/omurga-kaynak.md` §4.1): 148 ekran ·
 |---|---|---|---|
 | 113 | `app-satinalma.html` | **KARŞILIĞI VAR** ✅ | **YAZILDI.** R1'in ayrı "Onay Bekleyenler" girdisi sekmeye indi. 7 talebin 7'sinde onay zinciri var (16 adım); adım sayacı `GV.approval.adim`den TÜRETİLİR, `onayAdim` alanı hiçbir yerde okunmuyor. |
 | 114 | `app-satinalma-detay.html` | **GÖMÜLÜYOR** ✅ | **Karar DEĞİŞTİ.** Talep detayı zaten çekmeceydi; artık `app-satinalma.html?ac=<kod>` ile derin bağlantı da alıyor. Kuyruğun iki satın alma onayı buraya geliyor. |
-| 115 | `app-satinalma-form.html` | **KARŞILIĞI VAR** | — |
+| 115 | `app-satinalma-form.html` | **KARŞILIĞI VAR** ✅ | Doğum durumu `Taslak` (V2-40 kapandı). Onay zincirinin adım sayısı tutardan TÜRETİLİR (10k→1/3 · 30k→2/3 · 150k→3/3); zincir örneği üretilmez, beyan edilir. **Çalışıyor.** |
 | 116 | `app-satinalma-teklif.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** (K-24). Satın Alma › Teklif Toplama sekmesi · 9 satır · iki puan ekseni ayrı etiketli |
 | 117 | `app-siparis.html` | **GÖMÜLÜYOR** ✅ | **YAZILDI** (K-24). Satın Alma › Siparişler sekmesi · 4 satır · net/KDV/brüt üç kolon |
 | 118 | `app-siparis-detay.html` | **GÖMÜLÜYOR** ✅ | aynı sekmede satır görünümü; `teslimTarihi` çift anlamı (planlanan/gerçekleşen) hücrede yazılı |
